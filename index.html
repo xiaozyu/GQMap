@@ -1494,5 +1494,15 @@
       selectTask(0, false);
     }
   </script>
+  <script>
+  // 補上 PWA 所需的 Service Worker 註冊代碼
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('巨擎導航 PWA 服務註冊成功！', reg.scope))
+        .catch(err => console.log('服務註冊失敗：', err));
+    });
+  }
+</script>
 </body>
 </html>
