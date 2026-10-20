@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -11,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="巨擎導航">
   
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <link rel="manifest" href="./manifest.json">
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
@@ -400,11 +399,12 @@
   </div>
 
   <script>
+    // ================= 乾淨的 PWA Service Worker 註冊 =================
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {
-        const swCode = `self.addEventListener('install', (e) => self.skipWaiting()); self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim())); self.addEventListener('fetch', (e) => {});`;
-        const blob = new Blob([swCode], { type: 'text/javascript' });
-        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then((reg) => {
+          reg.update();
+        }).catch((err) => console.error('PWA 註冊失敗:', err));
       });
     }
 
@@ -676,7 +676,6 @@
     }
     localStorage.setItem('tpc_last_active_date', todayKey);
 
-    // 每次載入時，強制重新檢查一次所有案件：只要備註或屬性含有 ND，一律標記為 ND 紅底
     tasks.forEach(t => {
       if (t.isND || /nd/i.test(t.note || '')) {
         t.isND = true;
@@ -861,7 +860,6 @@
       return '';
     }
 
-    // 過濾台電系統表格常見的無意義欄位字眼
     function isSystemNoiseLine(line) {
       const noiseKeywords = [
         "每頁", "施工地點", "領班", "預定施工日期", "承攬商",
@@ -869,19 +867,17 @@
         "接戶線工作", "篩選條件", "DCIS", "工區別", "查驗作業", "綜合查詢", "工安查核"
       ];
       if (noiseKeywords.some(w => line.includes(w))) return true;
-      if (/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(line)) return true; // 民國/西元日期如 115/10/20
-      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號樓區鄉鎮市縣村里鄰]/.test(line)) return true; // 純人名如 陳昭兆
+      if (/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(line)) return true;
+      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號樓區鄉鎮市縣村里鄰]/.test(line)) return true;
       return false;
     }
 
-    // 💡 雙模智慧解析引擎：同時完美支援「Google 鏡頭表格垂直複製」與「一般單行文字複製」
     async function parseText(content) {
       if (!content || !content.trim()) return;
 
       const rawLines = content.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
       const newTasks = [];
 
-      // 預掃描：收集純時間行與圖號行，判斷是否為 Google 鏡頭的「垂直欄位區塊」格式
       const standaloneTimes = [];
       const codeLinesCount = rawLines.filter(l => {
         COORD_REGEX.lastIndex = 0;
@@ -895,7 +891,6 @@
         }
       });
 
-      // 若有多筆獨立時間行且沒有與圖號同行（典型 Google 智慧鏡頭表格複製），啟動索引對齊配對
       const useColumnZipMode = (standaloneTimes.length >= 2 && standaloneTimes.length === codeLinesCount);
 
       let currentTime = '';
@@ -926,15 +921,12 @@
 
             const cleanCode = sanitizeTaipowerCode(rawCode);
             
-            // 把圖號與時間從該行剝除，剩下的就是地址/備註（包含 ND 字樣）
             let note = line.replace(m, '').replace(TIME_REGEX, '').replace(/[\s,]+/g, ' ').trim();
-            // 移除開頭或結尾單獨黏在圖號上的 ND（若有的話），避免干擾路名查詢，但保留地址內的文字
             if (/^nd$/i.test(note)) note = '';
             if (!note && pendingNote && !isSystemNoiseLine(pendingNote)) {
               note = pendingNote;
             }
 
-            // 🔥 只要這行文字或備註裡出現「nd」兩個字黏在一起（不分大小寫），一律判定為 ND 案件
             const isND = /nd/i.test(line) || /nd/i.test(note);
 
             if (cleanCode && !tasks.some(t => t.code === cleanCode) && !newTasks.some(t => t.code === cleanCode)) {
@@ -960,7 +952,6 @@
         selectTask(startIndex);
 
         newTasks.forEach(async (taskItem) => {
-          // 檢查移除 ND 字樣後是否還需要自動反查路名
           const noteWithoutND = (taskItem.note || '').replace(/nd/gi, '').trim();
           if (noteWithoutND.length < 2) {
             const twd67 = taipowerToTWD67(taskItem.code);
@@ -1494,15 +1485,5 @@
       selectTask(0, false);
     }
   </script>
-  <script>
-  // 補上 PWA 所需的 Service Worker 註冊代碼
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('巨擎導航 PWA 服務註冊成功！', reg.scope))
-        .catch(err => console.log('服務註冊失敗：', err));
-    });
-  }
-</script>
 </body>
 </html>
