@@ -1,0 +1,1498 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>⚡ 巨擎導航</title>
+  <meta name="theme-color" content="#0b0f19">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="巨擎導航">
+  
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #0b0f19; color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+
+    .top-section {
+      padding: 6px 8px 3px 8px;
+      flex-shrink: 0;
+      background: #0b0f19;
+      z-index: 20;
+    }
+
+    .top-toolbar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .btn-top {
+      padding: 8px 0;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      cursor: pointer;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.5; }
+    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 1; }
+    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
+    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
+
+    .manual-input-bar {
+      display: flex; align-items: center;
+      background: #131d31; border: 1px solid #334155;
+      border-radius: 6px; padding: 2px 6px; margin-bottom: 5px; gap: 4px;
+    }
+    .prefix-badge {
+      background: #3b82f6; color: #fff; font-weight: bold;
+      font-size: 1.1rem; font-family: monospace;
+      padding: 2px 8px; border-radius: 4px;
+      user-select: none; min-width: 36px; text-align: center;
+    }
+    .manual-input {
+      flex: 1; background: transparent; border: none;
+      color: #facc15; font-size: 1.1rem; font-family: monospace;
+      font-weight: bold; outline: none; text-transform: uppercase;
+    }
+    .manual-input::placeholder {
+      font-size: 0.8rem; color: #64748b; font-family: -apple-system, sans-serif;
+    }
+    .btn-manual-add {
+      background: #16a34a; color: #fff; border: none;
+      padding: 5px 10px; border-radius: 4px;
+      font-size: 0.8rem; font-weight: bold; cursor: pointer; white-space: nowrap;
+    }
+
+    .task-list-section {
+      background: #131d31; border-radius: 6px; border: 1px solid #1e293b;
+      padding: 3px 4px; height: 185px; overflow-y: auto; touch-action: pan-y;
+    }
+    
+    .task-row {
+      display: flex; align-items: center; justify-content: space-between;
+      min-height: 35px; padding: 4px 6px; margin-bottom: 3px;
+      background: #1e293b; border-radius: 4px; border-left: 4px solid #3b82f6;
+      cursor: pointer; user-select: none; gap: 6px;
+    }
+    .task-row.active {
+      background: #1e3a5f; border-left-color: #38bdf8;
+    }
+
+    /* ND 案件列表強力大紅底（強制覆蓋） */
+    .task-row.nd-case {
+      background: #dc2626 !important;
+      border-left: 5px solid #fef08a !important;
+      border-top: 1px solid #f87171 !important;
+      border-right: 1px solid #f87171 !important;
+      border-bottom: 1px solid #f87171 !important;
+      box-shadow: 0 0 10px rgba(220, 38, 38, 0.5) !important;
+    }
+    .task-row.nd-case.active {
+      background: #b91c1c !important;
+      border-color: #ffffff !important;
+    }
+
+    .sortable-chosen {
+      background: #1d4ed8 !important; border-left-color: #facc15 !important;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7) !important;
+      transform: scale(1.02) !important; z-index: 999 !important;
+    }
+    .sortable-ghost {
+      opacity: 0.25 !important; background: #38bdf8 !important; border: 1px dashed #facc15 !important;
+    }
+
+    .task-left {
+      display: flex; align-items: center; flex: 1; min-width: 0; gap: 6px;
+    }
+    .drag-handle {
+      color: #64748b; font-size: 0.95rem; cursor: grab; flex-shrink: 0;
+    }
+    .task-row.nd-case .drag-handle { color: #fecaca; }
+    
+    .task-num-label {
+      color: #38bdf8; font-weight: bold; flex-shrink: 0; width: 28px;
+    }
+    .task-row.nd-case .task-num-label { color: #ffffff; }
+
+    .task-time-badge {
+      background: #0284c7; color: #fff; font-size: 0.75rem; font-weight: bold;
+      padding: 1px 4px; border-radius: 3px; flex-shrink: 0;
+      width: 52px; text-align: center; font-family: monospace;
+    }
+    .task-row.nd-case .task-time-badge {
+      background: #7f1d1d; color: #fef08a; border: 1px solid #fca5a5;
+    }
+    
+    .task-title {
+      font-family: monospace; font-weight: bold; font-size: 0.95rem;
+      color: #facc15; flex-shrink: 0; width: 110px;
+    }
+    .task-row.nd-case .task-title { color: #fef08a; }
+    
+    .task-desc {
+      font-size: 0.9rem; color: #e2e8f0; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .task-row.nd-case .task-desc { color: #ffffff; font-weight: 800; }
+
+    .row-actions { flex-shrink: 0; }
+    .row-actions button {
+      background: none; border: 1px solid #64748b; color: #ef4444;
+      border-radius: 4px; font-size: 0.8rem; padding: 2px 7px; cursor: pointer;
+    }
+    .task-row.nd-case .row-actions button {
+      border-color: #fecaca; color: #ffffff; background: rgba(127, 29, 29, 0.6);
+    }
+
+    .nav-action-bar {
+      display: flex; gap: 6px; padding: 5px 8px;
+      background: #0f172a; flex-shrink: 0; border-top: 1px solid #1e293b;
+    }
+    .btn-nav-start {
+      flex: 2; background: #16a34a; color: #fff; border: 1px solid #4ade80;
+      text-decoration: none; font-weight: bold; font-size: 0.95rem;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3); padding: 7px 0;
+    }
+    .btn-mode-switch {
+      flex: 1; background: #1e293b; color: #94a3b8; border: 1px solid #475569;
+      padding: 7px 0; border-radius: 6px; font-weight: bold; font-size: 0.88rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .btn-mode-switch.active {
+      background: #0284c7; color: #ffffff; border-color: #38bdf8;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+    }
+
+    .map-container {
+      position: relative; flex: 1; width: 100%; height: 100%;
+      background: #000; border-top: 2px solid #38bdf8; overflow: hidden;
+    }
+    #leaflet-map { width: 100%; height: 100%; z-index: 1; }
+    iframe#streetview-frame { width: 100%; height: 100%; border: none; display: none; }
+
+    .floating-controls {
+      position: absolute; bottom: 16px; right: 12px;
+      display: flex; flex-direction: column; gap: 8px; z-index: 900;
+    }
+    .float-btn {
+      background: rgba(15, 23, 42, 0.9); color: #f8fafc; border: 1px solid #475569;
+      border-radius: 50%; width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: bold; box-shadow: 0 3px 10px rgba(0,0,0,0.5); cursor: pointer;
+    }
+    .float-btn.tracking-active { background: #22c55e; color: #fff; border-color: #fff; box-shadow: 0 0 12px #22c55e; }
+    .float-btn.pin-mode-active { background: #a855f7; color: #fff; border-color: #fff; box-shadow: 0 0 12px #a855f7; }
+    .float-btn.sort-mode-active { background: #dc2626; color: #fff; border-color: #fff; box-shadow: 0 0 12px #dc2626; }
+
+    #mapBanner {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(126, 34, 206, 0.95); border: 2px solid #ffffff;
+      border-radius: 8px; padding: 6px 12px; color: white; z-index: 900;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none;
+      align-items: center; gap: 8px; font-size: 12px; font-weight: bold; white-space: nowrap;
+    }
+
+    /* 地圖氣泡標籤：一般案件黑底藍框 */
+    .case-label-large {
+      background: rgba(0, 0, 0, 0.88) !important;
+      border: 1.5px solid #2563eb !important;
+      color: #ffffff !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      padding: 3px 6px !important;
+      border-radius: 4px !important;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important;
+      white-space: nowrap !important;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+    }
+    /* 地圖氣泡標籤：ND 案件常駐鮮豔大紅底（絕不被黑底蓋掉） */
+    .case-label-large.nd-pin {
+      background: #dc2626 !important;
+      border: 2px solid #fef08a !important;
+      color: #ffffff !important;
+      box-shadow: 0 3px 10px rgba(220, 38, 38, 0.85) !important;
+    }
+    .case-label-large.selected-case {
+      border: 2px solid #facc15 !important;
+      z-index: 9999 !important;
+    }
+    
+    .case-label-large b { color: #38bdf8; }
+    .case-label-large.nd-pin b { color: #fef08a; }
+    .case-road-text { color: #facc15; font-weight: bold; font-size: 10px; margin-left: 3px; }
+    .case-label-large.nd-pin .case-road-text { color: #ffffff; font-weight: 800; }
+
+    .base-label {
+      background: rgba(15, 23, 42, 0.9); border: 1px solid #475569; color: #f1f5f9;
+      font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 4px; white-space: nowrap;
+    }
+    .inspect-label {
+      background: rgba(126, 34, 206, 0.95); border: 2px solid #ffffff; color: #ffffff;
+      font-size: 11px; font-weight: 800; padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+    }
+    .icon-taipower {
+      background: linear-gradient(135deg, #eab308, #ca8a04); border: 2px solid #ffffff;
+      border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .icon-rest {
+      background: linear-gradient(135deg, #38bdf8, #0284c7); border: 2px solid #ffffff;
+      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 900; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .icon-food {
+      background: linear-gradient(135deg, #f97316, #ea580c); border: 2px solid #ffffff;
+      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .icon-custom {
+      background: linear-gradient(135deg, #a855f7, #7e22ce); border: 2px solid #ffffff;
+      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+      font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+
+    #calendar-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 2000; display: none; padding: 14px; backdrop-filter: blur(4px);
+    }
+    .modal-content {
+      background: #1e293b; border-radius: 12px; display: flex; flex-direction: column;
+      padding: 14px; border: 1px solid #475569; max-height: 94vh; overflow-y: auto;
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-bottom: 10px;
+    }
+    .cal-controls {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .cal-controls button {
+      background: #334155; color: #fff; border: 1px solid #64748b;
+      border-radius: 4px; padding: 5px 12px; cursor: pointer; font-weight: bold;
+    }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+    .cal-weekday { font-size: 0.8rem; color: #94a3b8; padding-bottom: 4px; font-weight: bold; }
+    .cal-day {
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px; height: 48px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 0.85rem; cursor: pointer;
+    }
+    .cal-day.today { border-color: #38bdf8; font-weight: bold; }
+    .cal-day.selected { border-color: #facc15; box-shadow: 0 0 8px rgba(250, 204, 21, 0.6); }
+    .cal-day.has-data { border-color: #10b981; background: #064e3b; }
+    .badge-count { font-size: 0.65rem; color: #34d399; margin-top: 1px; }
+
+    #day-action-sheet {
+      margin-top: 12px; background: #0f172a; border: 1px solid #475569;
+      border-radius: 8px; padding: 10px; display: none;
+    }
+    .sheet-title {
+      font-size: 0.95rem; font-weight: bold; color: #facc15;
+      margin-bottom: 6px; display: flex; justify-content: space-between;
+    }
+    .sheet-desc {
+      font-size: 0.8rem; color: #94a3b8; margin-bottom: 8px;
+      max-height: 50px; overflow-y: auto; line-height: 1.3;
+    }
+    .sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .sheet-btn {
+      padding: 8px 0; border: none; border-radius: 6px;
+      font-size: 0.85rem; font-weight: bold; cursor: pointer; text-align: center;
+    }
+    .btn-sheet-load { background: #16a34a; color: #fff; }
+    .btn-sheet-copy { background: #0284c7; color: #fff; }
+    .btn-sheet-save { background: #eab308; color: #000; }
+    .btn-sheet-del { background: #dc2626; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <div class="top-section">
+    <div class="top-toolbar">
+      <button id="btn-import" class="btn-top btn-import">📋 匯入</button>
+      <button id="btn-clear" class="btn-top btn-clear">清空</button>
+      <button id="btn-month" class="btn-top btn-month">📅 月紀錄</button>
+      <button id="btn-install" class="btn-top btn-install">📲 安裝</button>
+    </div>
+
+    <div class="manual-input-bar">
+      <span id="prefix-badge" class="prefix-badge">G</span>
+      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號 (如 3850HE5330 或 F4362AC13)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="btn-manual-add" class="btn-manual-add">＋新增</button>
+    </div>
+
+    <div class="task-list-section">
+      <div id="task-list"></div>
+    </div>
+  </div>
+
+  <div class="nav-action-bar">
+    <a id="btn-start-nav" class="btn-nav-start" target="_blank">🚗 開始導航</a>
+    <button id="btn-mode-map" class="btn-mode-switch active">🗺️ 地圖</button>
+    <button id="btn-mode-sv" class="btn-mode-switch">📷 街景</button>
+  </div>
+
+  <div class="map-container">
+    <div id="leaflet-map"></div>
+    <iframe id="streetview-frame" src="about:blank"></iframe>
+
+    <div id="mapBanner">
+      <span id="mapBannerText">📍 請在畫面上點選位置...</span>
+    </div>
+
+    <div id="map-floating-controls" class="floating-controls">
+      <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
+      <div class="float-btn" id="autoSortBtn" onclick="confirmAutoOptimizeRoute()" title="依距離由遠到近順路收回">⚡</div>
+      <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
+      <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
+    </div>
+  </div>
+
+  <div id="calendar-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span>📅 出工月曆管理</span>
+        <button id="btn-close-modal" style="background:none; border:none; color:#cbd5e1; font-size:1.3rem;">✕</button>
+      </div>
+
+      <div class="cal-controls">
+        <button id="cal-prev">◀ 上個月</button>
+        <span id="cal-title" style="font-weight:bold; font-size:1rem; color:#facc15;"></span>
+        <button id="cal-next">下個月 ▶</button>
+      </div>
+
+      <div class="calendar-grid" id="calendar-body"></div>
+
+      <div id="day-action-sheet">
+        <div class="sheet-title">
+          <span id="sheet-date-text">2026-10-19</span>
+          <span id="sheet-count-text" style="color:#34d399;font-size:0.85rem;"></span>
+        </div>
+        <div class="sheet-desc" id="sheet-summary-text">無工單資料</div>
+        <div class="sheet-buttons">
+          <button id="btn-action-load" class="sheet-btn btn-sheet-load">🚗 載入預覽導航</button>
+          <button id="btn-action-copy" class="sheet-btn btn-sheet-copy">📋 複製日記文字</button>
+          <button id="btn-action-save" class="sheet-btn btn-sheet-save">💾 存入目前案件</button>
+          <button id="btn-action-del" class="sheet-btn btn-sheet-del">🗑️ 刪除此日紀錄</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        const swCode = `self.addEventListener('install', (e) => self.skipWaiting()); self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim())); self.addEventListener('fetch', (e) => {});`;
+        const blob = new Blob([swCode], { type: 'text/javascript' });
+        navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+      });
+    }
+
+    let deferredPrompt = null;
+    const btnInstall = document.getElementById('btn-install');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (btnInstall) btnInstall.style.display = 'block';
+    });
+
+    if (btnInstall) {
+      btnInstall.onclick = () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then(() => {
+            deferredPrompt = null;
+            btnInstall.style.display = 'none';
+          });
+        }
+      };
+    }
+
+    // ================= 座標轉換核心 =================
+    const BASE_COORDS = {
+      'A': [90000, 2750000],  'B': [170000, 2750000], 'C': [250000, 2750000],
+      'D': [90000, 2700000],  'E': [170000, 2700000], 'F': [250000, 2700000],
+      'G': [170000, 2650000], 'H': [250000, 2650000],
+      'J': [90000, 2600000],  'K': [170000, 2600000], 'L': [250000, 2600000],
+      'M': [90000, 2550000],  'N': [170000, 2550000], 'O': [250000, 2550000],
+      'P': [90000, 2500000],  'Q': [170000, 2500000], 'R': [250000, 2500000],
+      'T': [170000, 2450000], 'U': [250000, 2450000],
+      'V': [170000, 2400000], 'W': [250000, 2400000]
+    };
+
+    const TO_DIGIT = { 'O': '0', 'I': '1', 'L': '1', 'Z': '2', 'A': '4', 'S': '5', 'G': '6', 'B': '8', 'Q': '0', 'D': '0' };
+    const TO_LETTER = { '0': 'O', '1': 'I', '8': 'B', '5': 'S', '2': 'Z' };
+
+    function sanitizeTaipowerCode(raw) {
+      let s = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (s.length < 9) return raw;
+      let arr = s.split('');
+      if (TO_LETTER[arr[0]]) arr[0] = TO_LETTER[arr[0]];
+      for (let i = 1; i <= 4; i++) if (TO_DIGIT[arr[i]]) arr[i] = TO_DIGIT[arr[i]];
+      for (let i = 5; i <= 6; i++) if (TO_LETTER[arr[i]]) arr[i] = TO_LETTER[arr[i]];
+      for (let i = 7; i < arr.length; i++) if (TO_DIGIT[arr[i]]) arr[i] = TO_DIGIT[arr[i]];
+      return arr.join('');
+    }
+
+    function taipowerToTWD67(code) {
+      code = sanitizeTaipowerCode(code);
+      if (code.length < 9) return null;
+      const zone = code[0].toUpperCase();
+      if (!BASE_COORDS[zone]) return null;
+      const [baseX, baseY] = BASE_COORDS[zone];
+
+      const x_800 = parseInt(code.substring(1, 3), 10);
+      const y_500 = parseInt(code.substring(3, 5), 10);
+
+      let subXChar = code[5].toUpperCase();
+      if (subXChar === 'S') subXChar = 'B';
+      if (subXChar > 'H') subXChar = 'A';
+
+      let subYChar = code[6].toUpperCase();
+      if (subYChar > 'E') subYChar = 'A';
+
+      const subX = subXChar.charCodeAt(0) - 65;
+      const subY = subYChar.charCodeAt(0) - 65;
+
+      let offsetX = 0, offsetY = 0;
+      if (code.length >= 11) {
+        offsetX = parseInt(code.substring(7, 9), 10);
+        offsetY = parseInt(code.substring(9, 11), 10);
+      } else if (code.length >= 9) {
+        offsetX = parseInt(code[7], 10) * 10 + 5;
+        offsetY = parseInt(code[8], 10) * 10 + 5;
+      }
+      return [baseX + (x_800 * 800) + (subX * 100) + offsetX, baseY + (y_500 * 500) + (subY * 100) + offsetY];
+    }
+
+    function twd67ToWGS84(x, y) {
+      const A = 0.00001549, B = 0.000006521;
+      const x97 = x + 807.8 + A * x + B * y;
+      const y97 = y - 248.6 + A * y - B * x;
+
+      const a = 6378137.0, b = 6356752.314245, lon0 = 121.0 * Math.PI / 180, k0 = 0.9999, dx = 250000;
+      const e = Math.sqrt(1 - (b * b) / (a * a)), e2 = (e * e) / (1 - e * e);
+      const M = y97 / k0;
+      const mu = M / (a * (1 - e*e/4 - 3*e*e*e*e/64 - 5*e*e*e*e*e*e/256));
+      const e1 = (1 - Math.sqrt(1 - e*e)) / (1 + Math.sqrt(1 - e*e));
+
+      const fp = mu + (3*e1/2 - 27*e1*e1*e1/32)*Math.sin(2*mu) + (21*e1*e1/16 - 55*e1*e1*e1*e1/32)*Math.sin(4*mu) + (151*e1*e1*e1/96)*Math.sin(6*mu);
+      const C1 = e2 * Math.pow(Math.cos(fp), 2);
+      const T1 = Math.pow(Math.tan(fp), 2);
+      const R1 = a * (1 - e*e) / Math.pow(1 - e*e * Math.sin(fp)*Math.sin(fp), 1.5);
+      const N1 = a / Math.sqrt(1 - e*e * Math.sin(fp)*Math.sin(fp));
+      const D = (x97 - dx) / (N1 * k0);
+
+      const latRad = fp - (N1 * Math.tan(fp) / R1) * ((D*D/2) - (5 + 3*T1 + 10*C1 - 4*C1*C1 - 9*e2)*Math.pow(D,4)/24 + (61 + 90*T1 + 298*C1 + 45*T1*T1 - 252*e2 - 3*C1*C1)*Math.pow(D,6)/720);
+      const lonRad = lon0 + (D - (1 + 2*T1 + C1)*Math.pow(D,3)/6 + (5 - 2*C1 + 28*T1 - 3*C1*C1 + 8*e2 + 24*T1*T1)*Math.pow(D,5)/120) / Math.cos(fp);
+
+      return { lat: parseFloat((latRad * 180 / Math.PI).toFixed(6)), lng: parseFloat((lonRad * 180 / Math.PI).toFixed(6)) };
+    }
+
+    function wgs84ToTWD97(lat, lon) {
+      const a = 6378137.0, b = 6356752.314245;
+      const lon0 = 121 * Math.PI / 180, k0 = 0.9999, dx = 250000;
+      const e = Math.sqrt(1 - (b * b) / (a * a)), e2 = e * e / (1 - e * e);
+      const phi = lat * Math.PI / 180, lam = lon * Math.PI / 180;
+      const n = a / Math.sqrt(1 - e * e * Math.sin(phi) * Math.sin(phi));
+      const t = Math.tan(phi) * Math.tan(phi);
+      const c = e2 * Math.cos(phi) * Math.cos(phi);
+      const A_val = (lam - lon0) * Math.cos(phi);
+      const M = a * ((1 - e * e / 4 - 3 * Math.pow(e, 4) / 64 - 5 * Math.pow(e, 6) / 1024) * phi
+        - (3 * e * e / 8 + 3 * Math.pow(e, 4) / 32 + 45 * Math.pow(e, 6) / 1024) * Math.sin(2 * phi)
+        + (15 * Math.pow(e, 4) / 256 + 45 * Math.pow(e, 6) / 1024) * Math.sin(4 * phi)
+        - (35 * Math.pow(e, 6) / 3072) * Math.sin(6 * phi));
+      const x = dx + k0 * n * (A_val + (1 - t + c) * Math.pow(A_val, 3) / 6 + (5 - 18 * t + t * t + 72 * c - 58 * e2) * Math.pow(A_val, 5) / 120);
+      const y = k0 * (M + n * Math.tan(phi) * (A_val * A_val / 2 + (5 - t + 9 * c + 4 * c * c) * Math.pow(A_val, 4) / 24 + (61 - 58 * t + t * t + 600 * c - 330 * e2) * Math.pow(A_val, 6) / 720));
+      return { x, y };
+    }
+
+    function coordToPowerCode(lat, lng) {
+      const pt97 = wgs84ToTWD97(lat, lng);
+      const x67 = pt97.x - 828, y67 = pt97.y + 207;
+      let dx = x67 - 170000, dy = y67 - 2650000;
+      let xMap = Math.floor(dx / 800), yMap = Math.floor(dy / 500);
+      let remX = dx - xMap * 800, remY = dy - yMap * 500;
+      let subXIndex = Math.floor(remX / 100), subYIndex = Math.floor(remY / 100);
+      let subX = String.fromCharCode(65 + Math.min(Math.max(subXIndex, 0), 7));
+      let subY = String.fromCharCode(65 + Math.min(Math.max(subYIndex, 0), 4));
+      let ptX = Math.floor((remX - subXIndex * 100) / 10);
+      let ptY = Math.floor((remY - subYIndex * 100) / 10);
+      const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
+      return `G${pad2(xMap)}${pad2(yMap)}${subX}${subY}${Math.min(Math.max(ptX, 0), 9)}${Math.min(Math.max(ptY, 0), 9)}`;
+    }
+
+    async function fetchRoadName(lat, lng) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+        const resp = await fetch(url, { headers: { 'Accept-Language': 'zh-TW' } });
+        if (!resp.ok) return '';
+        const data = await resp.json();
+        const addr = data.address || {};
+        return addr.road || addr.street || addr.suburb || addr.neighbourhood || '';
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function silentCopy(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => {});
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    function openGoogleMaps(lat, lng) {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+    }
+
+    // ================= 巨擎 GO Leaflet 地圖初始化 =================
+    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
+    });
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
+    });
+
+    const map = L.map('leaflet-map', {
+      center: [24.2200, 120.5500],
+      zoom: 13,
+      zoomControl: false,
+      layers: [googleRoads]
+    });
+
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.control.layers({ "Google 道路": googleRoads, "Google 衛星混合": googleHybrid }, null, { position: 'topright' }).addTo(map);
+
+    const defaultBases = [
+      { name: "梧棲服務所", lat: 24.259452, lng: 120.536207, type: "station", desc: "台電公務點", permanent: true },
+      { name: "清水服務所", lat: 24.269184, lng: 120.576343, type: "station", desc: "台電公務點", permanent: true },
+      { name: "沙鹿服務所", lat: 24.230309, lng: 120.565418, type: "station", desc: "台電公務點", permanent: true },
+      { name: "龍井服務所", lat: 24.193150, lng: 120.546019, type: "station", desc: "台電公務點", permanent: true },
+      { name: "南勢溪公園", lat: 24.215784, lng: 120.564731, type: "rest", desc: "午休點", permanent: true },
+      { name: "萬興陸橋", lat: 24.169068, lng: 120.535600, type: "rest", desc: "午休點", permanent: true },
+      { name: "中華向上陸橋", lat: 24.217655, lng: 120.544649, type: "rest", desc: "午休點", permanent: true },
+      { name: "沙田國三交叉", lat: 24.173208, lng: 120.543228, type: "rest", desc: "停駐點", permanent: true },
+      { name: "甲一便當", lat: 24.154347, lng: 120.544246, type: "food", desc: "用餐點", permanent: true },
+      { name: "阿水師便當", lat: 24.204069, lng: 120.522585, type: "food", desc: "用餐點", permanent: true }
+    ];
+
+    let customLocations = JSON.parse(localStorage.getItem('tpc_custom_locations') || '[]');
+    const baseMarkers = [];
+    const markersLayer = L.layerGroup().addTo(map);
+    const routeLayer = L.layerGroup().addTo(map);
+    let currentRoutingToken = 0;
+
+    function reloadBaseMarkers() {
+      baseMarkers.forEach(m => map.removeLayer(m));
+      baseMarkers.length = 0;
+      const allBaseLocations = [...defaultBases, ...customLocations];
+
+      allBaseLocations.forEach((loc, idx) => {
+        let iconClass = 'icon-rest', iconSymbol = 'Zzz', iconSize = [26, 26], iconAnchor = [13, 13];
+        if (loc.type === 'station') { iconClass = 'icon-taipower'; iconSymbol = '⚡'; iconSize = [30, 30]; iconAnchor = [15, 15]; }
+        else if (loc.type === 'food') { iconClass = 'icon-food'; iconSymbol = '🍱'; }
+        else if (loc.type === 'custom') { iconClass = 'icon-custom'; iconSymbol = '⭐'; }
+
+        const customIcon = L.divIcon({ className: '', html: `<div class="${iconClass}">${iconSymbol}</div>`, iconSize, iconAnchor });
+        const marker = L.marker([loc.lat, loc.lng], { icon: customIcon, interactive: true }).addTo(map);
+        marker.bindTooltip(loc.name, { permanent: true, direction: 'bottom', offset: [0, 6], className: 'base-label' });
+
+        let deleteBtnHtml = '';
+        if (!loc.permanent) {
+          const customIdx = idx - defaultBases.length;
+          deleteBtnHtml = `<button onclick="deleteCustomLocation(${customIdx})" style="background:#dc2626;padding:6px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:11px;margin-top:4px;">🗑️ 刪除此自訂地標</button>`;
+        }
+
+        marker.bindPopup(`
+          <b style="font-size:14px;color:#1e293b;">【${loc.desc}】${loc.name}</b><br><br>
+          <button onclick="triggerRouteAndLocate(${loc.lat}, ${loc.lng})" style="background:#0891b2;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:6px;">🗺️ 預覽路線</button>
+          <button onclick="openGoogleMaps(${loc.lat}, ${loc.lng})" style="background:#2563eb;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">🧭 Google 導航</button>
+          ${deleteBtnHtml}
+        `);
+        baseMarkers.push(marker);
+      });
+    }
+    reloadBaseMarkers();
+
+    window.deleteCustomLocation = (index) => {
+      customLocations.splice(index, 1);
+      localStorage.setItem('tpc_custom_locations', JSON.stringify(customLocations));
+      reloadBaseMarkers();
+    };
+
+    window.promptAddCustomBase = (lat, lng, defaultName) => {
+      const name = prompt("請輸入自訂地標名稱:", defaultName || "");
+      if (!name || !name.trim()) return;
+      const desc = prompt("請輸入標籤分類:", "常用據點");
+      customLocations.push({ name: name.trim(), lat, lng, desc: desc ? desc.trim() : "常用據點", type: "custom", permanent: false });
+      localStorage.setItem('tpc_custom_locations', JSON.stringify(customLocations));
+      reloadBaseMarkers();
+      if (inspectMarker) { map.removeLayer(inspectMarker); inspectMarker = null; }
+    };
+
+    // ================= 資料狀態與案件管理 =================
+    const todayKey = new Date().toISOString().split('T')[0];
+    let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
+    let lastActiveDate = localStorage.getItem('tpc_last_active_date');
+    let tasks = [];
+
+    if (lastActiveDate === todayKey) {
+      tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
+    } else {
+      let oldTasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
+      if (oldTasks.length > 0 && lastActiveDate) {
+        monthLogs[lastActiveDate] = [...oldTasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+      }
+      tasks = [];
+      localStorage.setItem('tpc_tasks', JSON.stringify([]));
+    }
+    localStorage.setItem('tpc_last_active_date', todayKey);
+
+    // 每次載入時，強制重新檢查一次所有案件：只要備註或屬性含有 ND，一律標記為 ND 紅底
+    tasks.forEach(t => {
+      if (t.isND || /nd/i.test(t.note || '')) {
+        t.isND = true;
+      }
+    });
+
+    let currentIndex = 0;
+    let currentViewMode = 'map';
+    let isTapSortMode = false;
+    let tapSortedOrder = [];
+    let isAddPinMode = false;
+    let inspectMarker = null;
+    let userLatLng = null, userMarker = null, userCircle = null, watchPositionId = null;
+
+    const taskList = document.getElementById('task-list');
+    const btnStartNav = document.getElementById('btn-start-nav');
+    const btnModeMap = document.getElementById('btn-mode-map');
+    const btnModeSv = document.getElementById('btn-mode-sv');
+    const leafletMapEl = document.getElementById('leaflet-map');
+    const streetviewframe = document.getElementById('streetview-frame');
+    const mapFloatingControls = document.getElementById('map-floating-controls');
+    const mapBanner = document.getElementById('mapBanner');
+    const mapBannerText = document.getElementById('mapBannerText');
+
+    function saveTasks() {
+      localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
+      if (tasks.length > 0) {
+        monthLogs[todayKey] = [...tasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+      }
+    }
+
+    function switchViewMode(mode) {
+      currentViewMode = mode;
+      btnModeMap.classList.toggle('active', mode === 'map');
+      btnModeSv.classList.toggle('active', mode === 'sv');
+
+      if (mode === 'map') {
+        streetviewframe.style.display = 'none';
+        leafletMapEl.style.display = 'block';
+        mapFloatingControls.style.display = 'flex';
+        setTimeout(() => map.invalidateSize(), 50);
+        focusCurrentTaskOnMap();
+      } else {
+        leafletMapEl.style.display = 'none';
+        mapFloatingControls.style.display = 'none';
+        mapBanner.style.display = 'none';
+        streetviewframe.style.display = 'block';
+        updateStreetView();
+      }
+    }
+
+    btnModeMap.onclick = () => switchViewMode('map');
+    btnModeSv.onclick = () => switchViewMode('sv');
+
+    function updateStreetView() {
+      if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) {
+        streetviewframe.src = 'about:blank';
+        return;
+      }
+      const t = tasks[currentIndex];
+      const twd67 = taipowerToTWD67(t.code);
+      if (twd67) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        streetviewframe.src = `https://maps.google.com/maps?layer=c&cbll=${wgs.lat},${wgs.lng}&cbp=12,0,0,0,0&output=svembed`;
+      }
+    }
+
+    function renderLeafletCaseMarkers(fitAll = false) {
+      markersLayer.clearLayers();
+      const bounds = [];
+
+      const sortedIndices = tasks.map((t, idx) => {
+        const twd = taipowerToTWD67(t.code);
+        let lat = 0;
+        if (twd) {
+          const wgs = twd67ToWGS84(twd[0], twd[1]);
+          lat = wgs.lat;
+        }
+        return { idx, lat };
+      }).sort((a, b) => a.lat - b.lat);
+
+      const coordMap = {};
+
+      sortedIndices.forEach(({ idx }, zOrder) => {
+        const t = tasks[idx];
+        const twd67 = taipowerToTWD67(t.code);
+        if (!twd67) return;
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        
+        let lat = wgs.lat;
+        let lng = wgs.lng;
+        const coordKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+        if (coordMap[coordKey] !== undefined) {
+          coordMap[coordKey]++;
+          lat += coordMap[coordKey] * 0.00015;
+        } else {
+          coordMap[coordKey] = 0;
+        }
+
+        t.lat = lat;
+        t.lng = lng;
+        bounds.push([lat, lng]);
+
+        const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
+        const isSelected = (idx === currentIndex);
+        const pinColor = isSelected ? 'gold' : (isND ? 'red' : 'blue');
+        const pinIcon = L.icon({
+          iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${pinColor}.png`,
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+
+        const baseZIndex = isSelected ? 5000 : (isND ? 3000 + zOrder * 10 : 1000 + zOrder * 10);
+        const marker = L.marker([lat, lng], {
+          icon: pinIcon,
+          interactive: true,
+          zIndexOffset: baseZIndex
+        }).addTo(markersLayer);
+
+        const timeStr = t.time ? ` | ${t.time}` : '';
+        const hasNoteND = /nd/i.test(t.note || '');
+        const ndTag = (isND && !hasNoteND) ? '[ND] ' : '';
+        const labelText = `<b>#${idx + 1}${timeStr}</b> ${ndTag}${t.code}${t.note ? `<span class="case-road-text"> | ${t.note}</span>` : ''}`;
+        
+        const tooltipClass = `case-label-large${isND ? ' nd-pin' : ''}${isSelected ? ' selected-case' : ''}`;
+        const tooltip = marker.bindTooltip(labelText, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -38],
+          className: tooltipClass,
+          interactive: true
+        });
+
+        const onTrigger = (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (isTapSortMode) {
+            handleTapSortClick(t);
+          } else {
+            selectTask(idx, false);
+            marker.openPopup();
+          }
+        };
+
+        marker.on('click', onTrigger);
+        tooltip.on('click', onTrigger);
+
+        marker.bindPopup(`
+          <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
+          ${t.note ? `<b>地址/備註: ${t.note}</b><br>` : ''}
+          圖號: <b>${t.code}</b><br><br>
+          <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#2563eb;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:6px;">🗺️ 預覽路線</button>
+          <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#16a34a;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">🚗 Google 導航</button>
+        `);
+      });
+
+      if (fitAll && bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 16 });
+      }
+    }
+
+    function focusCurrentTaskOnMap() {
+      if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) return;
+      const t = tasks[currentIndex];
+      const twd67 = taipowerToTWD67(t.code);
+      if (twd67) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        map.flyTo([wgs.lat, wgs.lng], 16, { duration: 0.4 });
+      }
+    }
+
+    const COORD_REGEX = /[A-Za-z]?[0-9]{4}\s*[A-Za-z]{2}\s*(?:[0-9]{4}|[0-9]{2})/gi;
+    const TIME_REGEX = /(\d{1,2}):?(\d{2})?\s*[-~]\s*(\d{1,2}):?(\d{2})?/;
+
+    function formatTimeStandard(lineText) {
+      const match = lineText.match(TIME_REGEX);
+      if (match) {
+        const startH = String(match[1]).padStart(2, '0');
+        const endH = String(match[3]).padStart(2, '0');
+        return `${startH}-${endH}`;
+      }
+      return '';
+    }
+
+    // 過濾台電系統表格常見的無意義欄位字眼
+    function isSystemNoiseLine(line) {
+      const noiseKeywords = [
+        "每頁", "施工地點", "領班", "預定施工日期", "承攬商",
+        "請選擇", "施工號碼", "工程類別", "施工時間", "工作內容",
+        "接戶線工作", "篩選條件", "DCIS", "工區別", "查驗作業", "綜合查詢", "工安查核"
+      ];
+      if (noiseKeywords.some(w => line.includes(w))) return true;
+      if (/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(line)) return true; // 民國/西元日期如 115/10/20
+      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號樓區鄉鎮市縣村里鄰]/.test(line)) return true; // 純人名如 陳昭兆
+      return false;
+    }
+
+    // 💡 雙模智慧解析引擎：同時完美支援「Google 鏡頭表格垂直複製」與「一般單行文字複製」
+    async function parseText(content) {
+      if (!content || !content.trim()) return;
+
+      const rawLines = content.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+      const newTasks = [];
+
+      // 預掃描：收集純時間行與圖號行，判斷是否為 Google 鏡頭的「垂直欄位區塊」格式
+      const standaloneTimes = [];
+      const codeLinesCount = rawLines.filter(l => {
+        COORD_REGEX.lastIndex = 0;
+        return COORD_REGEX.test(l);
+      }).length;
+
+      rawLines.forEach(l => {
+        COORD_REGEX.lastIndex = 0;
+        if (formatTimeStandard(l) && !COORD_REGEX.test(l)) {
+          standaloneTimes.push(formatTimeStandard(l));
+        }
+      });
+
+      // 若有多筆獨立時間行且沒有與圖號同行（典型 Google 智慧鏡頭表格複製），啟動索引對齊配對
+      const useColumnZipMode = (standaloneTimes.length >= 2 && standaloneTimes.length === codeLinesCount);
+
+      let currentTime = '';
+      let pendingNote = '';
+      let codeLineIdx = 0;
+
+      for (let i = 0; i < rawLines.length; i++) {
+        let line = rawLines[i];
+        COORD_REGEX.lastIndex = 0;
+        const hasCoord = COORD_REGEX.test(line);
+        const timeStr = formatTimeStandard(line);
+
+        if (!hasCoord && !timeStr && isSystemNoiseLine(line)) continue;
+
+        if (timeStr && !useColumnZipMode) {
+          currentTime = timeStr;
+        }
+
+        COORD_REGEX.lastIndex = 0;
+        let matches = line.match(COORD_REGEX);
+        if (matches) {
+          const assignedTime = useColumnZipMode ? (standaloneTimes[codeLineIdx] || '') : (timeStr || currentTime);
+          codeLineIdx++;
+
+          matches.forEach(m => {
+            let rawCode = m.replace(/\s+/g, '').toUpperCase();
+            if (/^[0-9]/.test(rawCode)) rawCode = 'G' + rawCode;
+
+            const cleanCode = sanitizeTaipowerCode(rawCode);
+            
+            // 把圖號與時間從該行剝除，剩下的就是地址/備註（包含 ND 字樣）
+            let note = line.replace(m, '').replace(TIME_REGEX, '').replace(/[\s,]+/g, ' ').trim();
+            // 移除開頭或結尾單獨黏在圖號上的 ND（若有的話），避免干擾路名查詢，但保留地址內的文字
+            if (/^nd$/i.test(note)) note = '';
+            if (!note && pendingNote && !isSystemNoiseLine(pendingNote)) {
+              note = pendingNote;
+            }
+
+            // 🔥 只要這行文字或備註裡出現「nd」兩個字黏在一起（不分大小寫），一律判定為 ND 案件
+            const isND = /nd/i.test(line) || /nd/i.test(note);
+
+            if (cleanCode && !tasks.some(t => t.code === cleanCode) && !newTasks.some(t => t.code === cleanCode)) {
+              newTasks.push({
+                code: cleanCode,
+                time: assignedTime,
+                note: note || '',
+                isND: isND
+              });
+            }
+          });
+          pendingNote = '';
+        } else if (line && !timeStr && !isSystemNoiseLine(line)) {
+          pendingNote = line;
+        }
+      }
+
+      if (newTasks.length > 0) {
+        const startIndex = tasks.length;
+        tasks.push(...newTasks);
+        saveTasks();
+        renderTasks(true);
+        selectTask(startIndex);
+
+        newTasks.forEach(async (taskItem) => {
+          // 檢查移除 ND 字樣後是否還需要自動反查路名
+          const noteWithoutND = (taskItem.note || '').replace(/nd/gi, '').trim();
+          if (noteWithoutND.length < 2) {
+            const twd67 = taipowerToTWD67(taskItem.code);
+            if (twd67) {
+              const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+              const road = await fetchRoadName(wgs.lat, wgs.lng);
+              if (road) {
+                taskItem.note = taskItem.isND ? `ND ${road}` : road;
+                saveTasks();
+                renderTasks();
+              } else if (taskItem.isND && !taskItem.note) {
+                taskItem.note = 'ND 施工地點';
+                saveTasks();
+                renderTasks();
+              }
+            }
+          }
+        });
+      }
+    }
+
+    const manualCodeInput = document.getElementById('manual-code-input');
+    const btnManualAdd = document.getElementById('btn-manual-add');
+    const prefixBadge = document.getElementById('prefix-badge');
+
+    manualCodeInput.addEventListener('input', () => {
+      let val = manualCodeInput.value.trim().toUpperCase();
+      if (/^[A-Z]/.test(val) && !/^ND/i.test(val)) {
+        prefixBadge.innerText = val[0];
+        manualCodeInput.value = val.substring(1);
+      } else if (!val) {
+        prefixBadge.innerText = 'G';
+      }
+    });
+
+    async function handleManualAdd() {
+      let rawInput = manualCodeInput.value.trim();
+      if (!rawInput) return;
+      const isND = /nd/i.test(rawInput);
+      let val = rawInput.replace(/nd/gi, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!val) return;
+
+      let currentPrefix = prefixBadge.innerText.toUpperCase();
+      const fullCode = sanitizeTaipowerCode(/^[A-Z]/.test(val) ? val : (currentPrefix + val));
+      if (fullCode.length < 9) return;
+
+      const newTask = { code: fullCode, time: '', note: isND ? 'ND 查詢路名中...' : '查詢路名中...', isND: isND };
+      tasks.push(newTask);
+      saveTasks();
+      renderTasks();
+      selectTask(tasks.length - 1);
+
+      manualCodeInput.value = '';
+      prefixBadge.innerText = 'G';
+
+      const twd67 = taipowerToTWD67(fullCode);
+      if (twd67) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        const road = await fetchRoadName(wgs.lat, wgs.lng);
+        const baseNote = road || '施工地點';
+        newTask.note = isND ? `ND ${baseNote}` : baseNote;
+      } else {
+        newTask.note = isND ? 'ND 手動新增' : '手動新增';
+      }
+      saveTasks();
+      renderTasks();
+    }
+
+    btnManualAdd.onclick = handleManualAdd;
+    manualCodeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') handleManualAdd();
+    });
+
+    let sortableInstance = null;
+
+    function renderTasks(fitMap = false) {
+      taskList.innerHTML = '';
+      if (tasks.length === 0) {
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:6px;">尚未匯入案件，可手動輸入或按「📋 匯入」。</div>';
+        markersLayer.clearLayers();
+        routeLayer.clearLayers();
+        return;
+      }
+
+      tasks.forEach((t, idx) => {
+        const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
+        t.isND = isND;
+
+        const row = document.createElement('div');
+        row.className = `task-row ${idx === currentIndex ? 'active' : ''} ${isND ? 'nd-case' : ''}`;
+        
+        const timeBadgeHtml = t.time ? `<span class="task-time-badge">${t.time}</span>` : '<span class="task-time-badge" style="opacity:0.2;">--:--</span>';
+        const hasNoteND = /nd/i.test(t.note || '');
+        const displayDesc = (isND && !hasNoteND) ? `[ND] ${t.note || '施工地點'}` : (t.note || '施工地點');
+        
+        row.innerHTML = `
+          <div class="task-left">
+            <span class="drag-handle">☰</span>
+            <span class="task-num-label">#${idx + 1}</span>
+            ${timeBadgeHtml}
+            <span class="task-title">${t.code}</span>
+            <span class="task-desc">${displayDesc}</span>
+          </div>
+          <div class="row-actions">
+            <button onclick="deleteTask(${idx})">✕</button>
+          </div>
+        `;
+
+        row.onclick = (e) => {
+          if (e.target.tagName === 'BUTTON') return;
+          selectTask(idx, true);
+        };
+
+        taskList.appendChild(row);
+      });
+
+      if (sortableInstance) sortableInstance.destroy();
+      sortableInstance = new Sortable(taskList, {
+        animation: 180,
+        delay: 150,
+        delayOnTouchOnly: true,
+        touchStartThreshold: 3,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onStart: function() {
+          if (navigator.vibrate) navigator.vibrate(35);
+        },
+        onEnd: function(evt) {
+          const oldIdx = evt.oldIndex, newIdx = evt.newIndex;
+          if (oldIdx === newIdx) return;
+          const moved = tasks.splice(oldIdx, 1)[0];
+          tasks.splice(newIdx, 0, moved);
+
+          if (currentIndex === oldIdx) currentIndex = newIdx;
+          else if (oldIdx < currentIndex && newIdx >= currentIndex) currentIndex--;
+          else if (oldIdx > currentIndex && newIdx <= currentIndex) currentIndex++;
+
+          saveTasks();
+          renderTasks(false);
+        }
+      });
+
+      renderLeafletCaseMarkers(fitMap);
+    }
+
+    function selectTask(idx, panToMarker = true) {
+      if (idx < 0 || idx >= tasks.length) return;
+      currentIndex = idx;
+      const t = tasks[currentIndex];
+
+      const twd67 = taipowerToTWD67(t.code);
+      if (twd67) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        btnStartNav.href = `https://www.google.com/maps/dir/?api=1&destination=${wgs.lat},${wgs.lng}`;
+        btnStartNav.style.opacity = '1';
+        btnStartNav.style.pointerEvents = 'auto';
+
+        if (currentViewMode === 'sv') {
+          updateStreetView();
+        } else {
+          renderLeafletCaseMarkers(false);
+          if (panToMarker) map.flyTo([wgs.lat, wgs.lng], 16, { duration: 0.4 });
+        }
+      } else {
+        btnStartNav.style.opacity = '0.4';
+        btnStartNav.style.pointerEvents = 'none';
+      }
+
+      document.querySelectorAll('.task-row').forEach((el, i) => {
+        el.classList.toggle('active', i === currentIndex);
+      });
+    }
+
+    window.deleteTask = (idx) => {
+      tasks.splice(idx, 1);
+      if (currentIndex >= tasks.length) currentIndex = Math.max(0, tasks.length - 1);
+      saveTasks();
+      renderTasks(false);
+      if (tasks.length > 0) selectTask(currentIndex, false);
+    };
+
+    window.toggleTapSortMode = () => {
+      if (tasks.length <= 1) return;
+      isTapSortMode = !isTapSortMode;
+      const btn = document.getElementById('tapSortBtn');
+      if (isTapSortMode) {
+        tapSortedOrder = [];
+        btn.classList.add('sort-mode-active');
+        mapBannerText.innerText = `🎯 請依序點擊地圖上的紅點排工 (0/${tasks.length})`;
+        mapBanner.style.display = 'flex';
+      } else {
+        btn.classList.remove('sort-mode-active');
+        mapBanner.style.display = 'none';
+      }
+    };
+
+    function handleTapSortClick(taskItem) {
+      if (tapSortedOrder.includes(taskItem)) return;
+      tapSortedOrder.push(taskItem);
+      mapBannerText.innerText = `🎯 已排 ${tapSortedOrder.length}/${tasks.length} 件...`;
+
+      const remaining = tasks.filter(t => !tapSortedOrder.includes(t));
+      tasks = [...tapSortedOrder, ...remaining];
+
+      if (tapSortedOrder.length === tasks.length) {
+        toggleTapSortMode();
+        currentIndex = 0;
+      }
+      saveTasks();
+      renderTasks(false);
+    }
+
+    window.confirmAutoOptimizeRoute = () => {
+      if (tasks.length <= 1) return;
+      if (confirm("⚡ 確定要執行順路收回排工嗎？\n系統會自動將距離最遠的案件排在第一位，由遠到近依序收回。")) {
+        autoOptimizeRoute();
+      }
+    };
+
+    window.autoOptimizeRoute = () => {
+      let currLat = userLatLng ? userLatLng[0] : 24.2303;
+      let currLng = userLatLng ? userLatLng[1] : 120.5654;
+
+      const unvisited = [...tasks];
+      const optimized = [];
+
+      let furthestIdx = 0, maxDist = -1;
+      for (let i = 0; i < unvisited.length; i++) {
+        const twd = taipowerToTWD67(unvisited[i].code);
+        if (!twd) continue;
+        const wgs = twd67ToWGS84(twd[0], twd[1]);
+        const d = Math.hypot(wgs.lat - currLat, wgs.lng - currLng);
+        if (d > maxDist) { maxDist = d; furthestIdx = i; }
+      }
+      
+      const firstTask = unvisited.splice(furthestIdx, 1)[0];
+      optimized.push(firstTask);
+
+      const twdFirst = taipowerToTWD67(firstTask.code);
+      if (twdFirst) {
+        const wgsFirst = twd67ToWGS84(twdFirst[0], twdFirst[1]);
+        currLat = wgsFirst.lat;
+        currLng = wgsFirst.lng;
+      }
+
+      while (unvisited.length > 0) {
+        let nearestIdx = 0, minDist = Infinity;
+        for (let i = 0; i < unvisited.length; i++) {
+          const twd = taipowerToTWD67(unvisited[i].code);
+          if (!twd) continue;
+          const wgs = twd67ToWGS84(twd[0], twd[1]);
+          const d = Math.hypot(wgs.lat - currLat, wgs.lng - currLng);
+          if (d < minDist) { minDist = d; nearestIdx = i; }
+        }
+        const next = unvisited.splice(nearestIdx, 1)[0];
+        const twdNext = taipowerToTWD67(next.code);
+        if (twdNext) {
+          const wgsNext = twd67ToWGS84(twdNext[0], twdNext[1]);
+          currLat = wgsNext.lat;
+          currLng = wgsNext.lng;
+        }
+        optimized.push(next);
+      }
+
+      tasks = optimized;
+      currentIndex = 0;
+      saveTasks();
+      renderTasks(true);
+    };
+
+    window.toggleAddPinMode = () => {
+      isAddPinMode = !isAddPinMode;
+      const btn = document.getElementById('addPinBtn');
+      if (isAddPinMode) {
+        btn.classList.add('pin-mode-active');
+        mapBannerText.innerText = '📍 請點擊地圖任意位置查詢圖號或新增據點';
+        mapBanner.style.display = 'flex';
+      } else {
+        btn.classList.remove('pin-mode-active');
+        mapBanner.style.display = 'none';
+      }
+    };
+
+    map.on('click', async (e) => {
+      if (!isAddPinMode) return;
+      toggleAddPinMode();
+      const { lat, lng } = e.latlng;
+      const code = coordToPowerCode(lat, lng);
+      silentCopy(code);
+
+      if (inspectMarker) map.removeLayer(inspectMarker);
+      inspectMarker = L.marker([lat, lng], {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        })
+      }).addTo(map);
+
+      const road = await fetchRoadName(lat, lng);
+      inspectMarker.bindTooltip(`<b>${code}</b> (已複製)${road ? ` | ${road}` : ''}`, {
+        permanent: true, direction: 'top', offset: [0, -35], className: 'inspect-label'
+      });
+
+      inspectMarker.bindPopup(`
+        <b>🔍 點位圖號解析</b><br>
+        ${road ? `路名: <b>${road}</b><br>` : ''}
+        圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
+        <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
+        <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
+      `).openPopup();
+    });
+
+    window.triggerRouteAndLocate = (targetLat, targetLng) => {
+      if (!navigator.geolocation) { fetchRouteData(targetLat, targetLng); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { updateLivePosition(pos, false); fetchRouteData(targetLat, targetLng); },
+        () => fetchRouteData(targetLat, targetLng),
+        { enableHighAccuracy: true, timeout: 3000 }
+      );
+    };
+
+    async function fetchRouteData(targetLat, targetLng) {
+      routeLayer.clearLayers();
+      const token = ++currentRoutingToken;
+      const startPt = userLatLng ? [userLatLng[0], userLatLng[1]] : [24.2303, 120.5654];
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startPt[1]},${startPt[0]};${targetLng},${targetLat}?overview=full&geometries=geojson`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (token !== currentRoutingToken) return;
+        if (data.routes && data.routes.length > 0) {
+          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          const poly = L.polyline(coords, { color: '#00f0ff', weight: 6, opacity: 0.9 }).addTo(routeLayer);
+          map.fitBounds(poly.getBounds(), { padding: [50, 50] });
+          return;
+        }
+      } catch (e) {}
+    }
+
+    function updateLivePosition(pos, centerMap = true) {
+      userLatLng = [pos.coords.latitude, pos.coords.longitude];
+      const myCode = coordToPowerCode(userLatLng[0], userLatLng[1]);
+      if (userMarker) {
+        userMarker.setLatLng(userLatLng);
+        userCircle.setLatLng(userLatLng);
+      } else {
+        userCircle = L.circle(userLatLng, { radius: pos.coords.accuracy || 20, color: '#2563eb', fillOpacity: 0.15 }).addTo(map);
+        userMarker = L.circleMarker(userLatLng, { radius: 8, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }).addTo(map);
+        userMarker.bindTooltip(`目前位置 ${myCode}`, { permanent: true, direction: 'top', offset: [0, -10], className: 'base-label' });
+      }
+      if (centerMap) map.panTo(userLatLng);
+    }
+
+    window.toggleLiveTracking = () => {
+      const btn = document.getElementById('trackingBtn');
+      if (watchPositionId !== null) {
+        navigator.geolocation.clearWatch(watchPositionId);
+        watchPositionId = null;
+        btn.classList.remove('tracking-active');
+        btn.innerText = '🚗';
+        return;
+      }
+      if (!navigator.geolocation) return;
+      btn.classList.add('tracking-active');
+      btn.innerText = '🔴';
+      watchPositionId = navigator.geolocation.watchPosition(
+        (pos) => updateLivePosition(pos, true),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+      );
+    };
+
+    document.getElementById('btn-import').onclick = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) { parseText(text); return; }
+      } catch (err) {}
+      showMultilineInputModal();
+    };
+
+    function showMultilineInputModal() {
+      let modal = document.getElementById('manual-paste-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'manual-paste-modal';
+        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.innerHTML = `
+          <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:480px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <div style="font-weight:bold;color:#38bdf8;font-size:1rem;">📋 貼上派工單文字 (支援多行)</div>
+            <textarea id="paste-textarea" style="width:100%;height:160px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#facc15;font-family:monospace;font-size:0.9rem;padding:8px;resize:none;outline:none;" placeholder="把整段圈選的文字貼在此處..."></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button id="btn-cancel-paste" style="background:#475569;border:none;color:#fff;padding:8px 14px;border-radius:6px;font-weight:bold;">取消</button>
+              <button id="btn-confirm-paste" style="background:#2563eb;border:none;color:#fff;padding:8px 16px;border-radius:6px;font-weight:bold;">解析匯入</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('btn-cancel-paste').onclick = () => modal.style.display = 'none';
+        document.getElementById('btn-confirm-paste').onclick = () => {
+          const val = document.getElementById('paste-textarea').value;
+          modal.style.display = 'none';
+          document.getElementById('paste-textarea').value = '';
+          parseText(val);
+        };
+      }
+      modal.style.display = 'flex';
+      setTimeout(() => document.getElementById('paste-textarea').focus(), 100);
+    }
+
+    document.getElementById('btn-clear').onclick = () => {
+      if (confirm('確定清空今日的所有工單？')) {
+        tasks = [];
+        saveTasks();
+        renderTasks();
+        streetviewframe.src = 'about:blank';
+      }
+    };
+
+    let viewYear = new Date().getFullYear(), viewMonth = new Date().getMonth(), selectedDate = todayKey;
+    const calendarModal = document.getElementById('calendar-modal');
+    const calendarBody = document.getElementById('calendar-body');
+    const calTitle = document.getElementById('cal-title');
+
+    document.getElementById('btn-month').onclick = () => {
+      viewYear = new Date().getFullYear();
+      viewMonth = new Date().getMonth();
+      selectedDate = todayKey;
+      renderCalendar();
+      updateActionSheet(todayKey);
+      calendarModal.style.display = 'block';
+    };
+    document.getElementById('btn-close-modal').onclick = () => calendarModal.style.display = 'none';
+
+    function renderCalendar() {
+      calendarBody.innerHTML = '';
+      calTitle.innerText = `${viewYear} 年 ${viewMonth + 1} 月`;
+      ['日', '一', '二', '三', '四', '五', '六'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-weekday';
+        h.innerText = d;
+        calendarBody.appendChild(h);
+      });
+      const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+      const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
+      for (let i = 0; i < firstDay; i++) calendarBody.appendChild(document.createElement('div'));
+
+      for (let day = 1; day <= totalDays; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-day';
+        const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (dateStr === todayKey) cell.classList.add('today');
+        if (dateStr === selectedDate) cell.classList.add('selected');
+        const dayRecords = monthLogs[dateStr] || [];
+        if (dayRecords.length > 0) cell.classList.add('has-data');
+        cell.innerHTML = `<span>${day}</span>${dayRecords.length > 0 ? `<span class="badge-count">${dayRecords.length}件</span>` : ''}`;
+        cell.onclick = () => {
+          selectedDate = dateStr;
+          document.querySelectorAll('.cal-day').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+          updateActionSheet(dateStr);
+        };
+        calendarBody.appendChild(cell);
+      }
+    }
+
+    document.getElementById('cal-prev').onclick = () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCalendar(); };
+    document.getElementById('cal-next').onclick = () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCalendar(); };
+
+    function updateActionSheet(dateStr) {
+      document.getElementById('day-action-sheet').style.display = 'block';
+      document.getElementById('sheet-date-text').innerText = `📅 ${dateStr}`;
+      const records = monthLogs[dateStr] || [];
+      const btnLoad = document.getElementById('btn-action-load');
+      const btnCopy = document.getElementById('btn-action-copy');
+      const btnDel = document.getElementById('btn-action-del');
+
+      if (records.length > 0) {
+        document.getElementById('sheet-count-text').innerText = `(共 ${records.length} 件工單)`;
+        document.getElementById('sheet-summary-text').innerHTML = records.map((t, i) => `${i + 1}. #${i + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('<br>');
+        btnLoad.disabled = btnCopy.disabled = btnDel.disabled = false;
+        btnLoad.style.opacity = btnCopy.style.opacity = btnDel.style.opacity = '1';
+      } else {
+        document.getElementById('sheet-count-text').innerText = '(尚無紀錄)';
+        document.getElementById('sheet-summary-text').innerText = '當天沒有保存工單，可點下方按鈕存入目前案件。';
+        btnLoad.disabled = btnCopy.disabled = btnDel.disabled = true;
+        btnLoad.style.opacity = btnCopy.style.opacity = btnDel.style.opacity = '0.35';
+      }
+    }
+
+    document.getElementById('btn-action-load').onclick = () => {
+      const records = monthLogs[selectedDate];
+      if (records && records.length > 0) {
+        tasks = [...records];
+        saveTasks();
+        renderTasks(true);
+        selectTask(0);
+        calendarModal.style.display = 'none';
+      }
+    };
+
+    document.getElementById('btn-action-copy').onclick = () => {
+      const records = monthLogs[selectedDate];
+      if (!records || records.length === 0) return;
+      const text = `${selectedDate} 工單紀錄：\n` + records.map((t, idx) => `#${idx + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('\n');
+      silentCopy(text);
+    };
+
+    document.getElementById('btn-action-save').onclick = () => {
+      if (tasks.length === 0) return;
+      if (confirm(`是否將目前畫面上的 ${tasks.length} 筆案件存入 ${selectedDate}？`)) {
+        monthLogs[selectedDate] = [...tasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+        renderCalendar();
+        updateActionSheet(selectedDate);
+      }
+    };
+
+    document.getElementById('btn-action-del').onclick = () => {
+      if (!monthLogs[selectedDate]) return;
+      if (confirm(`⚠️ 確定要刪除 ${selectedDate} 的所有工單紀錄嗎？`)) {
+        delete monthLogs[selectedDate];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+        renderCalendar();
+        updateActionSheet(selectedDate);
+      }
+    };
+
+    renderTasks(true);
+    if (tasks.length > 0) {
+      selectTask(0, false);
+    }
+  </script>
+</body>
+</html>
