@@ -201,6 +201,7 @@
     .float-btn.tracking-active { background: #22c55e; color: #fff; border-color: #fff; box-shadow: 0 0 12px #22c55e; }
     .float-btn.pin-mode-active { background: #a855f7; color: #fff; border-color: #fff; box-shadow: 0 0 12px #a855f7; }
     .float-btn.sort-mode-active { background: #dc2626; color: #fff; border-color: #fff; box-shadow: 0 0 12px #dc2626; }
+    .float-btn.focus-mode-active { background: #f59e0b; color: #000; border-color: #fff; box-shadow: 0 0 12px #f59e0b; }
 
     #mapBanner {
       position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
@@ -364,6 +365,7 @@
       <div class="float-btn" id="autoSortBtn" onclick="confirmAutoOptimizeRoute()" title="依距離由遠到近順路收回">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
       <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
+      <div class="float-btn" id="focusTaskBtn" onclick="toggleFocusTaskMode()" title="只顯示報工案件（隱藏服務所與據點）">👁️</div>
     </div>
   </div>
 
@@ -605,13 +607,18 @@
 
     let customLocations = JSON.parse(localStorage.getItem('tpc_custom_locations') || '[]');
     const baseMarkers = [];
+    const baseLayer = L.layerGroup().addTo(map);
     const markersLayer = L.layerGroup().addTo(map);
     const routeLayer = L.layerGroup().addTo(map);
     let currentRoutingToken = 0;
 
+    let isFocusTaskOnly = false;
+
     function reloadBaseMarkers() {
-      baseMarkers.forEach(m => map.removeLayer(m));
+      baseLayer.clearLayers();
       baseMarkers.length = 0;
+      if (isFocusTaskOnly) return;
+
       const allBaseLocations = [...defaultBases, ...customLocations];
 
       allBaseLocations.forEach((loc, idx) => {
@@ -621,7 +628,7 @@
         else if (loc.type === 'custom') { iconClass = 'icon-custom'; iconSymbol = '⭐'; }
 
         const customIcon = L.divIcon({ className: '', html: `<div class="${iconClass}">${iconSymbol}</div>`, iconSize, iconAnchor });
-        const marker = L.marker([loc.lat, loc.lng], { icon: customIcon, interactive: true }).addTo(map);
+        const marker = L.marker([loc.lat, loc.lng], { icon: customIcon, interactive: true }).addTo(baseLayer);
         marker.bindTooltip(loc.name, { permanent: true, direction: 'bottom', offset: [0, 6], className: 'base-label' });
 
         let deleteBtnHtml = '';
@@ -640,6 +647,21 @@
       });
     }
     reloadBaseMarkers();
+
+    window.toggleFocusTaskMode = () => {
+      isFocusTaskOnly = !isFocusTaskOnly;
+      const btn = document.getElementById('focusTaskBtn');
+      if (isFocusTaskOnly) {
+        btn.classList.add('focus-mode-active');
+        btn.innerText = '🎯';
+        baseLayer.clearLayers();
+      } else {
+        btn.classList.remove('focus-mode-active');
+        btn.innerText = '👁️';
+        reloadBaseMarkers();
+      }
+      renderLeafletCaseMarkers(false);
+    };
 
     window.deleteCustomLocation = (index) => {
       customLocations.splice(index, 1);
