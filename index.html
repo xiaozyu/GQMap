@@ -340,7 +340,7 @@
 
     <div class="manual-input-bar">
       <span id="prefix-badge" class="prefix-badge">G</span>
-      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號 (如 3850HE5330)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號/時間/ND (如 3850HE53 1314 ND)" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="btn-manual-add" class="btn-manual-add">＋新增</button>
     </div>
 
@@ -449,11 +449,12 @@
     const TO_LETTER = { '0': 'O', '1': 'I', '8': 'B', '5': 'S', '2': 'Z' };
 
     function sanitizeTaipowerCode(raw) {
+      if (!raw) return '';
       let s = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (s.length >= 8 && /^[0-9]/.test(s)) {
+      if (/^[0-9]/.test(s) && s.length >= 8) {
         s = 'G' + s;
       }
-      if (s.length < 9) return raw;
+      if (s.length < 9) return raw.toUpperCase();
       let arr = s.split('');
       if (TO_LETTER[arr[0]]) arr[0] = TO_LETTER[arr[0]];
       for (let i = 1; i <= 4; i++) if (TO_DIGIT[arr[i]]) arr[i] = TO_DIGIT[arr[i]];
@@ -553,6 +554,7 @@
     function cleanAndFixAddress(text) {
       if (!text) return '';
       let cleaned = text.replace(/(施工地點|領班|預定施工日期|承攬商|接戶線工作|工作內容|施工時間)/g, '').trim();
+      cleaned = cleaned.replace(/^[?ND]?\s*/i, '').trim();
       cleaned = cleaned.replace(/(號\s*)+/g, '號');
       cleaned = cleaned.replace(/號{2,}/g, '號');
       return cleaned;
@@ -783,6 +785,7 @@
         return;
       }
       const t = tasks[currentIndex];
+      t.code = sanitizeTaipowerCode(t.code);
       const twd67 = taipowerToTWD67(t.code);
       if (twd67) {
         const wgs = twd67ToWGS84(twd67[0], twd67[1]);
@@ -824,9 +827,9 @@
         }).addTo(markersLayer);
 
         const timeStr = t.time ? ` | ${t.time}` : '';
-        const hasNoteND = /nd/i.test(t.note || '');
-        const ndTag = (isND && !hasNoteND) ? '[ND] ' : '';
-        const labelText = `<b>#${idx + 1}${timeStr}</b> ${ndTag}${t.code}${t.note ? `<span class="case-road-text"> | ${t.note}</span>` : ''}`;
+        const cleanNote = cleanAndFixAddress(t.note || '');
+        const ndTag = isND ? 'ND ' : '';
+        const labelText = `<b>#${idx + 1}${timeStr}</b> ${t.code}${ (isND || cleanNote) ? `<span class="case-road-text"> | ${ndTag}${cleanNote}</span>` : '' }`;
         
         const tooltipClass = `case-label-large${isND ? ' nd-pin' : ''}${isSelected ? ' selected-case' : ''}`;
         const tooltip = marker.bindTooltip(labelText, {
@@ -852,7 +855,7 @@
 
         marker.bindPopup(`
           <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
-          ${t.note ? `<b>地址/備註: ${t.note}</b><br>` : ''}
+          ${cleanNote ? `<b>地址/備註: ${cleanNote}</b><br>` : ''}
           圖號: <b>${t.code}</b><br><br>
           <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#2563eb;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:6px;">🗺️ 預覽路線</button>
           <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#16a34a;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">🚗 Google 導航</button>
@@ -875,6 +878,7 @@
       }
     }
 
+    // ================= 統一核心解析引擎（上方輸入框 & 小鉛筆共用） =================
     const COORD_REGEX = /[A-Za-z]?[0-9]{4}\s*[A-Za-z]{2}\s*(?:[0-9]{4}|[0-9]{2})/gi;
     const TIME_REGEX = /(\d{1,2}):?(\d{2})?\s*[-~]\s*(\d{1,2}):?(\d{2})?/;
 
@@ -900,44 +904,75 @@
       return false;
     }
 
-    // 核心智慧解析單行文字 (支援手動修改或貼上整行如 "14-15 G4363AE57 ND" 或 "4363ae57")
-    function parseSingleTaskLine(rawText) {
-      let isND = /nd/i.test(rawText);
-      let cleanText = rawText.replace(/nd/gi, '').trim();
+    /**
+     * 智慧單行解析器（徹底解決圖號與 4 碼時間互搶、連打 ND 無法識別的問題）
+     * 解析順序：1. 抓 ND 標記 ➔ 2. 抓台電圖號 ➔ 3. 抓時間 (13-14 或 1314) ➔ 4. 剩餘文字當地址備註
+     */
+    function parseSingleTaskLine(rawText, defaultPrefix = 'G') {
+      if (!rawText) return { code: '', time: '', note: '', isND: false };
+      let text = rawText.trim();
 
-      // 抓時間
-      let time = '';
-      let timeMatch = cleanText.match(TIME_REGEX);
-      if (timeMatch) {
-        time = formatTimeStandard(timeMatch[0]);
-        cleanText = cleanText.replace(timeMatch[0], '').trim();
+      // 1. 優先偵測並抽離 ND（支援 [ND]、ND、或是連打 1312nd）
+      let isND = false;
+      const ndRegex = /(?:^|[\s\[\(0-9])(nd)(?:$|[\s\]\)0-9])/i;
+      if (/\bnd\b/i.test(text) || /\[nd\]/i.test(text) || ndRegex.test(text) || /nd$/i.test(text) || /^nd/i.test(text)) {
+        isND = true;
+        text = text.replace(/\[?nd\]?/gi, ' ').trim();
       }
 
-      // 抓圖號
+      // 2. 優先抽離台電圖號（避免圖號內的 4 碼數字被當成時間切斷！）
       let code = '';
       COORD_REGEX.lastIndex = 0;
-      let codeMatch = cleanText.match(COORD_REGEX);
+      let codeMatch = text.match(COORD_REGEX);
       if (codeMatch) {
         let rawCode = codeMatch[0].replace(/\s+/g, '').toUpperCase();
-        if (/^[0-9]/.test(rawCode)) rawCode = 'G' + rawCode;
+        if (/^[0-9]/.test(rawCode)) rawCode = (defaultPrefix || 'G') + rawCode;
         code = sanitizeTaipowerCode(rawCode);
-        cleanText = cleanText.replace(codeMatch[0], '').trim();
+        text = text.replace(codeMatch[0], ' ').trim();
       } else {
-        // 如果沒有標準圖號格式，嘗試抓取純英文數字組合
-        let parts = cleanText.split(/[\s,]+/);
-        for (let p of parts) {
-          if (p.length >= 8 && /[A-Z0-9]/.test(p)) {
-            let rc = p.toUpperCase();
-            if (/^[0-9]/.test(rc)) rc = 'G' + rc;
-            code = sanitizeTaipowerCode(rc);
-            cleanText = cleanText.replace(p, '').trim();
+        // 寬容容錯匹配（例如手誤打錯字母導致正規表示式沒抓到）
+        let tokens = text.split(/[\s,]+/);
+        for (let tk of tokens) {
+          let cleanTk = tk.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (cleanTk.length >= 8 && cleanTk.length <= 11 && /[A-Z]/.test(cleanTk) && /\d{3,}/.test(cleanTk) && !/[路街巷段號]/.test(tk)) {
+            let rawCode = /^[0-9]/.test(cleanTk) ? (defaultPrefix || 'G') + cleanTk : cleanTk;
+            code = sanitizeTaipowerCode(rawCode);
+            text = text.replace(tk, ' ').trim();
             break;
           }
         }
       }
 
-      // 剩下的就是地址/備註
-      let note = cleanAndFixAddress(cleanText);
+      // 3. 圖號抽離後，在剩餘乾淨字串中抓時間（支援 13-14、13~14、13:00-14:00、1314、0910）
+      let time = '';
+      let dashTimeMatch = text.match(/(?:^|\D)(\d{1,2})(?::\d{2})?\s*[-~～]\s*(\d{1,2})(?::\d{2})?(?!\d)/);
+      if (dashTimeMatch) {
+        let h1 = parseInt(dashTimeMatch[1], 10);
+        let h2 = parseInt(dashTimeMatch[2], 10);
+        if (h1 >= 0 && h1 <= 24 && h2 >= 0 && h2 <= 24) {
+          time = `${String(h1).padStart(2, '0')}-${String(h2).padStart(2, '0')}`;
+          text = text.replace(dashTimeMatch[0], ' ').trim();
+        }
+      } else {
+        // 4碼連打時間（如 1312, 1314, 0812, 1516），排除「1314號」這種門牌
+        let compactRegex = /(?:^|\s)([0-2]\d)([0-2]\d)(?!\s*[號樓巷弄段Ff])(?=\s|$)/g;
+        let m;
+        while ((m = compactRegex.exec(text)) !== null) {
+          let h1 = parseInt(m[1], 10);
+          let h2 = parseInt(m[2], 10);
+          if (h1 >= 0 && h1 <= 23 && h2 >= 0 && h2 <= 24 && h1 < h2) {
+            time = `${String(h1).padStart(2, '0')}-${String(h2).padStart(2, '0')}`;
+            text = text.replace(m[0], ' ').trim();
+            break;
+          }
+        }
+      }
+
+      // 4. 清理剩餘文字作為地址備註（剔除殘留的孤立4碼數字）
+      let note = cleanAndFixAddress(text);
+      note = note.replace(/^\d{1,4}\s+/, '').replace(/\s+\d{1,4}$/, '').trim();
+      if (/^\d{1,4}$/.test(note)) note = '';
+
       return { code, time, note, isND };
     }
 
@@ -981,24 +1016,20 @@
         COORD_REGEX.lastIndex = 0;
         let matches = line.match(COORD_REGEX);
         if (matches) {
-          const assignedTime = useColumnZipMode ? (standaloneTimes[codeLineIdx] || '') : (timeStr || currentTime);
+          const parsedLine = parseSingleTaskLine(line, 'G');
+          const assignedTime = useColumnZipMode ? (standaloneTimes[codeLineIdx] || '') : (parsedLine.time || timeStr || currentTime);
           codeLineIdx++;
 
           matches.forEach(m => {
             let rawCode = m.replace(/\s+/g, '').toUpperCase();
-            if (/^[0-9]/.test(rawCode)) rawCode = 'G' + rawCode;
-
             const cleanCode = sanitizeTaipowerCode(rawCode);
             
-            let note = line.replace(m, '').replace(TIME_REGEX, '').replace(/[\s,]+/g, ' ').trim();
-            note = cleanAndFixAddress(note);
-
-            if (/^nd$/i.test(note)) note = '';
+            let note = parsedLine.note;
             if (!note && pendingNote && !isSystemNoiseLine(pendingNote)) {
               note = cleanAndFixAddress(pendingNote);
             }
 
-            const isND = /nd/i.test(line) || /nd/i.test(note);
+            const isND = parsedLine.isND || /\bnd\b/i.test(note);
 
             if (cleanCode && !tasks.some(t => t.code === cleanCode) && !newTasks.some(t => t.code === cleanCode)) {
               newTasks.push({
@@ -1023,7 +1054,7 @@
         selectTask(startIndex);
 
         newTasks.forEach(async (taskItem) => {
-          const rawNoteCheck = (taskItem.note || '').replace(/nd/gi, '').trim();
+          const rawNoteCheck = cleanAndFixAddress(taskItem.note || '');
           if (rawNoteCheck.length < 3 || !/[路街巷段號]/.test(rawNoteCheck)) {
             taskItem.code = sanitizeTaipowerCode(taskItem.code);
             const twd67 = taipowerToTWD67(taskItem.code);
@@ -1031,11 +1062,11 @@
               const wgs = twd67ToWGS84(twd67[0], twd67[1]);
               const road = await fetchCleanAddress(wgs.lat, wgs.lng);
               if (road) {
-                taskItem.note = taskItem.isND ? `ND ${road}` : road;
+                taskItem.note = road;
                 saveTasks();
                 renderTasks();
-              } else if (taskItem.isND && !taskItem.note) {
-                taskItem.note = 'ND 施工地點';
+              } else if (!taskItem.note) {
+                taskItem.note = '施工地點';
                 saveTasks();
                 renderTasks();
               }
@@ -1045,50 +1076,101 @@
       }
     }
 
+    // ================= 上方手動輸入框 & 小鉛筆共用綁定邏輯 =================
     const manualCodeInput = document.getElementById('manual-code-input');
     const btnManualAdd = document.getElementById('btn-manual-add');
     const prefixBadge = document.getElementById('prefix-badge');
 
-    manualCodeInput.addEventListener('input', () => {
-      let val = manualCodeInput.value.trim().toUpperCase();
-      if (/^[A-Z]/.test(val) && !/^ND/i.test(val)) {
-        prefixBadge.innerText = val[0];
-        manualCodeInput.value = val.substring(1);
-      } else if (!val) {
-        prefixBadge.innerText = 'G';
+    // 讓輸入框與字首徽章 (G) 聯動（上方與小鉛筆共用）
+    function bindPrefixInputBehavior(inputEl, badgeEl) {
+      inputEl.addEventListener('input', () => {
+        let val = inputEl.value;
+        let trimmed = val.trimStart().toUpperCase();
+        // 若開頭輸入單一英文字母 (A-W) 且後面跟著數字（且不是 ND），自動把首字母吸進藍色徽章
+        if (/^[A-W][0-9]/i.test(trimmed)) {
+          badgeEl.innerText = trimmed[0].toUpperCase();
+          inputEl.value = trimmed.substring(1);
+        } else if (!trimmed) {
+          badgeEl.innerText = 'G';
+        }
+      });
+    }
+
+    bindPrefixInputBehavior(manualCodeInput, prefixBadge);
+
+    /**
+     * 統一的新增/修改儲存核心（上方 +新增 與 小鉛筆儲存 100% 走同一套）
+     */
+    async function processAndSaveTaskInput(rawInput, targetIndex = null, activePrefix = 'G') {
+      if (!rawInput || !rawInput.trim()) return false;
+      
+      const isEditing = (targetIndex !== null && targetIndex >= 0 && targetIndex < tasks.length);
+      const oldTask = isEditing ? tasks[targetIndex] : null;
+
+      let parsed = parseSingleTaskLine(rawInput, activePrefix);
+      let finalCode = parsed.code;
+
+      // 若在編輯模式下只打了「1314」或「ND」沒重打圖號，自動沿用該筆原本的圖號
+      if (!finalCode && isEditing && oldTask) {
+        finalCode = oldTask.code;
       }
-    });
+
+      if (!finalCode || finalCode.length < 9) return false;
+
+      // 判斷圖號是否有變更
+      const isSameCode = isEditing && oldTask && (oldTask.code === finalCode);
+      let initialNote = parsed.note;
+
+      if (!initialNote) {
+        if (isSameCode && oldTask.note && !oldTask.note.includes('查詢地址')) {
+          // 若圖號沒變且沒手打新地址，保留原本查好的乾淨路名（同時洗掉之前誤入的 1312/1314 數字）
+          initialNote = cleanAndFixAddress(oldTask.note).replace(/^\d{1,4}\s*/, '');
+        } else {
+          initialNote = '查詢地址中...';
+        }
+      }
+
+      let taskObj = { 
+        code: finalCode, 
+        time: parsed.time, 
+        note: initialNote || '查詢地址中...', 
+        isND: parsed.isND 
+      };
+
+      if (isEditing) {
+        tasks[targetIndex] = taskObj;
+      } else {
+        tasks.push(taskObj);
+        targetIndex = tasks.length - 1;
+      }
+
+      saveTasks();
+      renderTasks();
+      selectTask(targetIndex);
+
+      // 若圖號改變或尚無有效路名，自動背景反查路名
+      const twd67 = taipowerToTWD67(finalCode);
+      if (twd67 && (!taskObj.note || taskObj.note === '查詢地址中...' || taskObj.note === '施工地點')) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        const road = await fetchCleanAddress(wgs.lat, wgs.lng);
+        taskObj.note = road || '施工地點';
+        saveTasks();
+        renderTasks();
+      }
+      return true;
+    }
 
     async function handleManualAdd() {
       let rawInput = manualCodeInput.value.trim();
       if (!rawInput) return;
       
-      let parsed = parseSingleTaskLine(rawInput);
-      if (!parsed.code) {
-        let currentPrefix = prefixBadge.innerText.toUpperCase();
-        let val = rawInput.replace(/nd/gi, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (!val) return;
-        parsed.code = sanitizeTaipowerCode(/^[A-Z]/.test(val) ? val : (currentPrefix + val));
-      }
-
-      if (parsed.code.length < 9) return;
-
-      const newTask = { code: parsed.code, time: parsed.time || '', note: parsed.note || '查詢地址中...', isND: parsed.isND };
-      tasks.push(newTask);
-      saveTasks();
-      renderTasks();
-      selectTask(tasks.length - 1);
-
-      manualCodeInput.value = '';
-      prefixBadge.innerText = 'G';
-
-      const twd67 = taipowerToTWD67(newTask.code);
-      if (twd67 && (!newTask.note || newTask.note === '查詢地址中...')) {
-        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
-        const road = await fetchCleanAddress(wgs.lat, wgs.lng);
-        newTask.note = road || '施工地點';
-        saveTasks();
-        renderTasks();
+      let currentPrefix = prefixBadge.innerText.toUpperCase() || 'G';
+      let success = await processAndSaveTaskInput(rawInput, null, currentPrefix);
+      if (success) {
+        manualCodeInput.value = '';
+        prefixBadge.innerText = 'G';
+      } else {
+        alert("找不到有效圖號！請輸入至少 8 碼圖號數字（如 4459AE87 1314）");
       }
     }
 
@@ -1097,37 +1179,113 @@
       if (e.key === 'Enter') handleManualAdd();
     });
 
-    // ================= 點擊小鉛筆進行整行快速修改 =================
-    window.editTaskLineInline = async (idx, event) => {
+    // ================= 小鉛筆快速編輯視窗（1:1 複製上方輸入框結構與邏輯） =================
+    let editingTaskIndex = null;
+
+    function ensureEditModalExists() {
+      let modal = document.getElementById('task-edit-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'task-edit-modal';
+        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:3000;display:none;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.innerHTML = `
+          <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:440px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-weight:bold;color:#38bdf8;font-size:1.05rem;border-bottom:1px solid #334155;padding-bottom:8px;">
+              <span>✏️ 快速修改工單 (同上方輸入框)</span>
+              <button id="modal-close-x" style="background:none;border:none;color:#cbd5e1;font-size:1.3rem;cursor:pointer;">✕</button>
+            </div>
+            
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:0.8rem;color:#94a3b8;font-weight:bold;">支援任意順序輸入（圖號 + 四碼時間 + ND）：</label>
+              <div class="manual-input-bar" style="padding:6px 8px;background:#0f172a;border:1px solid #38bdf8;">
+                <span id="edit-prefix-badge" class="prefix-badge">G</span>
+                <input type="text" id="edit-modal-line-input" class="manual-input" style="font-size:1.05rem;" placeholder="如: 4459AE87 1314 ND" autocomplete="off" autocorrect="off" spellcheck="false">
+              </div>
+              <span style="font-size:0.75rem;color:#94a3b8;line-height:1.4;">
+                💡 <b>跟上方輸入框完全一樣：</b><br>
+                • 打 <code style="color:#facc15;">4459AE87 1314 ND</code> ➔ 自動拆出時間 <code style="color:#38bdf8;">13-14</code>、標記大紅底 ND 並保留/重抓路名。
+              </span>
+            </div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+              <button id="modal-btn-cancel" style="background:#475569;border:none;color:#fff;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;">取消</button>
+              <button id="modal-btn-save" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:6px;font-weight:bold;cursor:pointer;">儲存修改</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+
+        const editInputEl = document.getElementById('edit-modal-line-input');
+        const editBadgeEl = document.getElementById('edit-prefix-badge');
+        bindPrefixInputBehavior(editInputEl, editBadgeEl);
+
+        document.getElementById('modal-close-x').onclick = closeEditModal;
+        document.getElementById('modal-btn-cancel').onclick = closeEditModal;
+        document.getElementById('modal-btn-save').onclick = saveEditModalData;
+        editInputEl.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') saveEditModalData();
+        });
+      }
+      return modal;
+    }
+
+    function closeEditModal() {
+      const modal = document.getElementById('task-edit-modal');
+      if (modal) modal.style.display = 'none';
+      editingTaskIndex = null;
+    }
+
+    window.editTaskLineInline = (idx, event) => {
       event.stopPropagation();
+      editingTaskIndex = idx;
       const t = tasks[idx];
-      let currentFullText = `${t.time ? t.time + ' ' : ''}${t.code}${t.isND ? ' ND' : ''}${t.note ? ' ' + t.note : ''}`;
-      
-      let promptText = prompt("請修改工單內容 (可直接輸入 時間 圖號 ND 地址，如: 14-15 G4363AE57 ND 中山路)：", currentFullText);
-      if (promptText === null) return;
-      promptText = promptText.trim();
-      if (!promptText) return;
 
-      let parsed = parseSingleTaskLine(promptText);
-      if (parsed.code) {
-        t.code = sanitizeTaipowerCode(parsed.code);
-      }
-      if (parsed.time) t.time = parsed.time;
-      if (parsed.isND !== undefined) t.isND = parsed.isND;
-      if (parsed.note) t.note = parsed.note;
+      const modal = ensureEditModalExists();
+      const editBadgeEl = document.getElementById('edit-prefix-badge');
+      const editInputEl = document.getElementById('edit-modal-line-input');
 
-      // 如果修改後沒有地址，自動補抓路名
-      const twd67 = taipowerToTWD67(t.code);
-      if (twd67 && (!t.note || t.note.length < 2)) {
-        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
-        const road = await fetchCleanAddress(wgs.lat, wgs.lng);
-        if (road) t.note = road;
-      }
+      // 把圖號首字母放進藍色徽章，後面放純圖號 + 時間 + ND（不塞入舊地址以免重打時間時干擾，若未改圖號系統會自動保留舊地址）
+      const fullCode = sanitizeTaipowerCode(t.code);
+      const prefixChar = /^[A-Z]/.test(fullCode) ? fullCode[0] : 'G';
+      const bodyCode = /^[A-Z]/.test(fullCode) ? fullCode.substring(1) : fullCode;
 
-      saveTasks();
-      renderTasks(false);
-      selectTask(idx, true);
+      editBadgeEl.innerText = prefixChar;
+
+      let parts = [bodyCode];
+      if (t.time) parts.push(t.time);
+      if (t.isND) parts.push('ND');
+
+      editInputEl.value = parts.join(' ');
+
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        editInputEl.focus();
+        editInputEl.select();
+      }, 80);
     };
+
+    async function saveEditModalData() {
+      if (editingTaskIndex === null || editingTaskIndex < 0 || editingTaskIndex >= tasks.length) {
+        closeEditModal();
+        return;
+      }
+
+      const editBadgeEl = document.getElementById('edit-prefix-badge');
+      const editInputEl = document.getElementById('edit-modal-line-input');
+      let rawInput = editInputEl.value.trim();
+      if (!rawInput) {
+        alert("輸入內容不可為空！");
+        return;
+      }
+
+      let activePrefix = editBadgeEl.innerText.toUpperCase() || 'G';
+      let success = await processAndSaveTaskInput(rawInput, editingTaskIndex, activePrefix);
+      if (success) {
+        closeEditModal();
+      } else {
+        alert("格式錯誤或找不到有效圖號！");
+      }
+    }
 
     let sortableInstance = null;
 
@@ -1150,8 +1308,8 @@
         row.className = `task-row ${idx === currentIndex ? 'active' : ''} ${isND ? 'nd-case' : ''}`;
         
         const timeBadgeHtml = t.time ? `<span class="task-time-badge">${t.time}</span>` : '<span class="task-time-badge" style="opacity:0.2;">--:--</span>';
-        const hasNoteND = /nd/i.test(t.note || '');
-        const displayDesc = (isND && !hasNoteND) ? `[ND] ${t.note || '施工地點'}` : (t.note || '施工地點');
+        const cleanNote = cleanAndFixAddress(t.note || '');
+        const displayDesc = isND ? `ND ${cleanNote || '施工地點'}` : (cleanNote || '施工地點');
         
         row.innerHTML = `
           <div class="task-left">
@@ -1162,7 +1320,7 @@
             <span class="task-desc">${displayDesc}</span>
           </div>
           <div class="row-actions">
-            <button class="btn-edit-row" onclick="editTaskLineInline(${idx}, event)" title="點擊直接修改此行">✏️</button>
+            <button class="btn-edit-row" onclick="editTaskLineInline(${idx}, event)" title="快速編輯工單">✏️</button>
             <button onclick="deleteTask(${idx})" title="刪除此筆工單">✕</button>
           </div>
         `;
