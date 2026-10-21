@@ -28,7 +28,7 @@
     }
 
     .top-section {
-      padding: 6px 8px 3px 8px;
+      padding: 4px 6px 2px 6px;
       flex-shrink: 0;
       background: #0b0f19;
       z-index: 20;
@@ -36,19 +36,19 @@
 
     .top-toolbar {
       display: flex;
-      gap: 6px;
-      margin-bottom: 5px;
+      gap: 4px;
+      margin-bottom: 3px;
     }
     .btn-top {
-      padding: 8px 0;
+      padding: 6px 0;
       border: 1px solid #334155;
       color: #f8fafc;
-      border-radius: 6px;
-      font-size: 0.9rem;
+      border-radius: 5px;
+      font-size: 0.85rem;
       font-weight: bold;
       cursor: pointer;
       text-align: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.5; }
     .btn-clear { background: #dc2626; border-color: #ef4444; flex: 1; }
@@ -58,51 +58,59 @@
     .manual-input-bar {
       display: flex; align-items: center;
       background: #131d31; border: 1px solid #334155;
-      border-radius: 6px; padding: 2px 6px; margin-bottom: 5px; gap: 4px;
+      border-radius: 5px; padding: 2px 4px; margin-bottom: 3px; gap: 3px;
     }
     .prefix-badge {
       background: #3b82f6; color: #fff; font-weight: bold;
-      font-size: 1.1rem; font-family: monospace;
-      padding: 2px 8px; border-radius: 4px;
-      user-select: none; min-width: 36px; text-align: center;
+      font-size: 1rem; font-family: monospace;
+      padding: 1px 6px; border-radius: 3px;
+      user-select: none; min-width: 30px; text-align: center;
     }
     .manual-input {
       flex: 1; background: transparent; border: none;
-      color: #facc15; font-size: 1.1rem; font-family: monospace;
+      color: #facc15; font-size: 1rem; font-family: monospace;
       font-weight: bold; outline: none; text-transform: uppercase;
+      min-width: 0;
     }
     .manual-input::placeholder {
-      font-size: 0.8rem; color: #64748b; font-family: -apple-system, sans-serif;
+      font-size: 0.75rem; color: #64748b; font-family: -apple-system, sans-serif;
     }
+    .manual-time-input {
+      width: 58px; background: #0f172a; border: 1px solid #334155;
+      color: #38bdf8; font-size: 0.8rem; font-family: monospace; font-weight: bold;
+      border-radius: 3px; padding: 2px 3px; text-align: center; outline: none;
+    }
+    .manual-time-input::placeholder { color: #475569; font-size: 0.7rem; }
+
     .btn-manual-add {
       background: #16a34a; color: #fff; border: none;
-      padding: 5px 10px; border-radius: 4px;
-      font-size: 0.8rem; font-weight: bold; cursor: pointer; white-space: nowrap;
+      padding: 4px 8px; border-radius: 3px;
+      font-size: 0.78rem; font-weight: bold; cursor: pointer; white-space: nowrap;
     }
 
     .task-list-section {
-      background: #131d31; border-radius: 6px; border: 1px solid #1e293b;
-      padding: 3px 4px; height: 185px; overflow-y: auto; touch-action: pan-y;
+      background: #131d31; border-radius: 5px; border: 1px solid #1e293b;
+      padding: 2px 3px; height: 185px; overflow-y: auto; touch-action: pan-y;
     }
     
     .task-row {
       display: flex; align-items: center; justify-content: space-between;
-      min-height: 35px; padding: 4px 6px; margin-bottom: 3px;
-      background: #1e293b; border-radius: 4px; border-left: 4px solid #3b82f6;
-      cursor: pointer; user-select: none; gap: 6px;
+      min-height: 30px; padding: 2px 4px; margin-bottom: 2px;
+      background: #1e293b; border-radius: 3px; border-left: 3px solid #38bdf8;
+      cursor: pointer; user-select: none; gap: 3px;
     }
     .task-row.active {
-      background: #1e3a5f; border-left-color: #38bdf8;
+      background: #1e3a5f; border-left-color: #facc15;
     }
 
     /* ND 案件列表強力大紅底（強制覆蓋） */
     .task-row.nd-case {
       background: #dc2626 !important;
-      border-left: 5px solid #fef08a !important;
+      border-left: 4px solid #fef08a !important;
       border-top: 1px solid #f87171 !important;
       border-right: 1px solid #f87171 !important;
       border-bottom: 1px solid #f87171 !important;
-      box-shadow: 0 0 10px rgba(220, 38, 38, 0.5) !important;
+      box-shadow: 0 0 8px rgba(220, 38, 38, 0.5) !important;
     }
     .task-row.nd-case.active {
       background: #b91c1c !important;
@@ -111,74 +119,75 @@
 
     .sortable-chosen {
       background: #1d4ed8 !important; border-left-color: #facc15 !important;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7) !important;
-      transform: scale(1.02) !important; z-index: 999 !important;
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.7) !important;
+      transform: scale(1.01) !important; z-index: 999 !important;
     }
     .sortable-ghost {
       opacity: 0.25 !important; background: #38bdf8 !important; border: 1px dashed #facc15 !important;
     }
 
     .task-left {
-      display: flex; align-items: center; flex: 1; min-width: 0; gap: 6px;
+      display: flex; align-items: center; flex: 1; min-width: 0; gap: 3px;
     }
     .drag-handle {
-      color: #64748b; font-size: 0.95rem; cursor: grab; flex-shrink: 0;
+      color: #64748b; font-size: 0.75rem; cursor: grab; flex-shrink: 0;
     }
     .task-row.nd-case .drag-handle { color: #fecaca; }
     
     .task-num-label {
-      color: #38bdf8; font-weight: bold; flex-shrink: 0; width: 28px;
+      color: #38bdf8; font-weight: bold; flex-shrink: 0; width: 18px; font-size: 0.78rem; text-align: center;
     }
     .task-row.nd-case .task-num-label { color: #ffffff; }
 
     .task-time-badge {
-      background: #0284c7; color: #fff; font-size: 0.75rem; font-weight: bold;
-      padding: 1px 4px; border-radius: 3px; flex-shrink: 0;
-      width: 52px; text-align: center; font-family: monospace;
+      background: #0284c7; color: #fff; font-size: 0.68rem; font-weight: bold;
+      padding: 1px 2px; border-radius: 2px; flex-shrink: 0;
+      width: 40px; text-align: center; font-family: monospace;
     }
     .task-row.nd-case .task-time-badge {
       background: #7f1d1d; color: #fef08a; border: 1px solid #fca5a5;
     }
     
     .task-title {
-      font-family: monospace; font-weight: bold; font-size: 0.95rem;
-      color: #facc15; flex-shrink: 0; width: 110px;
+      font-family: monospace; font-weight: bold; font-size: 0.8rem;
+      color: #facc15; flex-shrink: 0; white-space: nowrap;
     }
     .task-row.nd-case .task-title { color: #fef08a; }
     
     .task-desc {
-      font-size: 0.9rem; color: #e2e8f0; flex: 1;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 0.8rem; color: #e2e8f0; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+      margin-left: 3px;
     }
     .task-row.nd-case .task-desc { color: #ffffff; font-weight: 800; }
 
     .row-actions { flex-shrink: 0; }
     .row-actions button {
       background: none; border: 1px solid #64748b; color: #ef4444;
-      border-radius: 4px; font-size: 0.8rem; padding: 2px 7px; cursor: pointer;
+      border-radius: 3px; font-size: 0.7rem; padding: 1px 4px; cursor: pointer;
     }
     .task-row.nd-case .row-actions button {
       border-color: #fecaca; color: #ffffff; background: rgba(127, 29, 29, 0.6);
     }
 
     .nav-action-bar {
-      display: flex; gap: 6px; padding: 5px 8px;
+      display: flex; gap: 6px; padding: 4px 8px;
       background: #0f172a; flex-shrink: 0; border-top: 1px solid #1e293b;
     }
     .btn-nav-start {
       flex: 2; background: #16a34a; color: #fff; border: 1px solid #4ade80;
-      text-decoration: none; font-weight: bold; font-size: 0.95rem;
-      border-radius: 6px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3); padding: 7px 0;
+      text-decoration: none; font-weight: bold; font-size: 0.9rem;
+      border-radius: 5px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3); padding: 6px 0;
     }
     .btn-mode-switch {
       flex: 1; background: #1e293b; color: #94a3b8; border: 1px solid #475569;
-      padding: 7px 0; border-radius: 6px; font-weight: bold; font-size: 0.88rem;
+      padding: 6px 0; border-radius: 5px; font-weight: bold; font-size: 0.85rem;
       cursor: pointer; transition: all 0.15s;
     }
     .btn-mode-switch.active {
       background: #0284c7; color: #ffffff; border-color: #38bdf8;
-      box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
     }
 
     .map-container {
@@ -337,7 +346,8 @@
 
     <div class="manual-input-bar">
       <span id="prefix-badge" class="prefix-badge">G</span>
-      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號 (如 3850HE5330 或 F4362AC13)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號 (如 3850HE5330)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <input type="text" id="manual-time-input" class="manual-time-input" placeholder="08-10" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="btn-manual-add" class="btn-manual-add">＋新增</button>
     </div>
 
@@ -365,7 +375,7 @@
       <div class="float-btn" id="autoSortBtn" onclick="confirmAutoOptimizeRoute()" title="依距離由遠到近順路收回">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
       <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
-      <div class="float-btn" id="focusTaskBtn" onclick="toggleFocusTaskMode()" title="只顯示報工案件（隱藏服務所與據點）">👁️</div>
+      <div class="float-btn focus-mode-active" id="focusTaskBtn" onclick="toggleFocusTaskMode()" title="切換顯示預設據點（服務所與休息點）">🎯</div>
     </div>
   </div>
 
@@ -544,14 +554,33 @@
       return `G${pad2(xMap)}${pad2(yMap)}${subX}${subY}${Math.min(Math.max(ptX, 0), 9)}${Math.min(Math.max(ptY, 0), 9)}`;
     }
 
-    async function fetchRoadName(lat, lng) {
+    // 強力清洗地址與重複「號號」問題
+    function cleanAndFixAddress(text) {
+      if (!text) return '';
+      let cleaned = text.replace(/(施工地點|領班|預定施工日期|承攬商|接戶線工作|工作內容|施工時間)/g, '').trim();
+      // 將任何連續重複的「號號+」或「號 號」轉成單一個「號」
+      cleaned = cleaned.replace(/(號\s*)+/g, '號');
+      cleaned = cleaned.replace(/號{2,}/g, '號');
+      return cleaned;
+    }
+
+    async function fetchCleanAddress(lat, lng) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
         const resp = await fetch(url, { headers: { 'Accept-Language': 'zh-TW' } });
         if (!resp.ok) return '';
         const data = await resp.json();
         const addr = data.address || {};
-        return addr.road || addr.street || addr.suburb || addr.neighbourhood || '';
+        
+        let road = addr.road || addr.street || '';
+        let suburb = addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city_district || '';
+        let houseNumber = addr.house_number ? `${addr.house_number}號` : '';
+
+        if (road) {
+          let res = `${road}${houseNumber}`;
+          return cleanAndFixAddress(res);
+        }
+        return suburb || '';
       } catch (e) {
         return '';
       }
@@ -612,7 +641,7 @@
     const routeLayer = L.layerGroup().addTo(map);
     let currentRoutingToken = 0;
 
-    let isFocusTaskOnly = false;
+    let isFocusTaskOnly = true;
 
     function reloadBaseMarkers() {
       baseLayer.clearLayers();
@@ -646,7 +675,6 @@
         baseMarkers.push(marker);
       });
     }
-    reloadBaseMarkers();
 
     window.toggleFocusTaskMode = () => {
       isFocusTaskOnly = !isFocusTaskOnly;
@@ -654,13 +682,13 @@
       if (isFocusTaskOnly) {
         btn.classList.add('focus-mode-active');
         btn.innerText = '🎯';
-        baseLayer.clearLayers();
+        map.removeLayer(baseLayer);
       } else {
         btn.classList.remove('focus-mode-active');
         btn.innerText = '👁️';
         reloadBaseMarkers();
+        map.addLayer(baseLayer);
       }
-      renderLeafletCaseMarkers(false);
     };
 
     window.deleteCustomLocation = (index) => {
@@ -702,6 +730,7 @@
       if (t.isND || /nd/i.test(t.note || '')) {
         t.isND = true;
       }
+      if (t.note) t.note = cleanAndFixAddress(t.note);
     });
 
     let currentIndex = 0;
@@ -944,9 +973,11 @@
             const cleanCode = sanitizeTaipowerCode(rawCode);
             
             let note = line.replace(m, '').replace(TIME_REGEX, '').replace(/[\s,]+/g, ' ').trim();
+            note = cleanAndFixAddress(note);
+
             if (/^nd$/i.test(note)) note = '';
             if (!note && pendingNote && !isSystemNoiseLine(pendingNote)) {
-              note = pendingNote;
+              note = cleanAndFixAddress(pendingNote);
             }
 
             const isND = /nd/i.test(line) || /nd/i.test(note);
@@ -974,12 +1005,12 @@
         selectTask(startIndex);
 
         newTasks.forEach(async (taskItem) => {
-          const noteWithoutND = (taskItem.note || '').replace(/nd/gi, '').trim();
-          if (noteWithoutND.length < 2) {
+          const rawNoteCheck = (taskItem.note || '').replace(/nd/gi, '').trim();
+          if (rawNoteCheck.length < 3 || !/[路街巷段號]/.test(rawNoteCheck)) {
             const twd67 = taipowerToTWD67(taskItem.code);
             if (twd67) {
               const wgs = twd67ToWGS84(twd67[0], twd67[1]);
-              const road = await fetchRoadName(wgs.lat, wgs.lng);
+              const road = await fetchCleanAddress(wgs.lat, wgs.lng);
               if (road) {
                 taskItem.note = taskItem.isND ? `ND ${road}` : road;
                 saveTasks();
@@ -996,6 +1027,7 @@
     }
 
     const manualCodeInput = document.getElementById('manual-code-input');
+    const manualTimeInput = document.getElementById('manual-time-input');
     const btnManualAdd = document.getElementById('btn-manual-add');
     const prefixBadge = document.getElementById('prefix-badge');
 
@@ -1020,19 +1052,22 @@
       const fullCode = sanitizeTaipowerCode(/^[A-Z]/.test(val) ? val : (currentPrefix + val));
       if (fullCode.length < 9) return;
 
-      const newTask = { code: fullCode, time: '', note: isND ? 'ND 查詢路名中...' : '查詢路名中...', isND: isND };
+      let manualTime = manualTimeInput.value.trim();
+
+      const newTask = { code: fullCode, time: manualTime, note: isND ? 'ND 查詢地址中...' : '查詢地址中...', isND: isND };
       tasks.push(newTask);
       saveTasks();
       renderTasks();
       selectTask(tasks.length - 1);
 
       manualCodeInput.value = '';
+      manualTimeInput.value = '';
       prefixBadge.innerText = 'G';
 
       const twd67 = taipowerToTWD67(fullCode);
       if (twd67) {
         const wgs = twd67ToWGS84(twd67[0], twd67[1]);
-        const road = await fetchRoadName(wgs.lat, wgs.lng);
+        const road = await fetchCleanAddress(wgs.lat, wgs.lng);
         const baseNote = road || '施工地點';
         newTask.note = isND ? `ND ${baseNote}` : baseNote;
       } else {
@@ -1046,13 +1081,16 @@
     manualCodeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') handleManualAdd();
     });
+    manualTimeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') handleManualAdd();
+    });
 
     let sortableInstance = null;
 
     function renderTasks(fitMap = false) {
       taskList.innerHTML = '';
       if (tasks.length === 0) {
-        taskList.innerHTML = '<div style="color:#64748b;font-size:0.85rem;padding:6px;">尚未匯入案件，可手動輸入或按「📋 匯入」。</div>';
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可手動輸入或按「📋 匯入」。</div>';
         markersLayer.clearLayers();
         routeLayer.clearLayers();
         return;
@@ -1061,6 +1099,7 @@
       tasks.forEach((t, idx) => {
         const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
         t.isND = isND;
+        if (t.note) t.note = cleanAndFixAddress(t.note);
 
         const row = document.createElement('div');
         row.className = `task-row ${idx === currentIndex ? 'active' : ''} ${isND ? 'nd-case' : ''}`;
@@ -1273,7 +1312,7 @@
         })
       }).addTo(map);
 
-      const road = await fetchRoadName(lat, lng);
+      const road = await fetchCleanAddress(lat, lng);
       inspectMarker.bindTooltip(`<b>${code}</b> (已複製)${road ? ` | ${road}` : ''}`, {
         permanent: true, direction: 'top', offset: [0, -35], className: 'inspect-label'
       });
