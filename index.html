@@ -96,6 +96,7 @@
       background: #1e3a5f; border-left-color: #facc15;
     }
 
+    /* ND 案件列表強力大紅底（強制覆蓋） */
     .task-row.nd-case {
       background: #dc2626 !important;
       border-left: 4px solid #fef08a !important;
@@ -622,6 +623,7 @@
       }
     }
 
+    // 預設以沙鹿海線附近為核心搜尋範圍
     async function geocodeAddressToLatLng(addressStr) {
       const cleanAddr = addressStr.trim();
       if (!cleanAddr) return null;
@@ -630,6 +632,7 @@
 
       const queries = [];
       if (!hasCityOrDist) {
+        // 自動加上海線預設關鍵字
         queries.push({ q: `台中市沙鹿區${cleanAddr}`, bounded: 0 });
         queries.push({ q: `台中市清水區${cleanAddr}`, bounded: 0 });
         queries.push({ q: `台中市梧棲區${cleanAddr}`, bounded: 0 });
@@ -679,28 +682,21 @@
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
     }
 
-    // ================= 6大圖資初始化（加入錯誤容錯與跨域防護） =================
     const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20, subdomains: ['0', '1', '2', '3'], crossOrigin: true
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
     });
     const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 20, subdomains: ['0', '1', '2', '3'], crossOrigin: true
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
     });
     const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 20, attribution: '© 國土測繪中心', crossOrigin: true
+      maxZoom: 20, attribution: '© 國土測繪中心'
     });
     const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 20, attribution: '© 國土測繪中心', crossOrigin: true
-    });
-    const nlscCadastral = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/CADASTRUALMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 20, attribution: '© 國土測繪中心 (地籍圖)', crossOrigin: true
-    });
-    const topoMap = L.tileLayer('https://tile.happyman.idv.tw/map/taiwan-topo/{z}/{x}/{y}.png', {
-      maxZoom: 18, attribution: '© 魯地圖 (Taiwan TOPO)', crossOrigin: true
+      maxZoom: 20, attribution: '© 國土測繪中心'
     });
 
     const map = L.map('leaflet-map', {
-      center: [24.2303, 120.5654],
+      center: [24.2303, 120.5654], // 預設中心鎖定沙鹿
       zoom: 14,
       zoomControl: false,
       layers: [googleRoads]
@@ -710,9 +706,7 @@
       "Google 道路": googleRoads,
       "Google 衛星混合": googleHybrid,
       "台灣通用電子地圖 (國土測繪)": nlscEMap,
-      "國土測繪正射影像 (航照)": nlscPhoto,
-      "國土測繪地籍圖 (段籍/地號)": nlscCadastral,
-      "魯地圖 (等高線/鄉間小路)": topoMap
+      "國土測繪正射影像 (航照)": nlscPhoto
     }, null, { position: 'topright' }).addTo(map);
 
     const defaultBases = [
