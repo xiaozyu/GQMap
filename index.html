@@ -96,7 +96,6 @@
       background: #1e3a5f; border-left-color: #facc15;
     }
 
-    /* ND 案件列表強力大紅底（強制覆蓋） */
     .task-row.nd-case {
       background: #dc2626 !important;
       border-left: 4px solid #fef08a !important;
@@ -370,7 +369,7 @@
 
     <div class="manual-input-bar">
       <span id="prefix-badge" class="prefix-badge">G</span>
-      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號/時間/ND (如 3850HE23 1113 ND)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <input type="text" id="manual-code-input" class="manual-input" placeholder="輸入圖號/時間/ND 或中文地址 (如 永寧路185巷11號)" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="btn-manual-add" class="btn-manual-add">＋新增</button>
     </div>
 
@@ -585,6 +584,7 @@
       if (typeof t.lat === 'number' && typeof t.lng === 'number' && !isNaN(t.lat) && !isNaN(t.lng)) {
         return { lat: t.lat, lng: t.lng };
       }
+      if (t.code === '📍地址導航') return null;
       const twd67 = taipowerToTWD67(t.code);
       if (twd67) {
         return twd67ToWGS84(twd67[0], twd67[1]);
@@ -623,22 +623,19 @@
       }
     }
 
-    // 預設以沙鹿海線附近為核心搜尋範圍
     async function geocodeAddressToLatLng(addressStr) {
       const cleanAddr = addressStr.trim();
       if (!cleanAddr) return null;
 
       const hasCityOrDist = /(台中|臺中|沙鹿|梧棲|清水|龍井|大肚|大甲|外埔|大安|彰化|苗栗|縣|市|區|鄉|鎮)/.test(cleanAddr);
-
       const queries = [];
       if (!hasCityOrDist) {
-        // 自動加上海線預設關鍵字
-        queries.push({ q: `台中市沙鹿區${cleanAddr}`, bounded: 0 });
-        queries.push({ q: `台中市清水區${cleanAddr}`, bounded: 0 });
-        queries.push({ q: `台中市梧棲區${cleanAddr}`, bounded: 0 });
-        queries.push({ q: `台中市龍井區${cleanAddr}`, bounded: 0 });
+        queries.push({ q: `台中市沙鹿區${cleanAddr}` });
+        queries.push({ q: `台中市清水區${cleanAddr}` });
+        queries.push({ q: `台中市梧棲區${cleanAddr}` });
+        queries.push({ q: `台中市龍井區${cleanAddr}` });
       }
-      queries.push({ q: cleanAddr, bounded: 0 });
+      queries.push({ q: cleanAddr });
 
       for (const item of queries) {
         try {
@@ -682,31 +679,38 @@
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
     }
 
-    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20, subdomains: ['0', '1', '2', '3']
-    });
-    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 20, subdomains: ['0', '1', '2', '3']
-    });
+    window.shareTaskInfo = (code, note, time) => {
+      const text = `⚡ 巨擎導航工單資訊\n時間: ${time || '未指定'}\n圖號/位置: ${code}\n地址/備註: ${note || '無'}\n導航目的地: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(note || code)}`;
+      silentCopy(text);
+      if (navigator.vibrate) navigator.vibrate(40);
+      alert("✅ 已成功複製工單與導航資訊到剪貼簿，可直接貼到 LINE 回報！");
+    };
+
     const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
       maxZoom: 20, attribution: '© 國土測繪中心'
     });
     const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
       maxZoom: 20, attribution: '© 國土測繪中心'
     });
+    const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
+    });
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      maxZoom: 20, subdomains: ['0', '1', '2', '3']
+    });
 
     const map = L.map('leaflet-map', {
-      center: [24.2303, 120.5654], // 預設中心鎖定沙鹿
+      center: [24.2303, 120.5654],
       zoom: 14,
       zoomControl: false,
-      layers: [googleRoads]
+      layers: [nlscEMap]
     });
 
     L.control.layers({
-      "Google 道路": googleRoads,
-      "Google 衛星混合": googleHybrid,
       "台灣通用電子地圖 (國土測繪)": nlscEMap,
-      "國土測繪正射影像 (航照)": nlscPhoto
+      "國土測繪正射影像 (航照)": nlscPhoto,
+      "Google 道路": googleRoads,
+      "Google 衛星混合": googleHybrid
     }, null, { position: 'topright' }).addTo(map);
 
     const defaultBases = [
@@ -830,7 +834,9 @@
     localStorage.setItem('tpc_last_active_date', todayKey);
 
     tasks.forEach(t => {
-      t.code = sanitizeTaipowerCode(t.code);
+      if (t.code !== '📍地址導航') {
+        t.code = sanitizeTaipowerCode(t.code);
+      }
       if (t.isND || /nd/i.test(t.note || '')) {
         t.isND = true;
       }
@@ -906,7 +912,9 @@
       const bounds = [];
 
       tasks.forEach((t, idx) => {
-        t.code = sanitizeTaipowerCode(t.code);
+        if (t.code !== '📍地址導航') {
+          t.code = sanitizeTaipowerCode(t.code);
+        }
         const wgs = getTaskLatLng(t);
         if (!wgs) {
           caseMarkers.push(null);
@@ -934,7 +942,8 @@
         const timeStr = t.time ? ` | ${t.time}` : '';
         const cleanNote = cleanAndFixAddress(t.note || '');
         const ndTag = isND ? 'ND ' : '';
-        const labelText = `<b>#${idx + 1}${timeStr}</b> ${t.code}${ (isND || cleanNote) ? `<span class="case-road-text"> | ${ndTag}${cleanNote}</span>` : '' }`;
+        const displayTitle = (t.code === '📍地址導航') ? cleanNote : t.code;
+        const labelText = `<b>#${idx + 1}${timeStr}</b> ${displayTitle}${ (isND || (t.code !== '📍地址導航' && cleanNote)) ? `<span class="case-road-text"> | ${ndTag}${cleanNote}</span>` : '' }`;
         
         const tooltipClass = `case-label-large${isND ? ' nd-pin' : ''}${isSelected ? ' selected-case' : ''}`;
         const tooltip = marker.bindTooltip(labelText, {
@@ -946,12 +955,16 @@
         });
 
         const safeNoteParam = cleanNote.replace(/'/g, "\\'");
+        const safeCodeParam = t.code.replace(/'/g, "\\'");
+        const safeTimeParam = (t.time || '').replace(/'/g, "\\'");
+
         marker.bindPopup(`
           <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
           ${cleanNote ? `<b>地址/備註: ${cleanNote}</b><br>` : ''}
-          圖號: <b>${t.code}</b><br><br>
-          <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#0891b2;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:6px;">🗺️ 預覽路線</button>
-          <button onclick="openGoogleMaps(${lat}, ${lng}, '${safeNoteParam}')" style="background:#16a34a;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">🚗 Google 導航</button>
+          ${t.code === '📍地址導航' ? '類型: <b>地址導航</b>' : `圖號: <b>${t.code}</b>`}<br><br>
+          <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#0891b2;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🗺️ 預覽路線</button>
+          <button onclick="openGoogleMaps(${lat}, ${lng}, '${safeNoteParam}')" style="background:#16a34a;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🚗 Google 導航</button>
+          <button onclick="shareTaskInfo('${safeCodeParam}', '${safeNoteParam}', '${safeTimeParam}')" style="background:#9333ea;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">📤 分享工單資訊</button>
         `);
 
         marker.on('click', (e) => {
@@ -1157,7 +1170,18 @@
           });
           pendingNote = '';
         } else if (line && !timeStr && !isSystemNoiseLine(line)) {
-          pendingNote = line;
+          if (/[路街巷段號]/.test(line)) {
+            newTasks.push({
+              code: '📍地址導航',
+              time: timeStr || currentTime,
+              note: cleanAndFixAddress(line),
+              isND: /nd/i.test(line),
+              lat: null,
+              lng: null
+            });
+          } else {
+            pendingNote = line;
+          }
         }
       }
 
@@ -1168,7 +1192,17 @@
         renderTasks(true);
         selectTask(startIndex, false, false);
 
-        newTasks.forEach(async (taskItem) => {
+        for (let taskItem of newTasks) {
+          if (taskItem.code === '📍地址導航' && !taskItem.lat) {
+            const geo = await geocodeAddressToLatLng(taskItem.note);
+            if (geo) {
+              taskItem.lat = geo.lat;
+              taskItem.lng = geo.lng;
+              saveTasks();
+              renderTasks(true);
+            }
+            continue;
+          }
           const rawNoteCheck = cleanAndFixAddress(taskItem.note || '');
           if (rawNoteCheck.length < 3 || !/[路街巷段號]/.test(rawNoteCheck)) {
             taskItem.code = sanitizeTaipowerCode(taskItem.code);
@@ -1187,7 +1221,7 @@
               }
             }
           }
-        });
+        }
       }
     }
 
@@ -1205,7 +1239,7 @@
             badgeEl.innerText = upper[0];
             inputEl.value = trimmed.substring(1);
           }
-        } else if (/^[\u4e00-\u9fa5]/.test(trimmed)) {
+        } else if (/^[\u4e00-\u9fa5]/.test(trimmed) || /[路街巷段號]/.test(trimmed)) {
           badgeEl.innerText = '📍';
         } else if (!trimmed) {
           badgeEl.innerText = 'G';
@@ -1229,37 +1263,16 @@
         finalCode = oldTask.code;
       }
 
-      if ((!finalCode || finalCode.length < 9) && parsed.note && parsed.note.length >= 2) {
-        const addrQuery = parsed.note;
-        btnManualAdd.innerText = '定位中...';
-        btnManualAdd.disabled = true;
-
-        const geo = await geocodeAddressToLatLng(addrQuery);
-
-        btnManualAdd.innerText = '＋新增';
-        btnManualAdd.disabled = false;
-
-        let taskObj;
-        if (geo) {
-          const derivedCode = coordToPowerCode(geo.lat, geo.lng);
-          taskObj = {
-            code: derivedCode,
-            time: parsed.time || (isEditing && oldTask ? oldTask.time : ''),
-            note: addrQuery,
-            isND: parsed.isND,
-            lat: geo.lat,
-            lng: geo.lng,
-            isAddressNav: true
-          };
-        } else {
-          taskObj = {
-            code: '📍地址導航',
-            time: parsed.time || (isEditing && oldTask ? oldTask.time : ''),
-            note: addrQuery,
-            isND: parsed.isND,
-            isAddressNav: true
-          };
-        }
+      if ((!finalCode || finalCode.length < 9) && (parsed.note || /[路街巷段號]/.test(rawInput))) {
+        const addrQuery = parsed.note || cleanAndFixAddress(rawInput);
+        let taskObj = {
+          code: '📍地址導航',
+          time: parsed.time || (isEditing && oldTask ? oldTask.time : ''),
+          note: addrQuery,
+          isND: parsed.isND || /nd/i.test(rawInput),
+          lat: null,
+          lng: null
+        };
 
         if (isEditing) {
           tasks[targetIndex] = taskObj;
@@ -1269,8 +1282,17 @@
         }
 
         saveTasks();
-        renderTasks();
-        selectTask(targetIndex, true, true);
+        renderTasks(true);
+        selectTask(targetIndex, false, false);
+
+        const geo = await geocodeAddressToLatLng(addrQuery);
+        if (geo) {
+          taskObj.lat = geo.lat;
+          taskObj.lng = geo.lng;
+          saveTasks();
+          renderTasks(true);
+          selectTask(targetIndex, true, true);
+        }
         return true;
       }
 
@@ -1302,7 +1324,7 @@
       }
 
       saveTasks();
-      renderTasks();
+      renderTasks(true);
       selectTask(targetIndex, true, false);
 
       const twd67 = taipowerToTWD67(finalCode);
@@ -1311,7 +1333,7 @@
         const road = await fetchCleanAddress(wgs.lat, wgs.lng);
         taskObj.note = road || '施工地點';
         saveTasks();
-        renderTasks();
+        renderTasks(true);
       }
       return true;
     }
@@ -1351,10 +1373,10 @@
             </div>
             
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <label style="font-size:0.8rem;color:#94a3b8;font-weight:bold;">支援任意順序輸入（圖號 + 四碼時間 1113 + ND）：</label>
+              <label style="font-size:0.8rem;color:#94a3b8;font-weight:bold;">支援圖號或中文地址修改：</label>
               <div class="manual-input-bar" style="padding:6px 8px;background:#0f172a;border:1px solid #38bdf8;">
                 <span id="edit-prefix-badge" class="prefix-badge">G</span>
-                <input type="text" id="edit-modal-line-input" class="manual-input" style="font-size:1.05rem;" placeholder="如: 3850HE23 1113 ND" autocomplete="off" autocorrect="off" spellcheck="false">
+                <input type="text" id="edit-modal-line-input" class="manual-input" style="font-size:1.05rem;" placeholder="如: 3850HE23 或 永寧路185巷11號" autocomplete="off" autocorrect="off" spellcheck="false">
               </div>
             </div>
 
@@ -1450,14 +1472,16 @@
     function renderTasks(fitMap = false) {
       taskList.innerHTML = '';
       if (tasks.length === 0) {
-        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入 3850HE23 1113 ND 或按「📋 匯入」。</div>';
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按「📋 匯入」。</div>';
         markersLayer.clearLayers();
         routeLayer.clearLayers();
         return;
       }
 
       tasks.forEach((t, idx) => {
-        t.code = sanitizeTaipowerCode(t.code);
+        if (t.code !== '📍地址導航') {
+          t.code = sanitizeTaipowerCode(t.code);
+        }
         const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
         t.isND = isND;
         if (t.note) t.note = cleanAndFixAddress(t.note);
@@ -1467,6 +1491,7 @@
         
         const timeBadgeHtml = t.time ? `<span class="task-time-badge">${t.time}</span>` : '<span class="task-time-badge" style="opacity:0.2;">--:--</span>';
         const cleanNote = cleanAndFixAddress(t.note || '');
+        const displayTitle = (t.code === '📍地址導航') ? cleanNote : t.code;
         const displayDesc = isND ? `ND ${cleanNote || '施工地點'}` : (cleanNote || '施工地點');
         
         row.innerHTML = `
@@ -1474,8 +1499,8 @@
             <span class="drag-handle">☰</span>
             <span class="task-num-label">#${idx + 1}</span>
             ${timeBadgeHtml}
-            <span class="task-title">${t.code}</span>
-            <span class="task-desc">${displayDesc}</span>
+            <span class="task-title">${displayTitle}</span>
+            <span class="task-desc">${t.code === '📍地址導航' ? '(地址導航)' : displayDesc}</span>
           </div>
           <div class="row-actions">
             <button class="btn-edit-row" onclick="editTaskLineInline(${idx}, event)" title="快速編輯工單">✏️</button>
@@ -1524,7 +1549,9 @@
       if (idx < 0 || idx >= tasks.length) return;
       currentIndex = idx;
       const t = tasks[currentIndex];
-      t.code = sanitizeTaipowerCode(t.code);
+      if (t.code !== '📍地址導航') {
+        t.code = sanitizeTaipowerCode(t.code);
+      }
 
       const wgs = getTaskLatLng(t);
       const cleanNote = cleanAndFixAddress(t.note || '');
