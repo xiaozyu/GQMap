@@ -17,6 +17,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- PDF.js 用於自動解析並載入台電 PDF 圖資 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
 
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -205,6 +212,27 @@
     .float-btn.pin-mode-active { background: #a855f7; color: #fff; border-color: #fff; box-shadow: 0 0 12px #a855f7; }
     .float-btn.sort-mode-active { background: #dc2626; color: #fff; border-color: #fff; box-shadow: 0 0 12px #dc2626; }
     .float-btn.focus-mode-active { background: #f59e0b; color: #000; border-color: #fff; box-shadow: 0 0 12px #f59e0b; }
+    .float-btn.pdf-layer-active { background: #0ea5e9; color: #fff; border-color: #fff; box-shadow: 0 0 12px #0ea5e9; }
+
+    /* 左下角 1公尺微調十字鍵 */
+    .fine-tune-pad {
+      position: absolute; bottom: 16px; left: 12px;
+      width: 100px; height: 100px; z-index: 900;
+      background: rgba(15, 23, 42, 0.85); border: 1px solid #475569;
+      border-radius: 50%; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+      align-items: center; justify-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+    }
+    .ft-btn {
+      background: rgba(51, 65, 85, 0.8); color: #38bdf8; border: none; width: 28px; height: 28px;
+      border-radius: 50%; font-weight: bold; font-size: 13px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .ft-btn:active { background: #0ea5e9; color: #fff; }
+    .ft-center {
+      background: #1e293b; color: #facc15; font-size: 9px; font-family: monospace; border-radius: 4px;
+      width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid #64748b;
+    }
 
     #mapBanner {
       position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
@@ -392,10 +420,19 @@
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
     </div>
 
+    <!-- 左下角 1公尺微調十字鍵 -->
+    <div class="fine-tune-pad" id="fineTunePad">
+      <button class="ft-btn" onclick="fineTuneMap(0, 0.000009)" style="grid-column:2; grid-row:1;">▲</button>
+      <button class="ft-btn" onclick="fineTuneMap(-0.000009, 0)" style="grid-column:1; grid-row:2;">◀</button>
+      <div class="ft-center" title="1公尺微調">1m</div>
+      <button class="ft-btn" onclick="fineTuneMap(0.000009, 0)" style="grid-column:3; grid-row:2;">▶</button>
+      <button class="ft-btn" onclick="fineTuneMap(0, -0.000009)" style="grid-column:2; grid-row:3;">▼</button>
+    </div>
+
     <div id="map-floating-controls" class="floating-controls">
-      <div class="float-btn focus-mode-active" id="focusTaskBtn" onclick="toggleFocusTaskMode()" title="切換顯示預設據點（服務所與休息點）">🎯</div>
+      <div class="float-btn focus-mode-active" id="focusTaskBtn" onclick="toggleFocusTaskMode()" title="三階段顯示切換：僅工單 / 加顯示據點 / 純圖釘看圖">🎯</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
-      <div class="float-btn" id="autoSortBtn" onclick="confirmAutoOptimizeRoute()" title="依距離由遠到近順路收回">⚡</div>
+      <div class="float-btn" id="pdfLayerBtn" onclick="toggleTaipowerPdfLayer()" title="⚡ 台灣電圖資疊加開關">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
       <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
     </div>
@@ -734,6 +771,8 @@
     const routeLayer = L.layerGroup().addTo(map);
     let currentRoutingToken = 0;
 
+    // 三階段顯示模式: 0 = 僅工單, 1 = 加顯示據點, 2 = 純圖釘看圖模式
+    let displayModeState = 0; 
     let isFocusTaskOnly = true;
 
     function getCasePinIcon(isSelected, isND) {
@@ -748,7 +787,7 @@
     function reloadBaseMarkers() {
       baseLayer.clearLayers();
       baseMarkers.length = 0;
-      if (isFocusTaskOnly) return;
+      if (displayModeState === 0 || displayModeState === 2) return;
 
       const allBaseLocations = [...defaultBases, ...customLocations];
 
@@ -784,18 +823,37 @@
       });
     }
 
+    // 三階段顯示切換按鈕邏輯
     window.toggleFocusTaskMode = () => {
-      isFocusTaskOnly = !isFocusTaskOnly;
+      displayModeState = (displayModeState + 1) % 3;
       const btn = document.getElementById('focusTaskBtn');
-      if (isFocusTaskOnly) {
-        btn.classList.add('focus-mode-active');
+      if (displayModeState === 0) {
+        // 僅工單
+        isFocusTaskOnly = true;
+        btn.className = 'float-btn focus-mode-active';
         btn.innerText = '🎯';
+        btn.title = '目前模式：僅顯示工單 (點擊切換)';
         map.removeLayer(baseLayer);
-      } else {
-        btn.classList.remove('focus-mode-active');
+        if (markersLayer) map.addLayer(markersLayer);
+      } else if (displayModeState === 1) {
+        // 加顯示據點
+        isFocusTaskOnly = false;
+        btn.className = 'float-btn focus-mode-active';
+        btn.style.background = '#0284c7';
         btn.innerText = '👁️';
+        btn.title = '目前模式：加顯示據點 (點擊切換)';
         reloadBaseMarkers();
         map.addLayer(baseLayer);
+        if (markersLayer) map.addLayer(markersLayer);
+      } else {
+        // 純圖釘看圖模式不擋畫面
+        isFocusTaskOnly = true;
+        btn.className = 'float-btn';
+        btn.style.background = '#334155';
+        btn.innerText = '📍';
+        btn.title = '目前模式：純圖釘看圖模式不擋畫面 (點擊切換)';
+        map.removeLayer(baseLayer);
+        if (markersLayer) map.removeLayer(markersLayer);
       }
     };
 
@@ -1624,60 +1682,6 @@
       renderTasks(false);
     }
 
-    window.confirmAutoOptimizeRoute = () => {
-      if (tasks.length <= 1) return;
-      if (confirm("⚡ 確定要執行順路收回排工嗎？\n系統會自動將距離最遠的案件排在第一位，由遠到近依序收回。")) {
-        autoOptimizeRoute();
-      }
-    };
-
-    window.autoOptimizeRoute = () => {
-      let currLat = userLatLng ? userLatLng[0] : 24.2303;
-      let currLng = userLatLng ? userLatLng[1] : 120.5654;
-
-      const unvisited = [...tasks];
-      const optimized = [];
-
-      let furthestIdx = 0, maxDist = -1;
-      for (let i = 0; i < unvisited.length; i++) {
-        const wgs = getTaskLatLng(unvisited[i]);
-        if (!wgs) continue;
-        const d = Math.hypot(wgs.lat - currLat, wgs.lng - currLng);
-        if (d > maxDist) { maxDist = d; furthestIdx = i; }
-      }
-      
-      const firstTask = unvisited.splice(furthestIdx, 1)[0];
-      optimized.push(firstTask);
-
-      const wgsFirst = getTaskLatLng(firstTask);
-      if (wgsFirst) {
-        currLat = wgsFirst.lat;
-        currLng = wgsFirst.lng;
-      }
-
-      while (unvisited.length > 0) {
-        let nearestIdx = 0, minDist = Infinity;
-        for (let i = 0; i < unvisited.length; i++) {
-          const wgs = getTaskLatLng(unvisited[i]);
-          if (!wgs) continue;
-          const d = Math.hypot(wgs.lat - currLat, wgs.lng - currLng);
-          if (d < minDist) { minDist = d; nearestIdx = i; }
-        }
-        const next = unvisited.splice(nearestIdx, 1)[0];
-        const wgsNext = getTaskLatLng(next);
-        if (wgsNext) {
-          currLat = wgsNext.lat;
-          currLng = wgsNext.lng;
-        }
-        optimized.push(next);
-      }
-
-      tasks = optimized;
-      currentIndex = 0;
-      saveTasks();
-      renderTasks(true);
-    };
-
     window.toggleAddPinMode = () => {
       isAddPinMode = !isAddPinMode;
       const btn = document.getElementById('addPinBtn');
@@ -1840,6 +1844,162 @@
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
       );
     };
+
+    // ==========================================
+    // ⚡ 台電 PDF 圖資疊加與四周動態無縫拼接引擎
+    // ==========================================
+    let isTaipowerPdfLayerActive = false;
+    let taipowerPdfLayerGroup = L.layerGroup();
+    let activePdfOverlays = new Map(); // key -> { overlay, bounds }
+    let pdfCache = new Map(); // 快取上限 12 張
+
+    window.toggleTaipowerPdfLayer = () => {
+      isTaipowerPdfLayerActive = !isTaipowerPdfLayerActive;
+      const btn = document.getElementById('pdfLayerBtn');
+      if (isTaipowerPdfLayerActive) {
+        btn.classList.add('pdf-layer-active');
+        taipowerPdfLayerGroup.addTo(map);
+        updateDynamicPdfOverlays();
+        map.on('moveend zoomend', updateDynamicPdfOverlays);
+        alert("⚡ 台灣電圖資疊加已開啟：將依地圖視窗自動動態無縫拼接 PDF 圖資！");
+      } else {
+        btn.classList.remove('pdf-layer-active');
+        map.off('moveend zoomend', updateDynamicPdfOverlays);
+        map.removeLayer(taipowerPdfLayerGroup);
+        activePdfOverlays.clear();
+      }
+    };
+
+    // 左下角 1 公尺微調十字鍵實作
+    window.fineTuneMap = (dLat, dLng) => {
+      const center = map.getCenter();
+      map.setView([center.lat + dLat, center.lng + dLng], map.getZoom(), { animate: false });
+    };
+
+    function getRequiredPdfCodesForCurrentView() {
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      
+      const codes = new Set();
+      const stepLat = 0.005; // 約 500m 視窗網格
+      const stepLng = 0.007;
+
+      for (let lat = sw.lat; lat <= ne.lat + stepLat; lat += stepLat) {
+        for (let lng = sw.lng; lng <= ne.lng + stepLng; lng += stepLng) {
+          const code = coordToPowerCode(lat, lng);
+          if (code && code.length >= 9) {
+            // 目錄結構: ./115年圖資/GxxXX/Gxxxx.PDF
+            const prefixFolder = code.substring(0, 5); // 例如 G3850
+            const fileName = code.substring(0, 9);     // 例如 G3850HE23
+            codes.add({ folder: prefixFolder, file: fileName });
+          }
+        }
+      }
+      return Array.from(codes).slice(0, 12); // 快取上限 12 張
+    }
+
+    async function updateDynamicPdfOverlays() {
+      if (!isTaipowerPdfLayerActive) return;
+      const required = getRequiredPdfCodesForCurrentView();
+      const activeKeys = new Set(required.map(r => r.file));
+
+      // 移除視窗外的圖資
+      activePdfOverlays.forEach((val, key) => {
+        if (!activeKeys.has(key)) {
+          taipowerPdfLayerGroup.removeLayer(val.overlay);
+          activePdfOverlays.delete(key);
+        }
+      });
+
+      // 載入視窗內的圖資
+      for (let item of required) {
+        if (activePdfOverlays.has(item.file)) continue;
+
+        let imgUrl = pdfCache.get(item.file);
+        if (!imgUrl) {
+          imgUrl = await loadAndProcessTaipowerPdf(`./115年圖資/${item.folder}/${item.file}.PDF`);
+          if (imgUrl) {
+            if (pdfCache.size >= 12) {
+              const firstKey = pdfCache.keys().next().value;
+              pdfCache.delete(firstKey);
+            }
+            pdfCache.set(item.file, imgUrl);
+          }
+        }
+
+        if (imgUrl) {
+          const bounds = getPdfGeographicBounds(item.file);
+          if (bounds) {
+            const imageOverlay = L.imageOverlay(imgUrl, bounds, { opacity: 0.85, interactive: false });
+            taipowerPdfLayerGroup.addLayer(imageOverlay);
+            activePdfOverlays.set(item.file, { overlay: imageOverlay, bounds });
+          }
+        }
+      }
+    }
+
+    async function loadAndProcessTaipowerPdf(pdfPath) {
+      try {
+        if (!window.pdfjsLib) return null;
+        const loadingTask = pdfjsLib.getDocument(pdfPath);
+        const pdfDoc = await loadingTask.promise;
+        const page = await pdfDoc.getPage(1);
+
+        const scale = 2.0; // 高解析度渲染
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: context, viewport }).promise;
+
+        // 去白底並強化純黑線條，並強制內縮 25 像素去除原生的外框與格線
+        const imgData = context.getImageData(25, 25, canvas.width - 50, canvas.height - 50);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          let r = data[i], g = data[i+1], b = data[i+2];
+          // 去白底閥值
+          if (r > 210 && g > 210 && b > 210) {
+            data[i+3] = 0; // 設為全透明
+          } else {
+            // 強化純黑線條
+            data[i] = 0; data[i+1] = 0; data[i+2] = 0;
+            data[i+3] = 255;
+          }
+        }
+
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = canvas.width - 50;
+        outCanvas.height = canvas.height - 50;
+        const outCtx = outCanvas.getContext('2d');
+        outCtx.putImageData(imgData, 0, 0);
+
+        return outCanvas.toDataURL('image/png');
+      } catch (e) {
+        console.warn('PDF 圖資載入失敗或不存在:', pdfPath);
+        return null;
+      }
+    }
+
+    function getPdfGeographicBounds(code) {
+      // 根據台電圖號計算 TWD67 範圍並轉為 WGS84 矩形 Bounds
+      const swCode = code + '00';
+      const neCode = code + '99';
+      const sw67 = taipowerToTWD67(swCode);
+      const ne67 = taipowerToTWD67(neCode);
+      if (!sw67 || !ne67) return null;
+
+      const swWgs = twd67ToWGS84(sw67[0], sw67[1]);
+      const neWgs = twd67ToWGS84(ne67[0], ne67[1]);
+
+      return [
+        [swWgs.lat, swWgs.lng],
+        [neWgs.lat, neWgs.lng]
+      ];
+    }
+    // ==========================================
 
     document.getElementById('btn-import').onclick = async () => {
       try {
