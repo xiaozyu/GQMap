@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>⚡ 巨擎導航</title>
+  <title>⚡ 巨擎導航 CAD版</title>
   <meta name="theme-color" content="#0b0f19">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -489,11 +489,16 @@
   </div>
 
   <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const PDF_BASE_FOLDER = './115年圖資';
+    const PDF_RENDER_SCALE = 3.0;
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').then((reg) => {
           reg.update();
-        }).catch((err) => console.error('PWA 註冊失敗:', err));
+        }).catch(() => {});
       });
     }
 
@@ -775,7 +780,7 @@
       { name: "清水服務所", lat: 24.269184, lng: 120.576343, type: "station", desc: "台電公務點", permanent: true },
       { name: "沙鹿服務所", lat: 24.230309, lng: 120.565418, type: "station", desc: "台電公務點", permanent: true },
       { name: "龍井服務所", lat: 24.193150, lng: 120.546019, type: "station", desc: "台電公務點", permanent: true },
-      { name: "南勢溪公園", lat: 24.215784, lng: 120.564731, type: "rest", desc: "午休點", permanent: true },
+      { name: "Nansi Creek Park", lat: 24.215784, lng: 120.564731, type: "rest", desc: "午休點", permanent: true },
       { name: "萬興陸橋", lat: 24.169068, lng: 120.535600, type: "rest", desc: "午休點", permanent: true },
       { name: "中華向上陸橋", lat: 24.217655, lng: 120.544649, type: "rest", desc: "午休點", permanent: true },
       { name: "沙田國三交叉", lat: 24.173208, lng: 120.543228, type: "rest", desc: "停駐點", permanent: true },
@@ -792,9 +797,7 @@
     const routeLayer = L.layerGroup().addTo(map);
     let currentRoutingToken = 0;
 
-    // 三階段顯示切換 (1:僅工單 2:加顯示預設 3:全文字消失只留圖釘)
     let displayStage = 1;
-
     window.cycleDisplayMode = () => {
       displayStage = (displayStage % 3) + 1;
       applyDisplayMode();
@@ -824,7 +827,6 @@
       }
     }
 
-    // 台電 PDF 圖資裁切、去白底與四周無縫拼接引擎 (強制內縮 25px 濾掉黑框)
     let isCadOverlayEnabled = false;
     let cachedInnerCrop = null;
     const loadedCadTiles = new Map();
@@ -1083,7 +1085,14 @@
       loadVisibleCadTiles();
     });
 
-    const cadOverlayLayer = L.layerGroup().addTo(map);
+    function getCasePinIcon(isSelected, isND) {
+      const pinColor = isSelected ? 'gold' : (isND ? 'red' : 'blue');
+      return L.icon({
+        iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${pinColor}.png`,
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+      });
+    }
 
     function reloadBaseMarkers() {
       baseLayer.clearLayers();
@@ -1123,6 +1132,1158 @@
         baseMarkers.push(marker);
       });
     }
+
+    window.deleteCustomLocation = (index) => {
+      customLocations.splice(index, 1);
+      localStorage.setItem('tpc_custom_locations', JSON.stringify(customLocations));
+      reloadBaseMarkers();
+    };
+
+    window.promptAddCustomBase = (lat, lng, defaultName) => {
+      const name = prompt("請輸入自訂地標名稱:", defaultName || "");
+      if (!name || !name.trim()) return;
+      const desc = prompt("請輸入標籤分類:", "常用據點");
+      customLocations.push({ name: name.trim(), lat, lng, desc: desc ? desc.trim() : "常用據點", type: "custom", permanent: false });
+      localStorage.setItem('tpc_custom_locations', JSON.stringify(customLocations));
+      reloadBaseMarkers();
+      if (inspectMarker) { map.removeLayer(inspectMarker); inspectMarker = null; }
+    };
+
+    const todayKey = new Date().toISOString().split('T')[0];
+    let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
+    let lastActiveDate = localStorage.getItem('tpc_last_active_date');
+    let tasks = [];
+
+    if (lastActiveDate === todayKey) {
+      tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
+    } else {
+      let oldTasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
+      if (oldTasks.length > 0 && lastActiveDate) {
+        monthLogs[lastActiveDate] = [...oldTasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+      }
+      tasks = [];
+      localStorage.setItem('tpc_tasks', JSON.stringify([]));
+    }
+    localStorage.setItem('tpc_last_active_date', todayKey);
+
+    tasks.forEach(t => {
+      if (t.code !== '📍地址導航') {
+        t.code = sanitizeTaipowerCode(t.code);
+      }
+      if (t.isND || /nd/i.test(t.note || '')) {
+        t.isND = true;
+      }
+      if (t.note) t.note = cleanAndFixAddress(t.note);
+    });
+
+    let currentIndex = 0;
+    let currentViewMode = 'map';
+    let isTapSortMode = false;
+    let tapSortedOrder = [];
+    let isAddPinMode = false;
+    let inspectMarker = null;
+    let userLatLng = null, userMarker = null, userCircle = null, watchPositionId = null;
+    let currentUserCode = '';
+    let isFirstFixOfSession = false;
+
+    const taskList = document.getElementById('task-list');
+    const btnStartNav = document.getElementById('btn-start-nav');
+    const btnModeMap = document.getElementById('btn-mode-map');
+    const btnModeSv = document.getElementById('btn-mode-sv');
+    const leafletMapEl = document.getElementById('leaflet-map');
+    const streetviewframe = document.getElementById('streetview-frame');
+    const mapFloatingControls = document.getElementById('map-floating-controls');
+    const mapBanner = document.getElementById('mapBanner');
+    const mapBannerText = document.getElementById('mapBannerText');
+
+    function saveTasks() {
+      localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
+      if (tasks.length > 0) {
+        monthLogs[todayKey] = [...tasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+      }
+    }
+
+    function switchViewMode(mode) {
+      currentViewMode = mode;
+      btnModeMap.classList.toggle('active', mode === 'map');
+      btnModeSv.classList.toggle('active', mode === 'sv');
+
+      if (mode === 'map') {
+        streetviewframe.style.display = 'none';
+        leafletMapEl.style.display = 'block';
+        mapFloatingControls.style.display = 'flex';
+        if (isCadOverlayEnabled) document.getElementById('cad-calib-box').style.display = 'flex';
+        setTimeout(() => map.invalidateSize(), 50);
+        focusCurrentTaskOnMap();
+      } else {
+        leafletMapEl.style.display = 'none';
+        mapFloatingControls.style.display = 'none';
+        document.getElementById('cad-calib-box').style.display = 'none';
+        mapBanner.style.display = 'none';
+        streetviewframe.style.display = 'block';
+        updateStreetView();
+      }
+    }
+
+    btnModeMap.onclick = () => switchViewMode('map');
+    btnModeSv.onclick = () => switchViewMode('sv');
+
+    function updateStreetView() {
+      if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) {
+        streetviewframe.src = 'about:blank';
+        return;
+      }
+      const t = tasks[currentIndex];
+      const wgs = getTaskLatLng(t);
+      if (wgs) {
+        streetviewframe.src = `https://maps.google.com/maps?layer=c&cbll=${wgs.lat},${wgs.lng}&cbp=12,0,0,0,0&output=svembed`;
+      }
+    }
+
+    function renderLeafletCaseMarkers(fitAll = false) {
+      markersLayer.clearLayers();
+      caseMarkers.length = 0;
+      const bounds = [];
+
+      tasks.forEach((t, idx) => {
+        if (t.code !== '📍地址導航') {
+          t.code = sanitizeTaipowerCode(t.code);
+        }
+        const wgs = getTaskLatLng(t);
+        if (!wgs) {
+          caseMarkers.push(null);
+          return;
+        }
+        
+        let lat = wgs.lat;
+        let lng = wgs.lng;
+
+        t.lat = lat;
+        t.lng = lng;
+        bounds.push([lat, lng]);
+
+        const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
+        const isSelected = (idx === currentIndex);
+        const pinIcon = getCasePinIcon(isSelected, isND);
+
+        const baseZIndex = isSelected ? 5000 : (isND ? 3000 + idx * 10 : 1000 + idx * 10);
+        const marker = L.marker([lat, lng], {
+          icon: pinIcon,
+          interactive: true,
+          zIndexOffset: baseZIndex
+        }).addTo(markersLayer);
+
+        const timeStr = t.time ? ` | ${t.time}` : '';
+        const cleanNote = cleanAndFixAddress(t.note || '');
+        const ndTag = isND ? 'ND ' : '';
+        const displayTitle = (t.code === '📍地址導航') ? cleanNote : t.code;
+        const labelText = `<b>#${idx + 1}${timeStr}</b> ${displayTitle}${ (isND || (t.code !== '📍地址導航' && cleanNote)) ? `<span class="case-road-text"> | ${ndTag}${cleanNote}</span>` : '' }`;
+        
+        const tooltipClass = `case-label-large${isND ? ' nd-pin' : ''}${isSelected ? ' selected-case' : ''}`;
+        const tooltip = marker.bindTooltip(labelText, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -38],
+          className: tooltipClass,
+          interactive: true
+        });
+
+        const safeNoteParam = cleanNote.replace(/'/g, "\\'");
+        const safeCodeParam = t.code.replace(/'/g, "\\'");
+        const safeTimeParam = (t.time || '').replace(/'/g, "\\'");
+
+        marker.bindPopup(`
+          <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
+          ${cleanNote ? `<b>地址/備註: ${cleanNote}</b><br>` : ''}
+          ${t.code === '📍地址導航' ? '類型: <b>地址導航</b>' : `圖號: <b>${t.code}</b>`}<br><br>
+          <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#0891b2;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🗺️ 預覽路線</button>
+          <button onclick="openGoogleMaps(${lat}, ${lng}, '${safeNoteParam}')" style="background:#16a34a;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🚗 Google 導航</button>
+          <button onclick="shareTaskInfo('${safeCodeParam}', '${safeNoteParam}', '${safeTimeParam}')" style="background:#9333ea;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">📤 分享工單資訊</button>
+        `);
+
+        marker.on('click', (e) => {
+          if (isTapSortMode) {
+            L.DomEvent.stopPropagation(e);
+            marker.closePopup();
+            handleTapSortClick(t);
+          } else {
+            selectTask(idx, false, displayStage === 3);
+          }
+        });
+
+        tooltip.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (isTapSortMode) {
+            handleTapSortClick(t);
+          } else {
+            selectTask(idx, false, true);
+          }
+        });
+
+        caseMarkers.push(marker);
+      });
+
+      if (fitAll && bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 16 });
+      }
+    }
+
+    function updateCaseMarkersSelectionStyle() {
+      tasks.forEach((t, idx) => {
+        const marker = caseMarkers[idx];
+        if (!marker) return;
+        const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
+        const isSelected = (idx === currentIndex);
+        marker.setIcon(getCasePinIcon(isSelected, isND));
+        marker.setZIndexOffset(isSelected ? 5000 : (isND ? 3000 + idx * 10 : 1000 + idx * 10));
+        const tt = marker.getTooltip();
+        if (tt && tt.getElement()) {
+          tt.getElement().classList.toggle('selected-case', isSelected);
+        }
+      });
+    }
+
+    function focusCurrentTaskOnMap() {
+      if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) return;
+      const t = tasks[currentIndex];
+      const wgs = getTaskLatLng(t);
+      if (wgs) {
+        map.flyTo([wgs.lat, wgs.lng], isCadOverlayEnabled ? 18 : 16, { duration: 0.4 });
+      }
+    }
+
+    const COORD_REGEX = /[A-Za-z]?[0-9]{4}\s*[A-Za-z]{2}\s*(?:[0-9]{4}|[0-9]{2})/gi;
+    const TIME_REGEX = /(\d{1,2}):?(\d{2})?\s*[-~～]\s*(\d{1,2}):?(\d{2})?/;
+
+    function formatTimeStandard(lineText) {
+      const match = lineText.match(TIME_REGEX);
+      if (match) {
+        const startH = String(match[1]).padStart(2, '0');
+        const endH = String(match[3]).padStart(2, '0');
+        return `${startH}-${endH}`;
+      }
+      return '';
+    }
+
+    function isSystemNoiseLine(line) {
+      const noiseKeywords = [
+        "每頁", "施工地點", "領班", "預定施工日期", "承攬商",
+        "請選擇", "施工號碼", "工程類別", "施工時間", "工作內容",
+        "接戶線工作", "篩選條件", "DCIS", "工區別", "查驗作業", "綜合查詢", "工安查核"
+      ];
+      if (noiseKeywords.some(w => line.includes(w))) return true;
+      if (/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(line)) return true;
+      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號樓區鄉鎮市縣村里鄰]/.test(line)) return true;
+      return false;
+    }
+
+    function parseSingleTaskLine(rawText, defaultPrefix = 'G') {
+      if (!rawText) return { code: '', time: '', note: '', isND: false };
+      let text = rawText.trim();
+
+      let isND = false;
+      const ndRegex = /(?:^|[\s\[\(0-9])(nd)(?:$|[\s\]\)0-9])/i;
+      if (/\bnd\b/i.test(text) || /\[nd\]/i.test(text) || ndRegex.test(text) || /nd$/i.test(text) || /^nd/i.test(text)) {
+        isND = true;
+        text = text.replace(/\[?nd\]?/gi, ' ').trim();
+      }
+
+      let code = '';
+      COORD_REGEX.lastIndex = 0;
+      let codeMatch = text.match(COORD_REGEX);
+      if (codeMatch) {
+        let rawCode = codeMatch[0].replace(/\s+/g, '').toUpperCase();
+        if (/^[0-9]/.test(rawCode)) rawCode = (defaultPrefix || 'G') + rawCode;
+        code = sanitizeTaipowerCode(rawCode);
+        text = text.replace(codeMatch[0], ' ').trim();
+      } else {
+        let tokens = text.split(/[\s,]+/);
+        for (let tk of tokens) {
+          let cleanTk = tk.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (cleanTk.length >= 8 && cleanTk.length <= 11 && /[A-Z]/.test(cleanTk) && /\d{3,}/.test(cleanTk) && !/[路街巷段號]/.test(tk)) {
+            let rawCode = /^[0-9]/.test(cleanTk) ? (defaultPrefix || 'G') + cleanTk : cleanTk;
+            code = sanitizeTaipowerCode(rawCode);
+            text = text.replace(tk, ' ').trim();
+            break;
+          }
+        }
+      }
+
+      let time = '';
+      let dashTimeMatch = text.match(/(?:^|\D)(\d{1,2})(?::\d{2})?\s*[-~～]\s*(\d{1,2})(?::\d{2})?(?!\d)/);
+      if (dashTimeMatch) {
+        let h1 = parseInt(dashTimeMatch[1], 10);
+        let h2 = parseInt(dashTimeMatch[2], 10);
+        if (h1 >= 0 && h1 <= 24 && h2 >= 0 && h2 <= 24) {
+          time = `${String(h1).padStart(2, '0')}-${String(h2).padStart(2, '0')}`;
+          text = text.replace(dashTimeMatch[0], ' ').trim();
+        }
+      } else {
+        let compactTimeRegex = /(?:^|\s)([0-2]\d)([0-2]\d)(?!\s*[號樓巷弄段Ff])(?=\s|$)/;
+        let m = text.match(compactTimeRegex);
+        if (m) {
+          let h1 = parseInt(m[1], 10);
+          let h2 = parseInt(m[2], 10);
+          if (h1 >= 0 && h1 <= 23 && h2 >= 0 && h2 <= 24 && h1 < h2) {
+            time = `${String(h1).padStart(2, '0')}-${String(h2).padStart(2, '0')}`;
+            text = text.replace(m[0], ' ').trim();
+          }
+        }
+      }
+
+      let note = cleanAndFixAddress(text);
+      note = note.replace(/^\d{1,4}\s+/, '').replace(/\s+\d{1,4}$/, '').trim();
+      if (/^\d{1,4}$/.test(note)) note = '';
+
+      return { code, time, note, isND };
+    }
+
+    async function parseText(content) {
+      if (!content || !content.trim()) return;
+
+      const rawLines = content.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+      const newTasks = [];
+
+      const standaloneTimes = [];
+      const codeLinesCount = rawLines.filter(l => {
+        COORD_REGEX.lastIndex = 0;
+        return COORD_REGEX.test(l);
+      }).length;
+
+      rawLines.forEach(l => {
+        COORD_REGEX.lastIndex = 0;
+        if (formatTimeStandard(l) && !COORD_REGEX.test(l)) {
+          standaloneTimes.push(formatTimeStandard(l));
+        }
+      });
+
+      const useColumnZipMode = (standaloneTimes.length >= 2 && standaloneTimes.length === codeLinesCount);
+
+      let currentTime = '';
+      let pendingNote = '';
+      let codeLineIdx = 0;
+
+      for (let i = 0; i < rawLines.length; i++) {
+        let line = rawLines[i];
+        COORD_REGEX.lastIndex = 0;
+        const hasCoord = COORD_REGEX.test(line);
+        const timeStr = formatTimeStandard(line);
+
+        if (!hasCoord && !timeStr && isSystemNoiseLine(line)) continue;
+
+        if (timeStr && !useColumnZipMode) {
+          currentTime = timeStr;
+        }
+
+        COORD_REGEX.lastIndex = 0;
+        let matches = line.match(COORD_REGEX);
+        if (matches) {
+          const parsedLine = parseSingleTaskLine(line, 'G');
+          const assignedTime = useColumnZipMode ? (standaloneTimes[codeLineIdx] || '') : (parsedLine.time || timeStr || currentTime);
+          codeLineIdx++;
+
+          matches.forEach(m => {
+            let rawCode = m.replace(/\s+/g, '').toUpperCase();
+            const cleanCode = sanitizeTaipowerCode(rawCode);
+            
+            let note = parsedLine.note;
+            if (!note && pendingNote && !isSystemNoiseLine(pendingNote)) {
+              note = cleanAndFixAddress(pendingNote);
+            }
+
+            const isND = parsedLine.isND || /\bnd\b/i.test(note);
+
+            if (cleanCode && !tasks.some(t => t.code === cleanCode) && !newTasks.some(t => t.code === cleanCode)) {
+              newTasks.push({
+                code: cleanCode,
+                time: assignedTime,
+                note: note || '',
+                isND: isND
+              });
+            }
+          });
+          pendingNote = '';
+        } else if (line && !timeStr && !isSystemNoiseLine(line)) {
+          if (/[路街巷段號]/.test(line)) {
+            newTasks.push({
+              code: '📍地址導航',
+              time: timeStr || currentTime,
+              note: cleanAndFixAddress(line),
+              isND: /nd/i.test(line),
+              lat: null,
+              lng: null
+            });
+          } else {
+            pendingNote = line;
+          }
+        }
+      }
+
+      if (newTasks.length > 0) {
+        const startIndex = tasks.length;
+        tasks.push(...newTasks);
+        saveTasks();
+        renderTasks(true);
+        selectTask(startIndex, false, false);
+
+        for (let taskItem of newTasks) {
+          if (taskItem.code === '📍地址導航' && !taskItem.lat) {
+            const geo = await geocodeAddressToLatLng(taskItem.note);
+            if (geo) {
+              taskItem.lat = geo.lat;
+              taskItem.lng = geo.lng;
+              saveTasks();
+              renderTasks(true);
+            }
+            continue;
+          }
+          const rawNoteCheck = cleanAndFixAddress(taskItem.note || '');
+          if (rawNoteCheck.length < 3 || !/[路街巷段號]/.test(rawNoteCheck)) {
+            taskItem.code = sanitizeTaipowerCode(taskItem.code);
+            const twd67 = taipowerToTWD67(taskItem.code);
+            if (twd67) {
+              const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+              const road = await fetchCleanAddress(wgs.lat, wgs.lng);
+              if (road) {
+                taskItem.note = road;
+                saveTasks();
+                renderTasks();
+              } else if (!taskItem.note) {
+                taskItem.note = '施工地點';
+                saveTasks();
+                renderTasks();
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const manualCodeInput = document.getElementById('manual-code-input');
+    const btnManualAdd = document.getElementById('btn-manual-add');
+    const prefixBadge = document.getElementById('prefix-badge');
+
+    function bindPrefixInputBehavior(inputEl, badgeEl) {
+      inputEl.addEventListener('input', () => {
+        let val = inputEl.value;
+        let trimmed = val.trimStart();
+        if (/^[A-Za-z][0-9]/.test(trimmed)) {
+          let upper = trimmed.toUpperCase();
+          if (/^[A-W][0-9]/.test(upper)) {
+            badgeEl.innerText = upper[0];
+            inputEl.value = trimmed.substring(1);
+          }
+        } else if (/^[\u4e00-\u9fa5]/.test(trimmed) || /[路街巷段號]/.test(trimmed)) {
+          badgeEl.innerText = '📍';
+        } else if (!trimmed) {
+          badgeEl.innerText = 'G';
+        }
+      });
+    }
+
+    bindPrefixInputBehavior(manualCodeInput, prefixBadge);
+
+    async function processAndSaveTaskInput(rawInput, targetIndex = null, activePrefix = 'G') {
+      if (!rawInput || !rawInput.trim()) return false;
+      
+      const isEditing = (targetIndex !== null && targetIndex >= 0 && targetIndex < tasks.length);
+      const oldTask = isEditing ? tasks[targetIndex] : null;
+
+      const effectivePrefix = (activePrefix === '📍') ? 'G' : (activePrefix || 'G');
+      let parsed = parseSingleTaskLine(rawInput, effectivePrefix);
+      let finalCode = parsed.code;
+
+      if (!finalCode && isEditing && oldTask && !parsed.note) {
+        finalCode = oldTask.code;
+      }
+
+      if ((!finalCode || finalCode.length < 9) && (parsed.note || /[路街巷段號]/.test(rawInput))) {
+        const addrQuery = parsed.note || cleanAndFixAddress(rawInput);
+        let taskObj = {
+          code: '📍地址導航',
+          time: parsed.time || (isEditing && oldTask ? oldTask.time : ''),
+          note: addrQuery,
+          isND: parsed.isND || /nd/i.test(rawInput),
+          lat: null,
+          lng: null
+        };
+
+        if (isEditing) {
+          tasks[targetIndex] = taskObj;
+        } else {
+          tasks.push(taskObj);
+          targetIndex = tasks.length - 1;
+        }
+
+        saveTasks();
+        renderTasks(true);
+        selectTask(targetIndex, false, false);
+
+        const geo = await geocodeAddressToLatLng(addrQuery);
+        if (geo) {
+          taskObj.lat = geo.lat;
+          taskObj.lng = geo.lng;
+          saveTasks();
+          renderTasks(true);
+          selectTask(targetIndex, true, true);
+        }
+        return true;
+      }
+
+      if (!finalCode || finalCode.length < 9) return false;
+
+      const isSameCode = isEditing && oldTask && (oldTask.code === finalCode);
+      let initialNote = parsed.note;
+
+      if (!initialNote) {
+        if (isSameCode && oldTask.note && !oldTask.note.includes('查詢地址')) {
+          initialNote = cleanAndFixAddress(oldTask.note).replace(/^\d{1,4}\s*/, '');
+        } else {
+          initialNote = '查詢地址中...';
+        }
+      }
+
+      let taskObj = { 
+        code: finalCode, 
+        time: parsed.time, 
+        note: initialNote || '查詢地址中...', 
+        isND: parsed.isND 
+      };
+
+      if (isEditing) {
+        tasks[targetIndex] = taskObj;
+      } else {
+        tasks.push(taskObj);
+        targetIndex = tasks.length - 1;
+      }
+
+      saveTasks();
+      renderTasks(true);
+      selectTask(targetIndex, true, false);
+
+      const twd67 = taipowerToTWD67(finalCode);
+      if (twd67 && (!taskObj.note || taskObj.note === '查詢地址中...' || taskObj.note === '施工地點')) {
+        const wgs = twd67ToWGS84(twd67[0], twd67[1]);
+        const road = await fetchCleanAddress(wgs.lat, wgs.lng);
+        taskObj.note = road || '施工地點';
+        saveTasks();
+        renderTasks(true);
+      }
+      return true;
+    }
+
+    async function handleManualAdd() {
+      let rawInput = manualCodeInput.value.trim();
+      if (!rawInput) return;
+      
+      let currentPrefix = prefixBadge.innerText.toUpperCase() || 'G';
+      let success = await processAndSaveTaskInput(rawInput, null, currentPrefix);
+      if (success) {
+        manualCodeInput.value = '';
+        prefixBadge.innerText = 'G';
+      } else {
+        alert("請輸入有效圖號（如 3850HE23）或地址！");
+      }
+    }
+
+    btnManualAdd.onclick = handleManualAdd;
+    manualCodeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') handleManualAdd();
+    });
+
+    let editingTaskIndex = null;
+
+    function ensureEditModalExists() {
+      let modal = document.getElementById('task-edit-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'task-edit-modal';
+        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:3000;display:none;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.innerHTML = `
+          <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:440px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-weight:bold;color:#38bdf8;font-size:1.05rem;border-bottom:1px solid #334155;padding-bottom:8px;">
+              <span>✏️ 快速修改工單</span>
+              <button id="modal-close-x" style="background:none;border:none;color:#cbd5e1;font-size:1.3rem;cursor:pointer;">✕</button>
+            </div>
+            
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="font-size:0.8rem;color:#94a3b8;font-weight:bold;">支援圖號或中文地址修改：</label>
+              <div class="manual-input-bar" style="padding:6px 8px;background:#0f172a;border:1px solid #38bdf8;">
+                <span id="edit-prefix-badge" class="prefix-badge">G</span>
+                <input type="text" id="edit-modal-line-input" class="manual-input" style="font-size:1.05rem;" placeholder="如: 3850HE23 或 永寧路185巷11號" autocomplete="off" autocorrect="off" spellcheck="false">
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+              <button id="modal-btn-cancel" style="background:#475569;border:none;color:#fff;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;">取消</button>
+              <button id="modal-btn-save" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:6px;font-weight:bold;cursor:pointer;">儲存修改</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+
+        const editInputEl = document.getElementById('edit-modal-line-input');
+        const editBadgeEl = document.getElementById('edit-prefix-badge');
+        bindPrefixInputBehavior(editInputEl, editBadgeEl);
+
+        document.getElementById('modal-close-x').onclick = closeEditModal;
+        document.getElementById('modal-btn-cancel').onclick = closeEditModal;
+        document.getElementById('modal-btn-save').onclick = saveEditModalData;
+        editInputEl.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') saveEditModalData();
+        });
+      }
+      return modal;
+    }
+
+    function closeEditModal() {
+      const modal = document.getElementById('task-edit-modal');
+      if (modal) modal.style.display = 'none';
+      editingTaskIndex = null;
+    }
+
+    window.editTaskLineInline = (idx, event) => {
+      event.stopPropagation();
+      editingTaskIndex = idx;
+      const t = tasks[idx];
+
+      const modal = ensureEditModalExists();
+      const editBadgeEl = document.getElementById('edit-prefix-badge');
+      const editInputEl = document.getElementById('edit-modal-line-input');
+
+      if (t.code === '📍地址導航') {
+        editBadgeEl.innerText = '📍';
+        let parts = [t.note || ''];
+        if (t.time) parts.push(t.time);
+        if (t.isND) parts.push('ND');
+        editInputEl.value = parts.join(' ');
+      } else {
+        const fullCode = sanitizeTaipowerCode(t.code);
+        const prefixChar = /^[A-Z]/.test(fullCode) ? fullCode[0] : 'G';
+        const bodyCode = /^[A-Z]/.test(fullCode) ? fullCode.substring(1) : fullCode;
+
+        editBadgeEl.innerText = prefixChar;
+
+        let parts = [bodyCode];
+        if (t.time) parts.push(t.time);
+        if (t.isND) parts.push('ND');
+
+        editInputEl.value = parts.join(' ');
+      }
+
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        editInputEl.focus();
+        editInputEl.select();
+      }, 80);
+    };
+
+    async function saveEditModalData() {
+      if (editingTaskIndex === null || editingTaskIndex < 0 || editingTaskIndex >= tasks.length) {
+        closeEditModal();
+        return;
+      }
+
+      const editBadgeEl = document.getElementById('edit-prefix-badge');
+      const editInputEl = document.getElementById('edit-modal-line-input');
+      let rawInput = editInputEl.value.trim();
+      if (!rawInput) {
+        alert("輸入內容不可為空！");
+        return;
+      }
+
+      let activePrefix = editBadgeEl.innerText.toUpperCase() || 'G';
+      let success = await processAndSaveTaskInput(rawInput, editingTaskIndex, activePrefix);
+      if (success) {
+        closeEditModal();
+      } else {
+        alert("格式錯誤！");
+      }
+    }
+
+    let sortableInstance = null;
+
+    function renderTasks(fitMap = false) {
+      taskList.innerHTML = '';
+      if (tasks.length === 0) {
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按「📋 匯入」。</div>';
+        markersLayer.clearLayers();
+        routeLayer.clearLayers();
+        return;
+      }
+
+      tasks.forEach((t, idx) => {
+        if (t.code !== '📍地址導航') {
+          t.code = sanitizeTaipowerCode(t.code);
+        }
+        const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
+        t.isND = isND;
+        if (t.note) t.note = cleanAndFixAddress(t.note);
+
+        const row = document.createElement('div');
+        row.className = `task-row ${idx === currentIndex ? 'active' : ''} ${isND ? 'nd-case' : ''}`;
+        
+        const timeBadgeHtml = t.time ? `<span class="task-time-badge">${t.time}</span>` : '<span class="task-time-badge" style="opacity:0.2;">--:--</span>';
+        const cleanNote = cleanAndFixAddress(t.note || '');
+        const displayTitle = (t.code === '📍地址導航') ? cleanNote : t.code;
+        const displayDesc = isND ? `ND ${cleanNote || '施工地點'}` : (cleanNote || '施工地點');
+        
+        row.innerHTML = `
+          <div class="task-left">
+            <span class="drag-handle">☰</span>
+            <span class="task-num-label">#${idx + 1}</span>
+            ${timeBadgeHtml}
+            <span class="task-title">${displayTitle}</span>
+            <span class="task-desc">${t.code === '📍地址導航' ? '(地址導航)' : displayDesc}</span>
+          </div>
+          <div class="row-actions">
+            <button class="btn-edit-row" onclick="editTaskLineInline(${idx}, event)" title="快速編輯工單">✏️</button>
+            <button onclick="deleteTask(${idx})" title="刪除此筆工單">✕</button>
+          </div>
+        `;
+
+        row.onclick = (e) => {
+          if (e.target.tagName === 'BUTTON') return;
+          selectTask(idx, true, displayStage === 3);
+        };
+
+        taskList.appendChild(row);
+      });
+
+      if (sortableInstance) sortableInstance.destroy();
+      sortableInstance = new Sortable(taskList, {
+        animation: 180,
+        delay: 150,
+        delayOnTouchOnly: true,
+        touchStartThreshold: 3,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onStart: function() {
+          if (navigator.vibrate) navigator.vibrate(35);
+        },
+        onEnd: function(evt) {
+          const oldIdx = evt.oldIndex, newIdx = evt.newIndex;
+          if (oldIdx === newIdx) return;
+          const moved = tasks.splice(oldIdx, 1)[0];
+          tasks.splice(newIdx, 0, moved);
+
+          if (currentIndex === oldIdx) currentIndex = newIdx;
+          else if (oldIdx < currentIndex && newIdx >= currentIndex) currentIndex--;
+          else if (oldIdx > currentIndex && newIdx <= currentIndex) currentIndex++;
+
+          saveTasks();
+          renderTasks(false);
+        }
+      });
+
+      renderLeafletCaseMarkers(fitMap);
+    }
+
+    function selectTask(idx, panToMarker = true, openPopup = false) {
+      if (idx < 0 || idx >= tasks.length) return;
+      currentIndex = idx;
+      const t = tasks[currentIndex];
+      if (t.code !== '📍地址導航') {
+        t.code = sanitizeTaipowerCode(t.code);
+      }
+
+      const wgs = getTaskLatLng(t);
+      const cleanNote = cleanAndFixAddress(t.note || '');
+
+      if (wgs) {
+        btnStartNav.href = `https://www.google.com/maps/dir/?api=1&destination=${wgs.lat},${wgs.lng}`;
+        btnStartNav.style.opacity = '1';
+        btnStartNav.style.pointerEvents = 'auto';
+
+        if (currentViewMode === 'sv') {
+          updateStreetView();
+        } else {
+          updateCaseMarkersSelectionStyle();
+          if (panToMarker) map.flyTo([wgs.lat, wgs.lng], isCadOverlayEnabled ? 18 : 16, { duration: 0.4 });
+          if (openPopup && caseMarkers[idx]) {
+            caseMarkers[idx].openPopup();
+          }
+          if (isCadOverlayEnabled) {
+            loadVisibleCadTiles();
+          }
+        }
+      } else if (cleanNote) {
+        const q = /(台中|臺中|縣|市)/.test(cleanNote) ? cleanNote : `台中市沙鹿區${cleanNote}`;
+        btnStartNav.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}`;
+        btnStartNav.style.opacity = '1';
+        btnStartNav.style.pointerEvents = 'auto';
+      } else {
+        btnStartNav.style.opacity = '0.4';
+        btnStartNav.style.pointerEvents = 'none';
+      }
+
+      document.querySelectorAll('.task-row').forEach((el, i) => {
+        el.classList.toggle('active', i === currentIndex);
+      });
+    }
+
+    window.deleteTask = (idx) => {
+      tasks.splice(idx, 1);
+      if (currentIndex >= tasks.length) currentIndex = Math.max(0, tasks.length - 1);
+      saveTasks();
+      renderTasks(false);
+      if (tasks.length > 0) selectTask(currentIndex, false, false);
+    };
+
+    window.toggleTapSortMode = () => {
+      if (tasks.length <= 1) return;
+      isTapSortMode = !isTapSortMode;
+      const btn = document.getElementById('tapSortBtn');
+      if (isTapSortMode) {
+        tapSortedOrder = [];
+        btn.classList.add('sort-mode-active');
+        mapBannerText.innerText = `🎯 請依序點擊地圖上的圖釘排工 (0/${tasks.length})`;
+        mapBanner.style.display = 'flex';
+      } else {
+        btn.classList.remove('sort-mode-active');
+        mapBanner.style.display = 'none';
+      }
+    };
+
+    function handleTapSortClick(taskItem) {
+      if (tapSortedOrder.includes(taskItem)) return;
+      tapSortedOrder.push(taskItem);
+      mapBannerText.innerText = `🎯 已排 ${tapSortedOrder.length}/${tasks.length} 件...`;
+
+      const remaining = tasks.filter(t => !tapSortedOrder.includes(t));
+      tasks = [...tapSortedOrder, ...remaining];
+
+      if (tapSortedOrder.length === tasks.length) {
+        toggleTapSortMode();
+        currentIndex = 0;
+      }
+      saveTasks();
+      renderTasks(false);
+    }
+
+    window.toggleAddPinMode = () => {
+      isAddPinMode = !isAddPinMode;
+      const btn = document.getElementById('addPinBtn');
+      if (isAddPinMode) {
+        btn.classList.add('pin-mode-active');
+        mapBannerText.innerText = '📍 請點擊地圖任意位置查詢圖號或新增據點';
+        mapBanner.style.display = 'flex';
+      } else {
+        btn.classList.remove('pin-mode-active');
+        mapBanner.style.display = 'none';
+      }
+    };
+
+    map.on('click', async (e) => {
+      if (!isAddPinMode) return;
+      toggleAddPinMode();
+      const { lat, lng } = e.latlng;
+      const code = coordToPowerCode(lat, lng);
+      silentCopy(code);
+
+      if (isCadOverlayEnabled) {
+        loadVisibleCadTiles();
+      }
+
+      if (inspectMarker) map.removeLayer(inspectMarker);
+      inspectMarker = L.marker([lat, lng], {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        })
+      }).addTo(map);
+
+      const road = await fetchCleanAddress(lat, lng);
+      inspectMarker.bindTooltip(`<b>${code}</b> (已複製)${road ? ` | ${road}` : ''}`, {
+        permanent: true, direction: 'top', offset: [0, -35], className: 'inspect-label'
+      });
+
+      inspectMarker.bindPopup(`
+        <b>🔍 點位圖號解析</b><br>
+        ${road ? `路名: <b>${road}</b><br>` : ''}
+        圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
+        <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
+        <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
+      `).openPopup();
+    });
+
+    window.triggerRouteAndLocate = (targetLat, targetLng) => {
+      map.closePopup();
+      if (!navigator.geolocation) { fetchRouteData(targetLat, targetLng); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { updateLivePosition(pos, false); fetchRouteData(targetLat, targetLng); },
+        () => fetchRouteData(targetLat, targetLng),
+        { enableHighAccuracy: true, timeout: 3000 }
+      );
+    };
+
+    async function fetchRouteData(targetLat, targetLng) {
+      routeLayer.clearLayers();
+      const token = ++currentRoutingToken;
+      const startPt = userLatLng ? [userLatLng[0], userLatLng[1]] : [24.2303, 120.5654];
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startPt[1]},${startPt[0]};${targetLng},${targetLat}?overview=full&geometries=geojson`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (token !== currentRoutingToken) return;
+        if (data.routes && data.routes.length > 0) {
+          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          const poly = L.polyline(coords, { color: '#00f0ff', weight: 6, opacity: 0.9 }).addTo(routeLayer);
+          map.fitBounds(poly.getBounds(), { padding: [50, 50] });
+          return;
+        }
+      } catch (e) {}
+    }
+
+    function copyCurrentUserCode(e) {
+      if (e) L.DomEvent.stopPropagation(e);
+      if (!currentUserCode || !userMarker) return;
+      silentCopy(currentUserCode);
+      if (navigator.vibrate) navigator.vibrate(40);
+      userMarker.setTooltipContent(`✅ 已複製 ${currentUserCode}`);
+      setTimeout(() => {
+        if (userMarker && currentUserCode) {
+          userMarker.setTooltipContent(`📍 ${currentUserCode}`);
+        }
+      }, 1200);
+    }
+
+    function updateLivePosition(pos, forceCenter = false) {
+      userLatLng = [pos.coords.latitude, pos.coords.longitude];
+      currentUserCode = coordToPowerCode(userLatLng[0], userLatLng[1]);
+      const accuracy = Math.min(pos.coords.accuracy || 20, 120);
+
+      if (userMarker) {
+        userMarker.setLatLng(userLatLng);
+        userMarker.setTooltipContent(`📍 ${currentUserCode}`);
+        userCircle.setLatLng(userLatLng);
+        userCircle.setRadius(accuracy);
+      } else {
+        userCircle = L.circle(userLatLng, {
+          radius: accuracy,
+          color: '#3b82f6',
+          weight: 1,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.15,
+          interactive: false
+        }).addTo(map);
+
+        const blueDotIcon = L.divIcon({
+          className: 'google-blue-dot-wrapper',
+          html: '<div class="google-blue-dot"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+
+        userMarker = L.marker(userLatLng, {
+          icon: blueDotIcon,
+          zIndexOffset: 9000,
+          interactive: true
+        }).addTo(map);
+
+        const userTooltip = userMarker.bindTooltip(`📍 ${currentUserCode}`, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -10],
+          className: 'user-loc-label',
+          interactive: true
+        });
+
+        userMarker.on('click', copyCurrentUserCode);
+        userTooltip.on('click', copyCurrentUserCode);
+      }
+
+      if (forceCenter) {
+        map.panTo(userLatLng, { animate: true, duration: 0.4 });
+      }
+    }
+
+    window.toggleLiveTracking = () => {
+      const btn = document.getElementById('trackingBtn');
+      if (watchPositionId !== null) {
+        navigator.geolocation.clearWatch(watchPositionId);
+        watchPositionId = null;
+        btn.classList.remove('tracking-active');
+        btn.innerText = '🚗';
+        return;
+      }
+      if (!navigator.geolocation) return;
+      btn.classList.add('tracking-active');
+      btn.innerText = '🔴';
+      isFirstFixOfSession = true;
+
+      if (userLatLng) {
+        map.panTo(userLatLng, { animate: true, duration: 0.4 });
+        isFirstFixOfSession = false;
+      }
+
+      watchPositionId = navigator.geolocation.watchPosition(
+        (pos) => {
+          updateLivePosition(pos, isFirstFixOfSession);
+          isFirstFixOfSession = false;
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    };
+
+    document.getElementById('btn-import').onclick = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) { parseText(text); return; }
+      } catch (err) {}
+      showMultilineInputModal();
+    };
+
+    function showMultilineInputModal() {
+      let modal = document.getElementById('manual-paste-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'manual-paste-modal';
+        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.innerHTML = `
+          <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:480px;padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <div style="font-weight:bold;color:#38bdf8;font-size:1rem;">📋 貼上派工單文字 (支援多行)</div>
+            <textarea id="paste-textarea" style="width:100%;height:160px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#facc15;font-family:monospace;font-size:0.9rem;padding:8px;resize:none;outline:none;" placeholder="把整段圈選的文字貼在此處..."></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button id="btn-cancel-paste" style="background:#475569;border:none;color:#fff;padding:8px 14px;border-radius:6px;font-weight:bold;">取消</button>
+              <button id="btn-confirm-paste" style="background:#2563eb;border:none;color:#fff;padding:8px 16px;border-radius:6px;font-weight:bold;">解析匯入</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('btn-cancel-paste').onclick = () => modal.style.display = 'none';
+        document.getElementById('btn-confirm-paste').onclick = () => {
+          const val = document.getElementById('paste-textarea').value;
+          modal.style.display = 'none';
+          document.getElementById('paste-textarea').value = '';
+          parseText(val);
+        };
+      }
+      modal.style.display = 'flex';
+      setTimeout(() => document.getElementById('paste-textarea').focus(), 100);
+    }
+
+    document.getElementById('btn-clear').onclick = () => {
+      if (confirm('確定清空今日的所有工單？')) {
+        tasks = [];
+        saveTasks();
+        renderTasks();
+        streetviewframe.src = 'about:blank';
+      }
+    };
+
+    let viewYear = new Date().getFullYear(), viewMonth = new Date().getMonth(), selectedDate = todayKey;
+    const calendarModal = document.getElementById('calendar-modal');
+    const calendarBody = document.getElementById('calendar-body');
+    const calTitle = document.getElementById('cal-title');
+
+    document.getElementById('btn-month').onclick = () => {
+      viewYear = new Date().getFullYear();
+      viewMonth = new Date().getMonth();
+      selectedDate = todayKey;
+      renderCalendar();
+      updateActionSheet(todayKey);
+      calendarModal.style.display = 'block';
+    };
+    document.getElementById('btn-close-modal').onclick = () => calendarModal.style.display = 'none';
+
+    function renderCalendar() {
+      calendarBody.innerHTML = '';
+      calTitle.innerText = `${viewYear} 年 ${viewMonth + 1} 月`;
+      ['日', '一', '二', '三', '四', '五', '六'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-weekday';
+        h.innerText = d;
+        calendarBody.appendChild(h);
+      });
+      const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+      const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
+      for (let i = 0; i < firstDay; i++) calendarBody.appendChild(document.createElement('div'));
+
+      for (let day = 1; day <= totalDays; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-day';
+        const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (dateStr === todayKey) cell.classList.add('today');
+        if (dateStr === selectedDate) cell.classList.add('selected');
+        const dayRecords = monthLogs[dateStr] || [];
+        if (dayRecords.length > 0) cell.classList.add('has-data');
+        cell.innerHTML = `<span>${day}</span>${dayRecords.length > 0 ? `<span class="badge-count">${dayRecords.length}件</span>` : ''}`;
+        cell.onclick = () => {
+          selectedDate = dateStr;
+          document.querySelectorAll('.cal-day').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+          updateActionSheet(dateStr);
+        };
+        calendarBody.appendChild(cell);
+      }
+    }
+
+    document.getElementById('cal-prev').onclick = () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCalendar(); };
+    document.getElementById('cal-next').onclick = () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCalendar(); };
+
+    function updateActionSheet(dateStr) {
+      document.getElementById('day-action-sheet').style.display = 'block';
+      document.getElementById('sheet-date-text').innerText = `📅 ${dateStr}`;
+      const records = monthLogs[dateStr] || [];
+      const btnLoad = document.getElementById('btn-action-load');
+      const btnCopy = document.getElementById('btn-action-copy');
+      const btnDel = document.getElementById('btn-action-del');
+
+      if (records.length > 0) {
+        document.getElementById('sheet-count-text').innerText = `(共 ${records.length} 件工單)`;
+        document.getElementById('sheet-summary-text').innerHTML = records.map((t, i) => `${i + 1}. #${i + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('<br>');
+        btnLoad.disabled = btnCopy.disabled = btnDel.disabled = false;
+        btnLoad.style.opacity = btnCopy.style.opacity = btnDel.style.opacity = '1';
+      } else {
+        document.getElementById('sheet-count-text').innerText = '(尚無紀錄)';
+        document.getElementById('sheet-summary-text').innerText = '當天沒有保存工單，可點下方按鈕存入目前案件。';
+        btnLoad.disabled = btnCopy.disabled = btnDel.disabled = true;
+        btnLoad.style.opacity = btnCopy.style.opacity = btnDel.style.opacity = '0.35';
+      }
+    }
+
+    document.getElementById('btn-action-load').onclick = () => {
+      const records = monthLogs[selectedDate];
+      if (records && records.length > 0) {
+        tasks = [...records];
+        saveTasks();
+        renderTasks(true);
+        selectTask(0, false, false);
+        calendarModal.style.display = 'none';
+      }
+    };
+
+    document.getElementById('btn-action-copy').onclick = () => {
+      const records = monthLogs[selectedDate];
+      if (!records || records.length === 0) return;
+      const text = `${selectedDate} 工單紀錄：\n` + records.map((t, idx) => `#${idx + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('\n');
+      silentCopy(text);
+    };
+
+    document.getElementById('btn-action-save').onclick = () => {
+      if (tasks.length === 0) return;
+      if (confirm(`是否將目前畫面上的 ${tasks.length} 筆案件存入 ${selectedDate}？`)) {
+        monthLogs[selectedDate] = [...tasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+        renderCalendar();
+        updateActionSheet(selectedDate);
+      }
+    };
+
+    document.getElementById('btn-action-del').onclick = () => {
+      if (!monthLogs[selectedDate]) return;
+      if (confirm(`⚠️ 確定要刪除 ${selectedDate} 的所有工單紀錄嗎？`)) {
+        delete monthLogs[selectedDate];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+        renderCalendar();
+        updateActionSheet(selectedDate);
+      }
+    };
 
     renderTasks(true);
     if (tasks.length > 0) {
