@@ -879,13 +879,43 @@
     }
 
     function findInnerGridBox(ctx, W, H) {
-      // 強制鎖定標準裁切邊距與固定寬高，確保每張圖拼貼時毫絲不差，徹底解決交界處岔開問題
-      const cropLeft = Math.round(W * 0.047) + 25;
-      const cropTop = Math.round(H * 0.046) + 25;
-      const cropRight = Math.round(W * 0.953) - 25;
-      const measuredW = cropRight - cropLeft;
+      const imgData = ctx.getImageData(0, 0, W, H);
+      const data = imgData.data;
+      function isBlackPx(x, y) {
+        const i = (Math.floor(y) * W + Math.floor(x)) * 4;
+        return data[i] < 110 && data[i+1] < 110 && data[i+2] < 110 && data[i+3] > 100;
+      }
+      function countH(y, startX, endX) {
+        let cnt = 0, step = 4;
+        for (let x = startX; x <= endX; x += step) { if (isBlackPx(x, y)) cnt++; }
+        return cnt / ((endX - startX) / step);
+      }
+      function countV(x, startY, endY) {
+        let cnt = 0, step = 4;
+        for (let y = startY; y <= endY; y += step) { if (isBlackPx(x, y)) cnt++; }
+        return cnt / ((endY - startY) / step);
+      }
+      let topLines = [];
+      for (let y = Math.floor(H * 0.02); y < H * 0.20; y++) {
+        if (countH(y, W * 0.25, W * 0.75) > 0.65) { if (topLines.length === 0 || y - topLines[topLines.length - 1] > 6) topLines.push(y); }
+      }
+      let top = (topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046))) + 25;
+      
+      let leftLines = [];
+      for (let x = Math.floor(W * 0.015); x < W * 0.20; x++) {
+        if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (leftLines.length === 0 || x - leftLines[leftLines.length - 1] > 6) leftLines.push(x); }
+      }
+      let left = (leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047))) + 25;
+
+      let rightLines = [];
+      for (let x = Math.floor(W * 0.985); x > W * 0.80; x--) {
+        if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (rightLines.length === 0 || rightLines[rightLines.length - 1] - x > 6) rightLines.push(x); }
+      }
+      let right = (rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953))) - 25;
+
+      const measuredW = right - left;
       const targetH = Math.round(measuredW * (500 / 800));
-      return { x: cropLeft, y: cropTop, w: measuredW, h: targetH };
+      return { x: left, y: top, w: measuredW, h: targetH };
     }
 
     async function fetchAndRenderPdfMap(mapId) {
