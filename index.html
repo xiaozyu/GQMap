@@ -192,7 +192,6 @@
     #leaflet-map { width: 100%; height: 100%; z-index: 1; }
     iframe#streetview-frame { width: 100%; height: 100%; border: none; display: none; }
 
-    /* 階段 3：隱藏所有工單文字標籤，只留圖釘 */
     .hide-all-case-labels .case-label-large {
       display: none !important;
     }
@@ -226,18 +225,31 @@
       padding: 6px 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;
       box-shadow: 0 3px 10px rgba(0,0,0,0.6);
     }
+    
+    /* 圓形十字小搖桿樣式 */
     #cad-nudge-pad {
       background: rgba(15, 23, 42, 0.95); border: 1px solid #475569;
-      border-radius: 10px; padding: 10px; display: none; flex-direction: column;
-      align-items: center; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+      border-radius: 50%; width: 124px; height: 124px;
+      position: relative; display: none; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.7); margin-bottom: 4px;
     }
-    .nudge-row { display: flex; gap: 6px; align-items: center; }
-    .nudge-btn {
-      background: #1e293b; color: #fff; border: 1px solid #64748b;
-      border-radius: 6px; width: 38px; height: 34px; font-size: 14px;
-      font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    .dpad-btn {
+      position: absolute; background: #1e293b; color: #38bdf8;
+      border: 1px solid #64748b; border-radius: 6px; width: 36px; height: 34px;
+      font-size: 13px; font-weight: bold; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
-    .nudge-btn:active { background: #3b82f6; transform: scale(0.95); }
+    .dpad-btn:active { background: #3b82f6; color: #fff; transform: scale(0.95); }
+    .dpad-up { top: 6px; left: 44px; border-radius: 8px 8px 4px 4px; }
+    .dpad-down { bottom: 6px; left: 44px; border-radius: 4px 4px 8px 8px; }
+    .dpad-left { top: 45px; left: 6px; border-radius: 8px 4px 4px 8px; }
+    .dpad-right { top: 45px; right: 6px; border-radius: 4px 8px 8px 4px; }
+    .dpad-center {
+      top: 45px; left: 44px; width: 36px; height: 34px; border-radius: 6px;
+      background: #334155; font-size: 10px; color: #facc15; border: 1px solid #64748b;
+      display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: bold;
+    }
+    .dpad-center:active { background: #dc2626; color: #fff; }
 
     #mapBanner {
       position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
@@ -425,26 +437,18 @@
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
     </div>
 
-    <!-- 左下角：微調十字鍵 -->
+    <!-- 左下角：十字小搖桿圖資微調區 -->
     <div id="cad-calib-box">
       <div id="cad-nudge-pad">
-        <div style="font-size:11px;color:#94a3b8;font-weight:bold;">圖資微調 (1m/格)</div>
-        <div class="nudge-row">
-          <button class="nudge-btn" onclick="nudgeCadOverlay(0, 1)">▲</button>
-        </div>
-        <div class="nudge-row">
-          <button class="nudge-btn" onclick="nudgeCadOverlay(-1, 0)">◀</button>
-          <button class="nudge-btn" style="width:46px;font-size:11px;background:#334155;" onclick="resetCadOffset()">歸零</button>
-          <button class="nudge-btn" onclick="nudgeCadOverlay(1, 0)">▶</button>
-        </div>
-        <div class="nudge-row">
-          <button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button>
-        </div>
-        <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
+        <button class="dpad-btn dpad-up" onclick="nudgeCadOverlay(0, 1)">▲</button>
+        <button class="dpad-btn dpad-left" onclick="nudgeCadOverlay(-1, 0)">◀</button>
+        <button class="dpad-center" onclick="resetCadOffset()" title="歸零">歸零</button>
+        <button class="dpad-btn dpad-right" onclick="nudgeCadOverlay(1, 0)">▶</button>
+        <button class="dpad-btn dpad-down" onclick="nudgeCadOverlay(0, -1)">▼</button>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text">⚡ 圖資準備中...</span>
-        <button onclick="toggleNudgePad()" style="background:#334155;border:1px solid #64748b;color:#fff;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">⚙️校準</button>
+        <button onclick="toggleNudgePad()" style="background:#334155;border:1px solid #64748b;color:#fff;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">🕹️微調</button>
       </div>
     </div>
 
@@ -729,15 +733,6 @@
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
-    }
-
-    function openGoogleMaps(lat, lng, addressQuery = '') {
-      if ((lat === null || lat === undefined || isNaN(lat)) && addressQuery) {
-        const q = /(台中|臺中|縣|市)/.test(addressQuery) ? addressQuery : `台中市沙鹿區${addressQuery}`;
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}`, '_blank');
-        return;
-      }
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
     }
 
     window.shareTaskInfo = (code, note, time) => {
@@ -1290,9 +1285,9 @@
           interactive: true
         });
 
-        const safeNoteParam = cleanNote.replace(/'/g, "\\'");
-        const safeCodeParam = t.code.replace(/'/g, "\\'");
-        const safeTimeParam = (t.time || '').replace(/'/g, "\\'");
+        const safeNoteParam = cleanNote.replace(/'/g, "\\\'");
+        const safeCodeParam = t.code.replace(/'/g, "\\\'");
+        const safeTimeParam = (t.time || '').replace(/'/g, "\\\'");
 
         marker.bindPopup(`
           <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
@@ -1976,7 +1971,14 @@
       }
     };
 
+    /* 點擊地圖空白處自動收合小搖桿 */
     map.on('click', async (e) => {
+      const pad = document.getElementById('cad-nudge-pad');
+      if (pad && pad.style.display === 'flex') {
+        pad.style.display = 'none';
+        return;
+      }
+
       if (!isAddPinMode) return;
       toggleAddPinMode();
       const { lat, lng } = e.latlng;
