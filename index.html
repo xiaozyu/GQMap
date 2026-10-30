@@ -33,31 +33,32 @@
       flex-shrink: 0;
       background: #0b0f19;
       z-index: 20;
-      position: relative;
     }
 
     .top-toolbar {
       display: flex;
-      gap: 4px;
+      gap: 3px;
       margin-bottom: 3px;
     }
     .btn-top {
-      padding: 6px 0;
+      padding: 5px 0;
       border: 1px solid #334155;
       color: #f8fafc;
       border-radius: 5px;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: bold;
       cursor: pointer;
       text-align: center;
       box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
-    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.5; }
-    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 1; }
-    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
-    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
+    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.4; }
+    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 0.9; }
+    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.1; }
+    /* 精巧的折疊按鈕 */
+    .btn-collapse { background: #475569; border-color: #64748b; flex: 0.8; font-size: 0.75rem; }
+    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1; display: none; }
 
-    /* 折疊時將上方輸入列隱藏 */
+    /* 折疊時隱藏上方手動輸入列 */
     .top-section.collapsed .manual-input-bar {
       display: none !important;
     }
@@ -90,43 +91,16 @@
 
     .task-list-section {
       background: #131d31; border-radius: 5px; border: 1px solid #1e293b;
-      padding: 2px 3px 14px 3px; height: 185px; overflow-y: auto; touch-action: pan-y;
+      padding: 2px 3px; height: 185px; overflow-y: auto; touch-action: pan-y;
       transition: height 0.2s ease;
-      position: relative;
-    }
-    /* 折疊狀態：只留兩行高度 */
-    .task-list-section.collapsed {
-      height: 68px !important;
-      overflow-y: hidden !important;
-      padding-bottom: 12px !important;
-    }
-
-    /* 放在紅圈位置的精巧摺疊小按鈕/拉柄 */
-    .btn-collapse-handle {
-      position: absolute;
-      bottom: 2px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #334155;
-      color: #38bdf8;
-      border: 1px solid #475569;
-      border-radius: 10px 10px 0 0;
-      width: 56px;
-      height: 14px;
-      font-size: 9px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 30;
-      box-shadow: 0 -1px 4px rgba(0,0,0,0.4);
-    }
-    .btn-collapse-handle:active {
-      background: #0284c7;
-      color: #fff;
     }
     
+    /* 折疊狀態：高度壓縮至兩行 (顯示上一件與目前案件)，對應紅框地圖最大化 */
+    .task-list-section.collapsed {
+      height: 64px !important;
+      overflow-y: hidden !important;
+    }
+
     .task-row {
       display: flex; align-items: center; justify-content: space-between;
       min-height: 30px; padding: 2px 4px; margin-bottom: 2px;
@@ -436,6 +410,7 @@
       <button id="btn-import" class="btn-top btn-import">📋 匯入</button>
       <button id="btn-clear" class="btn-top btn-clear">清空</button>
       <button id="btn-month" class="btn-top btn-month">📅 月紀錄</button>
+      <button id="btn-collapse-toggle" class="btn-top btn-collapse">📐 折疊</button>
       <button id="btn-install" class="btn-top btn-install">📲 安裝</button>
     </div>
 
@@ -447,8 +422,6 @@
 
     <div id="task-list-section" class="task-list-section">
       <div id="task-list"></div>
-      <!-- 紅圈處的精巧摺疊拉柄按鈕 -->
-      <div id="btn-collapse-handle" class="btn-collapse-handle" title="展開/收合工單">▲ 收合</div>
     </div>
   </div>
 
@@ -1024,10 +997,6 @@
     async function loadVisibleCadTiles() {
       if (!isCadOverlayEnabled || map.getZoom() < 16) return;
 
-      const center = map.getCenter();
-      const centerMapId = coordToPowerCode(center.lat, center.lng).substring(0, 5).toUpperCase();
-      const neededMaps = [centerMapId]; // 確保中心點第一優先載入
-
       const b = map.getBounds();
       const sw97 = wgs84ToTWD97(b.getSouth(), b.getWest());
       const ne97 = wgs84ToTWD97(b.getNorth(), b.getEast());
@@ -1041,6 +1010,11 @@
       const endY   = Math.floor((maxY67 - 2650000) / 500);
 
       const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
+      const neededMaps = [];
+
+      const center = map.getCenter();
+      const centerMapId = coordToPowerCode(center.lat, center.lng).substring(0, 5);
+      neededMaps.push(centerMapId);
 
       for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
@@ -1072,7 +1046,7 @@
 
       if (loadingCadSet.has(mapId)) return;
       loadingCadSet.add(mapId);
-      if (statusText) statusText.innerText = `⏳ 載入中心圖資 ${mapId}...`;
+      if (statusText) statusText.innerText = `⏳ 拼接圖資 ${mapId}...`;
 
       try {
         const dataUrl = await fetchAndRenderPdfMap(mapId);
@@ -1196,17 +1170,14 @@
 
     if (lastActiveDate === todayKey) {
       tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
-      if (tasks.length === 0) {
-        tasks = JSON.parse(localStorage.getItem('tpc_last_backup_tasks') || '[]');
-      }
     } else {
       let oldTasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
       if (oldTasks.length > 0 && lastActiveDate) {
         monthLogs[lastActiveDate] = [...oldTasks];
         localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
       }
-      tasks = JSON.parse(localStorage.getItem('tpc_last_backup_tasks') || '[]');
-      localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
+      tasks = [];
+      localStorage.setItem('tpc_tasks', JSON.stringify([]));
     }
     localStorage.setItem('tpc_last_active_date', todayKey);
 
@@ -1233,7 +1204,7 @@
     const taskList = document.getElementById('task-list');
     const taskListSection = document.getElementById('task-list-section');
     const topSectionContainer = document.getElementById('top-section-container');
-    const btnCollapseHandle = document.getElementById('btn-collapse-handle');
+    const btnCollapseToggle = document.getElementById('btn-collapse-toggle');
     const btnStartNav = document.getElementById('btn-start-nav');
     const btnModeMap = document.getElementById('btn-mode-map');
     const btnModeSv = document.getElementById('btn-mode-sv');
@@ -1244,17 +1215,16 @@
     const mapBannerText = document.getElementById('mapBannerText');
 
     let isListCollapsed = false;
-    btnCollapseHandle.onclick = () => {
+    btnCollapseToggle.onclick = () => {
       isListCollapsed = !isListCollapsed;
       taskListSection.classList.toggle('collapsed', isListCollapsed);
       topSectionContainer.classList.toggle('collapsed', isListCollapsed);
-      btnCollapseHandle.innerHTML = isListCollapsed ? '▼ 展開' : '▲ 收合';
+      btnCollapseToggle.innerText = isListCollapsed ? '📐 展開' : '📐 折疊';
       renderTasks(false);
     };
 
     function saveTasks() {
       localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
-      localStorage.setItem('tpc_last_backup_tasks', JSON.stringify(tasks)); // 雙重防護備份防清空
       if (tasks.length > 0) {
         monthLogs[todayKey] = [...tasks];
         localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
@@ -1878,7 +1848,7 @@
       }
 
       if (tasks.length === 0) {
-        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按「📋 匯入」。</div>';
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按<span>📋 匯入</span>。</div>';
         markersLayer.clearLayers();
         routeLayer.clearLayers();
         return;
@@ -1994,7 +1964,7 @@
       }
 
       document.querySelectorAll('.task-row').forEach((el, i) => {
-        el.classList.remove('active');
+        el.classList.toggle('active', i === currentIndex);
       });
     }
 
@@ -2251,7 +2221,6 @@
     };
 
     let viewYear = new Date().getFullYear(), viewMonth = new Date().getMonth(), selectedDate = todayKey;
-    let isHistoryPreviewMode = false;
     const calendarModal = document.getElementById('calendar-modal');
     const calendarBody = document.getElementById('calendar-body');
     const calTitle = document.getElementById('cal-title');
@@ -2260,20 +2229,11 @@
       viewYear = new Date().getFullYear();
       viewMonth = new Date().getMonth();
       selectedDate = todayKey;
-      isHistoryPreviewMode = false;
       renderCalendar();
       updateActionSheet(todayKey);
       calendarModal.style.display = 'block';
     };
-    document.getElementById('btn-close-modal').onclick = () => {
-      calendarModal.style.display = 'none';
-      if (isHistoryPreviewMode) {
-        tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
-        renderTasks(true);
-        if (tasks.length > 0) selectTask(0, false, false);
-        isHistoryPreviewMode = false;
-      }
-    };
+    document.getElementById('btn-close-modal').onclick = () => calendarModal.style.display = 'none';
 
     function renderCalendar() {
       calendarBody.innerHTML = '';
@@ -2323,7 +2283,6 @@
         document.getElementById('sheet-summary-text').innerHTML = records.map((t, i) => `${i + 1}. #${i + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('<br>');
         btnLoad.disabled = btnCopy.disabled = btnDel.disabled = false;
         btnLoad.style.opacity = btnCopy.style.opacity = btnDel.style.opacity = '1';
-        btnLoad.innerText = (dateStr === todayKey) ? "🚗 載入今日紀錄" : "🔍 安全預覽此日紀錄 (不覆蓋今天)";
       } else {
         document.getElementById('sheet-count-text').innerText = '(尚無紀錄)';
         document.getElementById('sheet-summary-text').innerText = '當天沒有保存工單，可點下方按鈕存入目前案件。';
@@ -2334,23 +2293,13 @@
 
     document.getElementById('btn-action-load').onclick = () => {
       const records = monthLogs[selectedDate];
-      if (!records || records.length === 0) return;
-
-      if (selectedDate === todayKey) {
+      if (records && records.length > 0) {
         tasks = [...records];
+        saveTasks();
         renderTasks(true);
         selectTask(0, false, false);
-        isHistoryPreviewMode = false;
         calendarModal.style.display = 'none';
-        return;
       }
-
-      isHistoryPreviewMode = true;
-      tasks = [...records];
-      renderTasks(true);
-      selectTask(0, false, false);
-      calendarModal.style.display = 'none';
-      alert(`✅ 已切換為 ${selectedDate} 歷史紀錄【安全預覽模式】。\n\n註：這不會覆蓋你今天的工單！若要恢復或關閉，只需重新整理網頁即可。`);
     };
 
     document.getElementById('btn-action-copy').onclick = () => {
@@ -2358,7 +2307,6 @@
       if (!records || records.length === 0) return;
       const text = `${selectedDate} 工單紀錄：\n` + records.map((t, idx) => `#${idx + 1} | ${t.time || ''} ${t.isND ? '[ND] ' : ''}${t.code} ${t.note}`).join('\n');
       silentCopy(text);
-      alert("✅ 已成功複製該日紀錄文字！");
     };
 
     document.getElementById('btn-action-save').onclick = () => {
@@ -2368,7 +2316,6 @@
         localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
         renderCalendar();
         updateActionSheet(selectedDate);
-        alert("✅ 儲存成功！");
       }
     };
 
