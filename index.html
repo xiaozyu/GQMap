@@ -26,6 +26,7 @@
       background: #0b0f19; color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden; display: flex; flex-direction: column;
+      transition: all 0.2s ease;
     }
 
     .top-section {
@@ -33,35 +34,29 @@
       flex-shrink: 0;
       background: #0b0f19;
       z-index: 20;
+      transition: transform 0.25s ease, opacity 0.2s ease;
     }
 
     .top-toolbar {
       display: flex;
-      gap: 3px;
+      gap: 4px;
       margin-bottom: 3px;
     }
     .btn-top {
-      padding: 5px 0;
+      padding: 6px 0;
       border: 1px solid #334155;
       color: #f8fafc;
       border-radius: 5px;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       font-weight: bold;
       cursor: pointer;
       text-align: center;
       box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
-    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.4; }
-    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 0.9; }
-    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.1; }
-    /* 精巧的折疊按鈕 */
-    .btn-collapse { background: #475569; border-color: #64748b; flex: 0.8; font-size: 0.75rem; }
-    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1; display: none; }
-
-    /* 折疊時隱藏上方手動輸入列 */
-    .top-section.collapsed .manual-input-bar {
-      display: none !important;
-    }
+    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.5; }
+    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 1; }
+    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
+    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
 
     .manual-input-bar {
       display: flex; align-items: center;
@@ -92,15 +87,8 @@
     .task-list-section {
       background: #131d31; border-radius: 5px; border: 1px solid #1e293b;
       padding: 2px 3px; height: 185px; overflow-y: auto; touch-action: pan-y;
-      transition: height 0.2s ease;
     }
     
-    /* 折疊狀態：高度壓縮至兩行 (顯示上一件與目前案件)，對應紅框地圖最大化 */
-    .task-list-section.collapsed {
-      height: 64px !important;
-      overflow-y: hidden !important;
-    }
-
     .task-row {
       display: flex; align-items: center; justify-content: space-between;
       min-height: 30px; padding: 2px 4px; margin-bottom: 2px;
@@ -182,6 +170,7 @@
     .nav-action-bar {
       display: flex; gap: 6px; padding: 4px 8px;
       background: #0f172a; flex-shrink: 0; border-top: 1px solid #1e293b;
+      transition: transform 0.25s ease, opacity 0.2s ease;
     }
     .btn-nav-start {
       flex: 2; background: #16a34a; color: #fff; border: 1px solid #4ade80;
@@ -209,6 +198,10 @@
     .hide-all-case-labels .case-label-large {
       display: none !important;
     }
+    /* 第4階段：隱藏全部工單圖釘與標籤 */
+    .hide-all-markers .leaflet-marker-pane {
+      display: none !important;
+    }
 
     .floating-controls {
       position: absolute; bottom: 16px; right: 12px;
@@ -228,6 +221,16 @@
     .float-btn.disp-mode-1 { background: #f59e0b; color: #000; border-color: #fff; box-shadow: 0 0 10px #f59e0b; }
     .float-btn.disp-mode-2 { background: #0284c7; color: #fff; border-color: #fff; box-shadow: 0 0 10px #0284c7; }
     .float-btn.disp-mode-3 { background: #10b981; color: #fff; border-color: #fff; box-shadow: 0 0 10px #10b981; }
+    .float-btn.disp-mode-4 { background: #64748b; color: #fff; border-color: #fff; box-shadow: 0 0 10px #64748b; }
+
+    #fullscreen-restore-btn {
+      position: absolute; top: 12px; right: 12px; z-index: 2500;
+      background: rgba(15, 23, 42, 0.85); border: 1.5px solid #38bdf8; color: #38bdf8;
+      border-radius: 50%; width: 44px; height: 44px; font-size: 18px;
+      display: none; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    }
+    #fullscreen-restore-btn:active { background: #0284c7; color: #fff; transform: scale(0.95); }
 
     #cad-calib-box {
       position: absolute; bottom: 16px; left: 10px; z-index: 900;
@@ -405,12 +408,11 @@
 </head>
 <body>
 
-  <div id="top-section-container" class="top-section">
+  <div id="top-section" class="top-section">
     <div class="top-toolbar">
       <button id="btn-import" class="btn-top btn-import">📋 匯入</button>
       <button id="btn-clear" class="btn-top btn-clear">清空</button>
       <button id="btn-month" class="btn-top btn-month">📅 月紀錄</button>
-      <button id="btn-collapse-toggle" class="btn-top btn-collapse">📐 折疊</button>
       <button id="btn-install" class="btn-top btn-install">📲 安裝</button>
     </div>
 
@@ -420,12 +422,12 @@
       <button id="btn-manual-add" class="btn-manual-add">＋新增</button>
     </div>
 
-    <div id="task-list-section" class="task-list-section">
+    <div class="task-list-section">
       <div id="task-list"></div>
     </div>
   </div>
 
-  <div class="nav-action-bar">
+  <div id="nav-action-bar" class="nav-action-bar">
     <a id="btn-start-nav" class="btn-nav-start" target="_blank">🚗 開始導航</a>
     <button id="btn-mode-map" class="btn-mode-switch active">🗺️ 地圖</button>
     <button id="btn-mode-sv" class="btn-mode-switch">📷 街景</button>
@@ -437,6 +439,12 @@
 
     <div id="mapBanner">
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
+    </div>
+
+    <div id="fullscreen-restore-btn" onclick="toggleFullscreenCleanMode()" title="退出清淨模式">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 14v6h6M20 10V4h-6M14 4l6 6M10 20l-6-6"/>
+      </svg>
     </div>
 
     <!-- 左下角：微調十字鍵 -->
@@ -463,7 +471,12 @@
     </div>
 
     <div id="map-floating-controls" class="floating-controls">
-      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="三階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字)">🎯</div>
+      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+      </div>
+      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)">🎯</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
@@ -794,11 +807,13 @@
       { name: "清水服務所", lat: 24.269184, lng: 120.576343, type: "station", desc: "台電公務點", permanent: true },
       { name: "沙鹿服務所", lat: 24.230309, lng: 120.565418, type: "station", desc: "台電公務點", permanent: true },
       { name: "龍井服務所", lat: 24.193150, lng: 120.546019, type: "station", desc: "台電公務點", permanent: true },
-      { name: "Nansi Creek Park", lat: 24.215784, lng: 120.564731, type: "rest", desc: "午休點", permanent: true },
-      { name: "萬興陸橋", lat: 24.169068, lng: 120.535600, type: "rest", desc: "午休點", permanent: true },
+      { name: "南勢溪公園", lat: 24.215784, lng: 120.564731, type: "rest", desc: "午休點", permanent: true },
+      { name: "龍井路橋", lat: 24.192123, lng: 120.541865, type: "rest", desc: "午休點", permanent: true }, 
+      { name: "二高萬興陸橋", lat: 24.169068, lng: 120.535600, type: "rest", desc: "午休點", permanent: true },
       { name: "中華向上陸橋", lat: 24.217655, lng: 120.544649, type: "rest", desc: "午休點", permanent: true },
       { name: "沙田國三交叉", lat: 24.173208, lng: 120.543228, type: "rest", desc: "停駐點", permanent: true },
       { name: "甲一便當", lat: 24.154347, lng: 120.544246, type: "food", desc: "用餐點", permanent: true },
+      { name: "鴨母寮米糕", lat: 24.225329, lng: 120.535103, type: "food", desc: "用餐點", permanent: true },
       { name: "阿水師便當", lat: 24.204069, lng: 120.522585, type: "food", desc: "用餐點", permanent: true }
     ];
 
@@ -813,33 +828,73 @@
 
     let displayStage = 1;
     window.cycleDisplayMode = () => {
-      displayStage = (displayStage % 3) + 1;
+      displayStage = (displayStage % 4) + 1;
       applyDisplayMode();
     };
 
     function applyDisplayMode() {
       const btn = document.getElementById('focusTaskBtn');
       const mapEl = document.getElementById('leaflet-map');
-      btn.classList.remove('disp-mode-1', 'disp-mode-2', 'disp-mode-3');
+      btn.classList.remove('disp-mode-1', 'disp-mode-2', 'disp-mode-3', 'disp-mode-4');
 
       if (displayStage === 1) {
         btn.classList.add('disp-mode-1');
         btn.innerText = '🎯';
         map.removeLayer(baseLayer);
-        mapEl.classList.remove('hide-all-case-labels');
+        mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 2) {
         btn.classList.add('disp-mode-2');
         btn.innerText = '👁️';
         reloadBaseMarkers();
         map.addLayer(baseLayer);
-        mapEl.classList.remove('hide-all-case-labels');
+        mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 3) {
         btn.classList.add('disp-mode-3');
         btn.innerText = '📍';
         map.removeLayer(baseLayer);
         mapEl.classList.add('hide-all-case-labels');
+        mapEl.classList.remove('hide-all-markers');
+      } else if (displayStage === 4) {
+        btn.classList.add('disp-mode-4');
+        btn.innerText = '🗺️';
+        map.removeLayer(baseLayer);
+        mapEl.classList.add('hide-all-markers');
       }
     }
+
+    let isFullscreenClean = false;
+    window.toggleFullscreenCleanMode = () => {
+      isFullscreenClean = !isFullscreenClean;
+      const topSec = document.getElementById('top-section');
+      const navBar = document.getElementById('nav-action-bar');
+      const restoreBtn = document.getElementById('fullscreen-restore-btn');
+      const cleanBtn = document.getElementById('cleanModeBtn');
+
+      if (isFullscreenClean) {
+        topSec.style.transform = 'translateY(-100%)';
+        topSec.style.opacity = '0';
+        navBar.style.transform = 'translateY(100%)';
+        navBar.style.opacity = '0';
+        setTimeout(() => {
+          topSec.style.display = 'none';
+          navBar.style.display = 'none';
+        }, 200);
+        restoreBtn.style.display = 'flex';
+        cleanBtn.classList.add('tracking-active');
+      } else {
+        topSec.style.display = 'block';
+        navBar.style.display = 'flex';
+        setTimeout(() => {
+          topSec.style.transform = 'translateY(0)';
+          topSec.style.opacity = '1';
+          navBar.style.transform = 'translateY(0)';
+          navBar.style.opacity = '1';
+        }, 10);
+        restoreBtn.style.display = 'none';
+        cleanBtn.classList.remove('tracking-active');
+      }
+      setTimeout(() => map.invalidateSize(), 250);
+    };
 
     let isCadOverlayEnabled = false;
     let cachedInnerCrop = null;
@@ -1016,14 +1071,28 @@
       const centerMapId = coordToPowerCode(center.lat, center.lng).substring(0, 5);
       neededMaps.push(centerMapId);
 
+      const gridCandidates = [];
+
       for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
           if (x >= 0 && x <= 99 && y >= 0 && y <= 99) {
             const id = `G${pad2(x)}${pad2(y)}`;
-            if (!neededMaps.includes(id)) neededMaps.push(id);
+            if (!neededMaps.includes(id)) {
+              const dummyZone = id[0];
+              const dummyX = parseInt(id.substring(1,3),10);
+              const dummyY = parseInt(id.substring(3,5),10);
+              const dummyBounds = computeTileBounds(dummyZone, dummyX, dummyY);
+              const tileCenterLat = (dummyBounds[0][0] + dummyBounds[1][0]) / 2;
+              const tileCenterLng = (dummyBounds[0][1] + dummyBounds[1][1]) / 2;
+              const dist = Math.pow(tileCenterLat - center.lat, 2) + Math.pow(tileCenterLng - center.lng, 2);
+              gridCandidates.push({ id, dist });
+            }
           }
         }
       }
+
+      gridCandidates.sort((a, b) => a.dist - b.dist);
+      gridCandidates.forEach(item => neededMaps.push(item.id));
 
       for (const mapId of neededMaps) {
         if (!isCadOverlayEnabled) break;
@@ -1046,7 +1115,7 @@
 
       if (loadingCadSet.has(mapId)) return;
       loadingCadSet.add(mapId);
-      if (statusText) statusText.innerText = `⏳ 拼接圖資 ${mapId}...`;
+      if (statusText) statusText.innerText = `⏳ 載入圖資 ${mapId}...`;
 
       try {
         const dataUrl = await fetchAndRenderPdfMap(mapId);
@@ -1067,7 +1136,7 @@
         loadedCadTiles.set(mapId, { dataUrl, zone, x800, y500, overlay });
         if (statusText) {
           const activeKeys = Array.from(loadedCadTiles.keys()).filter(k => loadedCadTiles.get(k).overlay);
-          statusText.innerText = `⚡ 已疊加 (${activeKeys.length}張): ${activeKeys.slice(-4).join(', ')}`;
+          statusText.innerText = `⚡ 已載入 (${activeKeys.length}張)`;
         }
       } catch (err) {
         loadedCadTiles.set(mapId, { overlay: null });
@@ -1165,21 +1234,7 @@
 
     const todayKey = new Date().toISOString().split('T')[0];
     let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
-    let lastActiveDate = localStorage.getItem('tpc_last_active_date');
-    let tasks = [];
-
-    if (lastActiveDate === todayKey) {
-      tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
-    } else {
-      let oldTasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
-      if (oldTasks.length > 0 && lastActiveDate) {
-        monthLogs[lastActiveDate] = [...oldTasks];
-        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
-      }
-      tasks = [];
-      localStorage.setItem('tpc_tasks', JSON.stringify([]));
-    }
-    localStorage.setItem('tpc_last_active_date', todayKey);
+    let tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
 
     tasks.forEach(t => {
       if (t.code !== '📍地址導航') {
@@ -1202,9 +1257,6 @@
     let isFirstFixOfSession = false;
 
     const taskList = document.getElementById('task-list');
-    const taskListSection = document.getElementById('task-list-section');
-    const topSectionContainer = document.getElementById('top-section-container');
-    const btnCollapseToggle = document.getElementById('btn-collapse-toggle');
     const btnStartNav = document.getElementById('btn-start-nav');
     const btnModeMap = document.getElementById('btn-mode-map');
     const btnModeSv = document.getElementById('btn-mode-sv');
@@ -1213,15 +1265,6 @@
     const mapFloatingControls = document.getElementById('map-floating-controls');
     const mapBanner = document.getElementById('mapBanner');
     const mapBannerText = document.getElementById('mapBannerText');
-
-    let isListCollapsed = false;
-    btnCollapseToggle.onclick = () => {
-      isListCollapsed = !isListCollapsed;
-      taskListSection.classList.toggle('collapsed', isListCollapsed);
-      topSectionContainer.classList.toggle('collapsed', isListCollapsed);
-      btnCollapseToggle.innerText = isListCollapsed ? '📐 展開' : '📐 折疊';
-      renderTasks(false);
-    };
 
     function saveTasks() {
       localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
@@ -1401,7 +1444,7 @@
       ];
       if (noiseKeywords.some(w => line.includes(w))) return true;
       if (/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(line)) return true;
-      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號區鄉鎮市縣村里鄰]/.test(line)) return true;
+      if (/^[\u4e00-\u9fa5]{2,4}$/.test(line) && !/[路街巷段號樓區鄉鎮市縣村里鄰]/.test(line)) return true;
       return false;
     }
 
@@ -1833,32 +1876,14 @@
 
     function renderTasks(fitMap = false) {
       taskList.innerHTML = '';
-      
-      // 折疊時智慧過濾：只顯示「上一件」與「目前案件」共兩行，給爸爸截圖最大空間
-      let renderTasksList = tasks;
-      if (isListCollapsed && tasks.length > 0) {
-        let prevIdx = Math.max(0, currentIndex - 1);
-        if (prevIdx === currentIndex && currentIndex < tasks.length - 1) {
-          renderTasksList = [tasks[currentIndex], tasks[currentIndex + 1]];
-        } else if (prevIdx !== currentIndex) {
-          renderTasksList = [tasks[prevIdx], tasks[currentIndex]];
-        } else {
-          renderTasksList = [tasks[currentIndex]];
-        }
-      }
-
       if (tasks.length === 0) {
-        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按<span>📋 匯入</span>。</div>';
+        taskList.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:4px;">尚未匯入案件，可輸入圖號、中文地址或按「📋 匯入」。</div>';
         markersLayer.clearLayers();
         routeLayer.clearLayers();
         return;
       }
 
       tasks.forEach((t, idx) => {
-        if (isListCollapsed) {
-          if (!renderTasksList.includes(t)) return;
-        }
-
         if (t.code !== '📍地址導航') {
           t.code = sanitizeTaipowerCode(t.code);
         }
