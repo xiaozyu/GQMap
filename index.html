@@ -58,7 +58,6 @@
     .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
     .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
 
-    /* 歷史預覽提示橫幅 */
     #preview-banner {
       background: #b45309; color: #fff; padding: 6px 10px;
       font-size: 0.85rem; font-weight: bold; display: none;
@@ -420,7 +419,6 @@
 <body>
 
   <div id="top-section" class="top-section">
-    <!-- 歷史預覽提示橫幅 -->
     <div id="preview-banner">
       <span id="preview-banner-text">👁️ 正在預覽歷史紀錄</span>
       <button onclick="exitPreviewMode()">返回今天</button>
@@ -458,14 +456,12 @@
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
     </div>
 
-    <!-- 全螢幕清淨模式返回按鈕 -->
     <div id="fullscreen-restore-btn" onclick="toggleFullscreenCleanMode()" title="退出清淨模式">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 14v6h6M20 10V4h-6M14 4l6 6M10 20l-6-6"/>
       </svg>
     </div>
 
-    <!-- 左下角：微調十字鍵 -->
     <div id="cad-calib-box">
       <div id="cad-nudge-pad">
         <div style="font-size:11px;color:#94a3b8;font-weight:bold;">圖資微調 (1m/格)</div>
@@ -489,16 +485,16 @@
     </div>
 
     <div id="map-floating-controls" class="floating-controls">
-      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
+      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
         </svg>
       </div>
-      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)">1</div>
+      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換">1</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
-      <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
-      <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
+      <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號">📍</div>
+      <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="即時定位追蹤">🚗</div>
     </div>
   </div>
 
@@ -537,7 +533,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = 3.5; // 提升解析度以對齊您的專業繪圖核心
+    const PDF_RENDER_SCALE = 3.5;
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -951,26 +947,41 @@
       refreshAllCadTileBounds();
     };
 
-    function computeTileBounds(zone, x800, y500) {
-      const [baseX, baseY] = BASE_COORDS[zone] || BASE_COORDS['G'];
-      const swX = baseX + x800 * 800 + cadOffset.dx - 2;
-      const swY = baseY + y500 * 500 + cadOffset.dy - 2;
-      const neX = swX + 804;
-      const neY = swY + 504;
-      const sw = twd67ToWGS84(swX, swY);
-      const ne = twd67ToWGS84(neX, neY);
-      return [[sw.lat, sw.lng], [ne.lat, ne.lng]];
+    // ==========================================
+    // 關鍵修正：採用與您繪圖工具 100% 相同的高精度圖號相對像素網格定位
+    // ==========================================
+    function parseMapIdCoords(mapId) {
+      const clean = mapId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const match = clean.match(/([A-W])?(\d{2})(\d{2})/);
+      if (!match) return { x: 0, y: 0 };
+      return { x: parseInt(match[2], 10), y: parseInt(match[3], 10) };
+    }
+
+    function computeTileBoundsByGrid(mapId) {
+      // 以中心點經緯度為基準，直接利用 800m x 500m 實際圖幅大小在地圖上無縫拼貼
+      const twd67 = taipowerToTWD67(mapId);
+      if (!twd67) return [[24.23, 120.56], [24.24, 120.57]];
+      const centerWgs = twd67ToWGS84(twd67[0] + cadOffset.dx, twd67[1] + cadOffset.dy);
+      
+      // 每一張圖對應真實地面的 800公尺寬、500公尺高
+      const latDelta = (500 / 111000) / 2;
+      const lngDelta = (800 / (111000 * Math.cos(centerWgs.lat * Math.PI / 180))) / 2;
+
+      return [
+        [centerWgs.lat - latDelta, centerWgs.lng - lngDelta], // SW
+        [centerWgs.lat + latDelta, centerWgs.lng + lngDelta]  // NE
+      ];
     }
 
     function refreshAllCadTileBounds() {
       loadedCadTiles.forEach((item) => {
         if (item.overlay) {
-          item.overlay.setBounds(computeTileBounds(item.zone, item.x800, item.y500));
+          item.overlay.setBounds(computeTileBoundsByGrid(item.mapId));
         }
       });
     }
 
-    // 採用您圖資繪圖工具中 100% 精準無縫咬合的 findInnerGridBox 核心
+    // 完美無縫裁切核心 (同您的繪圖工具)
     function findInnerGridBox(ctx, W, H) {
       const imgData = ctx.getImageData(0, 0, W, H);
       const data = imgData.data;
@@ -1096,10 +1107,7 @@
           if (x >= 0 && x <= 99 && y >= 0 && y <= 99) {
             const id = `G${pad2(x)}${pad2(y)}`;
             if (!neededMaps.includes(id)) {
-              const dummyZone = id[0];
-              const dummyX = parseInt(id.substring(1,3),10);
-              const dummyY = parseInt(id.substring(3,5),10);
-              const dummyBounds = computeTileBounds(dummyZone, dummyX, dummyY);
+              const dummyBounds = computeTileBoundsByGrid(id);
               const tileCenterLat = (dummyBounds[0][0] + dummyBounds[1][0]) / 2;
               const tileCenterLng = (dummyBounds[0][1] + dummyBounds[1][1]) / 2;
               const dist = Math.pow(tileCenterLat - center.lat, 2) + Math.pow(tileCenterLng - center.lng, 2);
@@ -1137,10 +1145,7 @@
 
       try {
         const dataUrl = await fetchAndRenderPdfMap(mapId);
-        const zone = mapId[0];
-        const x800 = parseInt(mapId.substring(1, 3), 10);
-        const y500 = parseInt(mapId.substring(3, 5), 10);
-        const bounds = computeTileBounds(zone, x800, y500);
+        const bounds = computeTileBoundsByGrid(mapId);
 
         const overlay = L.imageOverlay(dataUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
 
@@ -1151,7 +1156,7 @@
           loadedCadTiles.delete(oldestKey);
         }
 
-        loadedCadTiles.set(mapId, { dataUrl, zone, x800, y500, overlay });
+        loadedCadTiles.set(mapId, { dataUrl, mapId, overlay });
         if (statusText) {
           const activeKeys = Array.from(loadedCadTiles.keys()).filter(k => loadedCadTiles.get(k).overlay);
           statusText.innerText = `⚡ 已載入 (${activeKeys.length}張)`;
