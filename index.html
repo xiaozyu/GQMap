@@ -537,7 +537,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = 3.0;
+    const PDF_RENDER_SCALE = 3.5; // 提升解析度以對齊您的專業繪圖核心
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -970,6 +970,7 @@
       });
     }
 
+    // 採用您圖資繪圖工具中 100% 精準無縫咬合的 findInnerGridBox 核心
     function findInnerGridBox(ctx, W, H) {
       const imgData = ctx.getImageData(0, 0, W, H);
       const data = imgData.data;
@@ -991,20 +992,17 @@
       for (let y = Math.floor(H * 0.02); y < H * 0.20; y++) {
         if (countH(y, W * 0.25, W * 0.75) > 0.65) { if (topLines.length === 0 || y - topLines[topLines.length - 1] > 6) topLines.push(y); }
       }
-      let top = (topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046))) + 25;
-      
+      let top = topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046));
       let leftLines = [];
       for (let x = Math.floor(W * 0.015); x < W * 0.20; x++) {
         if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (leftLines.length === 0 || x - leftLines[leftLines.length - 1] > 6) leftLines.push(x); }
       }
-      let left = (leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047))) + 25;
-
+      let left = leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047));
       let rightLines = [];
       for (let x = Math.floor(W * 0.985); x > W * 0.80; x--) {
         if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (rightLines.length === 0 || rightLines[rightLines.length - 1] - x > 6) rightLines.push(x); }
       }
-      let right = (rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953))) - 25;
-
+      let right = rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953));
       const measuredW = right - left;
       const targetH = Math.round(measuredW * (500 / 800));
       return { x: left, y: top, w: measuredW, h: targetH };
@@ -1043,17 +1041,14 @@
       const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
       await page.render({ canvasContext: offCtx, viewport }).promise;
 
-      if (!cachedInnerCrop) {
-        cachedInnerCrop = findInnerGridBox(offCtx, viewport.width, viewport.height);
-      }
-
-      const W = cachedInnerCrop.w;
-      const H = cachedInnerCrop.h;
+      const cropBox = findInnerGridBox(offCtx, viewport.width, viewport.height);
+      const W = cropBox.w;
+      const H = cropBox.h;
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = W;
       cropCanvas.height = H;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-      cropCtx.drawImage(offCanvas, cachedInnerCrop.x, cachedInnerCrop.y, W, H, 0, 0, W, H);
+      cropCtx.drawImage(offCanvas, cropBox.x, cropBox.y, W, H, 0, 0, W, H);
 
       const imgData = cropCtx.getImageData(0, 0, W, H);
       const d = imgData.data;
@@ -1259,7 +1254,6 @@
     let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
     let tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
 
-    // 獨立出預覽狀態變數
     let previewDate = null;
 
     tasks.forEach(t => {
@@ -1293,7 +1287,6 @@
     const mapBannerText = document.getElementById('mapBannerText');
 
     function saveTasks() {
-      // 如果正在預覽歷史紀錄，不直接覆寫今天的任務
       if (previewDate) {
         monthLogs[previewDate] = [...tasks];
         localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
@@ -2348,17 +2341,15 @@
       }
     }
 
-    // 修改：載入預覽導航改為安全預覽模式，不覆蓋今天
     document.getElementById('btn-action-load').onclick = () => {
       const records = monthLogs[selectedDate];
       if (records && records.length > 0) {
-        previewDate = selectedDate; // 標記為預覽狀態
+        previewDate = selectedDate;
         tasks = [...records];
         renderTasks(true);
         selectTask(0, false, false);
         calendarModal.style.display = 'none';
 
-        // 顯示上方提示橫幅
         const banner = document.getElementById('preview-banner');
         const bannerText = document.getElementById('preview-banner-text');
         bannerText.innerText = `👁️ 正在預覽歷史紀錄 (${selectedDate})`;
@@ -2366,11 +2357,9 @@
       }
     };
 
-    // 退出預覽模式，恢復今天的工單
     window.exitPreviewMode = () => {
       previewDate = null;
       document.getElementById('preview-banner').style.display = 'none';
-      // 重新載入今天的工單
       tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
       renderTasks(true);
       if (tasks.length > 0) selectTask(0, false, false);
