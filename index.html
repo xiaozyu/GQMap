@@ -519,7 +519,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = 3.0;
+    const PDF_RENDER_SCALE = 3.5;
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -795,7 +795,6 @@
       layers: [nlscEMap]
     });
 
-    // 完整的 4 種圖資切換控制
     L.control.layers({
       "台灣通用電子地圖 (國土測繪)": nlscEMap,
       "國土測繪正射影像 (航照)": nlscPhoto,
@@ -803,7 +802,6 @@
       "Google 衛星混合": googleHybrid
     }, null, { position: 'topright' }).addTo(map);
 
-    // 點擊地圖空白處時收合微調面板
     map.on('click', (e) => {
       if (isAddPinMode) return;
       const nudgePad = document.getElementById('cad-nudge-pad');
@@ -957,6 +955,7 @@
       });
     }
 
+    // 完美移植自範例的百分百精準內框裁切與比例運算邏輯
     function findInnerGridBox(ctx, W, H) {
       const imgData = ctx.getImageData(0, 0, W, H);
       const data = imgData.data;
@@ -978,20 +977,17 @@
       for (let y = Math.floor(H * 0.02); y < H * 0.20; y++) {
         if (countH(y, W * 0.25, W * 0.75) > 0.65) { if (topLines.length === 0 || y - topLines[topLines.length - 1] > 6) topLines.push(y); }
       }
-      let top = (topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046))) + 25;
-      
+      let top = topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046));
       let leftLines = [];
       for (let x = Math.floor(W * 0.015); x < W * 0.20; x++) {
         if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (leftLines.length === 0 || x - leftLines[leftLines.length - 1] > 6) leftLines.push(x); }
       }
-      let left = (leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047))) + 25;
-
+      let left = leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047));
       let rightLines = [];
       for (let x = Math.floor(W * 0.985); x > W * 0.80; x--) {
         if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (rightLines.length === 0 || rightLines[rightLines.length - 1] - x > 6) rightLines.push(x); }
       }
-      let right = (rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953))) - 25;
-
+      let right = rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953));
       const measuredW = right - left;
       const targetH = Math.round(measuredW * (500 / 800));
       return { x: left, y: top, w: measuredW, h: targetH };
@@ -1077,12 +1073,10 @@
       const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
       const neededMaps = [];
 
-      // 1. 優先抓取正中心目前位置的圖幅
       const center = map.getCenter();
       const centerMapId = coordToPowerCode(center.lat, center.lng).substring(0, 5);
       neededMaps.push(centerMapId);
 
-      // 2. 輻射狀排序 (由近到遠)
       const gridCandidates = [];
 
       for (let x = startX; x <= endX; x++) {
