@@ -58,17 +58,6 @@
     .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
     .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
 
-    #preview-banner {
-      background: #b45309; color: #fff; padding: 6px 10px;
-      font-size: 0.85rem; font-weight: bold; display: none;
-      align-items: center; justify-content: space-between; margin-bottom: 3px;
-      border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-    }
-    #preview-banner button {
-      background: #78350f; color: #fff; border: 1px solid #f59e0b;
-      padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: bold;
-    }
-
     .manual-input-bar {
       display: flex; align-items: center;
       background: #131d31; border: 1px solid #334155;
@@ -419,11 +408,6 @@
 <body>
 
   <div id="top-section" class="top-section">
-    <div id="preview-banner">
-      <span id="preview-banner-text">👁️ 正在預覽歷史紀錄</span>
-      <button onclick="exitPreviewMode()">返回今天</button>
-    </div>
-
     <div class="top-toolbar">
       <button id="btn-import" class="btn-top btn-import">📋 匯入</button>
       <button id="btn-clear" class="btn-top btn-clear">清空</button>
@@ -456,12 +440,14 @@
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
     </div>
 
+    <!-- 全螢幕清淨模式返回按鈕 -->
     <div id="fullscreen-restore-btn" onclick="toggleFullscreenCleanMode()" title="退出清淨模式">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 14v6h6M20 10V4h-6M14 4l6 6M10 20l-6-6"/>
       </svg>
     </div>
 
+    <!-- 左下角：微調十字鍵 -->
     <div id="cad-calib-box">
       <div id="cad-nudge-pad">
         <div style="font-size:11px;color:#94a3b8;font-weight:bold;">圖資微調 (1m/格)</div>
@@ -485,16 +471,16 @@
     </div>
 
     <div id="map-floating-controls" class="floating-controls">
-      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式">
+      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
         </svg>
       </div>
-      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換">1</div>
+      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)">🎯</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
-      <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號">📍</div>
-      <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="即時定位追蹤">🚗</div>
+      <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
+      <div class="float-btn" id="trackingBtn" onclick="toggleLiveTracking()" title="開關即時定位追蹤">🚗</div>
     </div>
   </div>
 
@@ -858,24 +844,27 @@
       const btn = document.getElementById('focusTaskBtn');
       const mapEl = document.getElementById('leaflet-map');
       btn.classList.remove('disp-mode-1', 'disp-mode-2', 'disp-mode-3', 'disp-mode-4');
-      btn.innerText = displayStage;
 
       if (displayStage === 1) {
         btn.classList.add('disp-mode-1');
+        btn.innerText = '🎯';
         map.removeLayer(baseLayer);
         mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 2) {
         btn.classList.add('disp-mode-2');
+        btn.innerText = '👁️';
         reloadBaseMarkers();
         map.addLayer(baseLayer);
         mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 3) {
         btn.classList.add('disp-mode-3');
+        btn.innerText = '📍';
         map.removeLayer(baseLayer);
         mapEl.classList.add('hide-all-case-labels');
         mapEl.classList.remove('hide-all-markers');
       } else if (displayStage === 4) {
         btn.classList.add('disp-mode-4');
+        btn.innerText = '🗺️';
         map.removeLayer(baseLayer);
         mapEl.classList.add('hide-all-markers');
       }
@@ -947,43 +936,26 @@
       refreshAllCadTileBounds();
     };
 
-    // ==========================================
-    // 終極修正：直接使用 TWD67 坐標網格（800m × 500m）進行完美對齊拼貼
-    // 這樣每張圖的左下角與右上角會精準貼合台電圖籍網格，絕不錯位！
-    // ==========================================
-    function computeTileBoundsByGrid(mapId) {
-      code = sanitizeTaipowerCode(mapId);
-      const zone = code[0].toUpperCase();
-      if (!BASE_COORDS[zone]) return [[24.23, 120.56], [24.24, 120.57]];
-      const [baseX, baseY] = BASE_COORDS[zone];
-
-      let x_800 = 0, y_500 = 0;
-      if (code.length >= 5) {
-        x_800 = parseInt(code.substring(1, 3), 10) || 0;
-        y_500 = parseInt(code.substring(3, 5), 10) || 0;
-      }
-
-      // 台電標準圖幅大小：X方向 800公尺，Y方向 500公尺
-      const swX = baseX + (x_800 * 800) + cadOffset.dx;
-      const swY = baseY + (y_500 * 500) + cadOffset.dy;
-      const neX = swX + 800;
-      const neY = swY + 500;
-
+    function computeTileBounds(zone, x800, y500) {
+      const [baseX, baseY] = BASE_COORDS[zone] || BASE_COORDS['G'];
+      const swX = baseX + x800 * 800 + cadOffset.dx - 2;
+      const swY = baseY + y500 * 500 + cadOffset.dy - 2;
+      const neX = swX + 804;
+      const neY = swY + 504;
       const sw = twd67ToWGS84(swX, swY);
       const ne = twd67ToWGS84(neX, neY);
-
       return [[sw.lat, sw.lng], [ne.lat, ne.lng]];
     }
 
     function refreshAllCadTileBounds() {
       loadedCadTiles.forEach((item) => {
         if (item.overlay) {
-          item.overlay.setBounds(computeTileBoundsByGrid(item.mapId));
+          item.overlay.setBounds(computeTileBounds(item.zone, item.x800, item.y500));
         }
       });
     }
 
-    // 完美無縫裁切核心 (同您的繪圖工具)
+    // 完美移植自範例的百分百精準內框裁切邏輯
     function findInnerGridBox(ctx, W, H) {
       const imgData = ctx.getImageData(0, 0, W, H);
       const data = imgData.data;
@@ -1054,14 +1026,17 @@
       const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
       await page.render({ canvasContext: offCtx, viewport }).promise;
 
-      const cropBox = findInnerGridBox(offCtx, viewport.width, viewport.height);
-      const W = cropBox.w;
-      const H = cropBox.h;
+      if (!cachedInnerCrop) {
+        cachedInnerCrop = findInnerGridBox(offCtx, viewport.width, viewport.height);
+      }
+
+      const W = cachedInnerCrop.w;
+      const H = cachedInnerCrop.h;
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = W;
       cropCanvas.height = H;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-      cropCtx.drawImage(offCanvas, cropBox.x, cropBox.y, W, H, 0, 0, W, H);
+      cropCtx.drawImage(offCanvas, cachedInnerCrop.x, cachedInnerCrop.y, W, H, 0, 0, W, H);
 
       const imgData = cropCtx.getImageData(0, 0, W, H);
       const d = imgData.data;
@@ -1109,7 +1084,10 @@
           if (x >= 0 && x <= 99 && y >= 0 && y <= 99) {
             const id = `G${pad2(x)}${pad2(y)}`;
             if (!neededMaps.includes(id)) {
-              const dummyBounds = computeTileBoundsByGrid(id);
+              const dummyZone = id[0];
+              const dummyX = parseInt(id.substring(1,3),10);
+              const dummyY = parseInt(id.substring(3,5),10);
+              const dummyBounds = computeTileBounds(dummyZone, dummyX, dummyY);
               const tileCenterLat = (dummyBounds[0][0] + dummyBounds[1][0]) / 2;
               const tileCenterLng = (dummyBounds[0][1] + dummyBounds[1][1]) / 2;
               const dist = Math.pow(tileCenterLat - center.lat, 2) + Math.pow(tileCenterLng - center.lng, 2);
@@ -1147,7 +1125,10 @@
 
       try {
         const dataUrl = await fetchAndRenderPdfMap(mapId);
-        const bounds = computeTileBoundsByGrid(mapId);
+        const zone = mapId[0];
+        const x800 = parseInt(mapId.substring(1, 3), 10);
+        const y500 = parseInt(mapId.substring(3, 5), 10);
+        const bounds = computeTileBounds(zone, x800, y500);
 
         const overlay = L.imageOverlay(dataUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
 
@@ -1158,7 +1139,7 @@
           loadedCadTiles.delete(oldestKey);
         }
 
-        loadedCadTiles.set(mapId, { dataUrl, mapId, overlay });
+        loadedCadTiles.set(mapId, { dataUrl, zone, x800, y500, overlay });
         if (statusText) {
           const activeKeys = Array.from(loadedCadTiles.keys()).filter(k => loadedCadTiles.get(k).overlay);
           statusText.innerText = `⚡ 已載入 (${activeKeys.length}張)`;
@@ -1261,8 +1242,6 @@
     let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
     let tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
 
-    let previewDate = null;
-
     tasks.forEach(t => {
       if (t.code !== '📍地址導航') {
         t.code = sanitizeTaipowerCode(t.code);
@@ -1294,11 +1273,6 @@
     const mapBannerText = document.getElementById('mapBannerText');
 
     function saveTasks() {
-      if (previewDate) {
-        monthLogs[previewDate] = [...tasks];
-        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
-        return;
-      }
       localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
       if (tasks.length > 0) {
         monthLogs[todayKey] = [...tasks];
@@ -2351,26 +2325,12 @@
     document.getElementById('btn-action-load').onclick = () => {
       const records = monthLogs[selectedDate];
       if (records && records.length > 0) {
-        previewDate = selectedDate;
         tasks = [...records];
+        saveTasks();
         renderTasks(true);
         selectTask(0, false, false);
         calendarModal.style.display = 'none';
-
-        const banner = document.getElementById('preview-banner');
-        const bannerText = document.getElementById('preview-banner-text');
-        bannerText.innerText = `👁️ 正在預覽歷史紀錄 (${selectedDate})`;
-        banner.style.display = 'flex';
       }
-    };
-
-    window.exitPreviewMode = () => {
-      previewDate = null;
-      document.getElementById('preview-banner').style.display = 'none';
-      tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
-      renderTasks(true);
-      if (tasks.length > 0) selectTask(0, false, false);
-      alert("✅ 已安全返回今天的工單紀錄！");
     };
 
     document.getElementById('btn-action-copy').onclick = () => {
