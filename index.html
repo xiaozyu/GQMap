@@ -948,29 +948,31 @@
     };
 
     // ==========================================
-    // 關鍵修正：採用與您繪圖工具 100% 相同的高精度圖號相對像素網格定位
+    // 終極修正：直接使用 TWD67 坐標網格（800m × 500m）進行完美對齊拼貼
+    // 這樣每張圖的左下角與右上角會精準貼合台電圖籍網格，絕不錯位！
     // ==========================================
-    function parseMapIdCoords(mapId) {
-      const clean = mapId.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const match = clean.match(/([A-W])?(\d{2})(\d{2})/);
-      if (!match) return { x: 0, y: 0 };
-      return { x: parseInt(match[2], 10), y: parseInt(match[3], 10) };
-    }
-
     function computeTileBoundsByGrid(mapId) {
-      // 以中心點經緯度為基準，直接利用 800m x 500m 實際圖幅大小在地圖上無縫拼貼
-      const twd67 = taipowerToTWD67(mapId);
-      if (!twd67) return [[24.23, 120.56], [24.24, 120.57]];
-      const centerWgs = twd67ToWGS84(twd67[0] + cadOffset.dx, twd67[1] + cadOffset.dy);
-      
-      // 每一張圖對應真實地面的 800公尺寬、500公尺高
-      const latDelta = (500 / 111000) / 2;
-      const lngDelta = (800 / (111000 * Math.cos(centerWgs.lat * Math.PI / 180))) / 2;
+      code = sanitizeTaipowerCode(mapId);
+      const zone = code[0].toUpperCase();
+      if (!BASE_COORDS[zone]) return [[24.23, 120.56], [24.24, 120.57]];
+      const [baseX, baseY] = BASE_COORDS[zone];
 
-      return [
-        [centerWgs.lat - latDelta, centerWgs.lng - lngDelta], // SW
-        [centerWgs.lat + latDelta, centerWgs.lng + lngDelta]  // NE
-      ];
+      let x_800 = 0, y_500 = 0;
+      if (code.length >= 5) {
+        x_800 = parseInt(code.substring(1, 3), 10) || 0;
+        y_500 = parseInt(code.substring(3, 5), 10) || 0;
+      }
+
+      // 台電標準圖幅大小：X方向 800公尺，Y方向 500公尺
+      const swX = baseX + (x_800 * 800) + cadOffset.dx;
+      const swY = baseY + (y_500 * 500) + cadOffset.dy;
+      const neX = swX + 800;
+      const neY = swY + 500;
+
+      const sw = twd67ToWGS84(swX, swY);
+      const ne = twd67ToWGS84(neX, neY);
+
+      return [[sw.lat, sw.lng], [ne.lat, ne.lng]];
     }
 
     function refreshAllCadTileBounds() {
