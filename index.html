@@ -58,6 +58,18 @@
     .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
     .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
 
+    /* 歷史預覽提示橫幅 */
+    #preview-banner {
+      background: #b45309; color: #fff; padding: 6px 10px;
+      font-size: 0.85rem; font-weight: bold; display: none;
+      align-items: center; justify-content: space-between; margin-bottom: 3px;
+      border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    #preview-banner button {
+      background: #78350f; color: #fff; border: 1px solid #f59e0b;
+      padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: bold;
+    }
+
     .manual-input-bar {
       display: flex; align-items: center;
       background: #131d31; border: 1px solid #334155;
@@ -408,6 +420,12 @@
 <body>
 
   <div id="top-section" class="top-section">
+    <!-- 歷史預覽提示橫幅 -->
+    <div id="preview-banner">
+      <span id="preview-banner-text">👁️ 正在預覽歷史紀錄</span>
+      <button onclick="exitPreviewMode()">返回今天</button>
+    </div>
+
     <div class="top-toolbar">
       <button id="btn-import" class="btn-top btn-import">📋 匯入</button>
       <button id="btn-clear" class="btn-top btn-clear">清空</button>
@@ -476,7 +494,6 @@
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
         </svg>
       </div>
-      <!-- 第二個按鈕：顯示當前階段數字 1, 2, 3, 4 -->
       <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)">1</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
@@ -845,7 +862,7 @@
       const btn = document.getElementById('focusTaskBtn');
       const mapEl = document.getElementById('leaflet-map');
       btn.classList.remove('disp-mode-1', 'disp-mode-2', 'disp-mode-3', 'disp-mode-4');
-      btn.innerText = displayStage; // 直接將按鈕文字設為數字 1, 2, 3, 4
+      btn.innerText = displayStage;
 
       if (displayStage === 1) {
         btn.classList.add('disp-mode-1');
@@ -1242,6 +1259,9 @@
     let monthLogs = JSON.parse(localStorage.getItem('tpc_month_logs') || '{}');
     let tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
 
+    // 獨立出預覽狀態變數
+    let previewDate = null;
+
     tasks.forEach(t => {
       if (t.code !== '📍地址導航') {
         t.code = sanitizeTaipowerCode(t.code);
@@ -1273,6 +1293,12 @@
     const mapBannerText = document.getElementById('mapBannerText');
 
     function saveTasks() {
+      // 如果正在預覽歷史紀錄，不直接覆寫今天的任務
+      if (previewDate) {
+        monthLogs[previewDate] = [...tasks];
+        localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
+        return;
+      }
       localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
       if (tasks.length > 0) {
         monthLogs[todayKey] = [...tasks];
@@ -2322,15 +2348,33 @@
       }
     }
 
+    // 修改：載入預覽導航改為安全預覽模式，不覆蓋今天
     document.getElementById('btn-action-load').onclick = () => {
       const records = monthLogs[selectedDate];
       if (records && records.length > 0) {
+        previewDate = selectedDate; // 標記為預覽狀態
         tasks = [...records];
-        saveTasks();
         renderTasks(true);
         selectTask(0, false, false);
         calendarModal.style.display = 'none';
+
+        // 顯示上方提示橫幅
+        const banner = document.getElementById('preview-banner');
+        const bannerText = document.getElementById('preview-banner-text');
+        bannerText.innerText = `👁️ 正在預覽歷史紀錄 (${selectedDate})`;
+        banner.style.display = 'flex';
       }
+    };
+
+    // 退出預覽模式，恢復今天的工單
+    window.exitPreviewMode = () => {
+      previewDate = null;
+      document.getElementById('preview-banner').style.display = 'none';
+      // 重新載入今天的工單
+      tasks = JSON.parse(localStorage.getItem('tpc_tasks') || '[]');
+      renderTasks(true);
+      if (tasks.length > 0) selectTask(0, false, false);
+      alert("✅ 已安全返回今天的工單紀錄！");
     };
 
     document.getElementById('btn-action-copy').onclick = () => {
