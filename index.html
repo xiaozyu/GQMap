@@ -508,7 +508,7 @@
         </div>
         <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
         <div style="display:flex;gap:6px;margin-top:4px;border-top:1px solid #334155;padding-top:6px;">
-          <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂重選資料夾</button>
+          <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
@@ -516,7 +516,6 @@
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
         <button onclick="toggleNudgePad()" class="cad-mini-btn">⚙️校準</button>
-        <button id="cad-pick-btn" onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂 選擇資料夾</button>
       </div>
       <input type="file" id="cad-folder-input" webkitdirectory multiple style="display:none">
       <input type="file" id="cad-files-input" accept=".pdf,.PDF,application/pdf" multiple style="display:none">
@@ -528,7 +527,7 @@
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
         </svg>
       </div>
-      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)">🎯</div>
+      <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)" style="font-weight:900;font-size:22px;">1</div>
       <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="toggleAddPinMode()" title="點擊地圖查圖號/新增地標">📍</div>
@@ -987,24 +986,24 @@
 
       if (displayStage === 1) {
         btn.classList.add('disp-mode-1');
-        btn.innerText = '🎯';
+        btn.innerText = '1';
         map.removeLayer(baseLayer);
         mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 2) {
         btn.classList.add('disp-mode-2');
-        btn.innerText = '👁️';
+        btn.innerText = '2';
         reloadBaseMarkers();
         map.addLayer(baseLayer);
         mapEl.classList.remove('hide-all-case-labels', 'hide-all-markers');
       } else if (displayStage === 3) {
         btn.classList.add('disp-mode-3');
-        btn.innerText = '📍';
+        btn.innerText = '3';
         map.removeLayer(baseLayer);
         mapEl.classList.add('hide-all-case-labels');
         mapEl.classList.remove('hide-all-markers');
       } else if (displayStage === 4) {
         btn.classList.add('disp-mode-4');
-        btn.innerText = '🗺️';
+        btn.innerText = '4';
         map.removeLayer(baseLayer);
         mapEl.classList.add('hide-all-markers');
       }
@@ -2051,24 +2050,13 @@
       const rawLines = content.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
       const newTasks = [];
 
-      const standaloneTimes = [];
-      const codeLinesCount = rawLines.filter(l => {
-        COORD_REGEX.lastIndex = 0;
-        return COORD_REGEX.test(l);
-      }).length;
-
-      rawLines.forEach(l => {
-        COORD_REGEX.lastIndex = 0;
-        if (formatTimeStandard(l) && !COORD_REGEX.test(l)) {
-          standaloneTimes.push(formatTimeStandard(l));
-        }
-      });
-
-      const useColumnZipMode = (standaloneTimes.length >= 2 && standaloneTimes.length === codeLinesCount);
+      // ★ 時間配對：Google 複製出來的順序常常是「好幾個時間排在一起，地址排在後面」，
+      //   也可能是「時間接著地址」。統一用先進先出：每出現一個單獨的時間就排進佇列，
+      //   每出現一筆案件就拿走最早排隊的那個時間。
+      const timeQueue = [];
 
       let currentTime = '';
       let pendingNote = '';
-      let codeLineIdx = 0;
 
       for (let i = 0; i < rawLines.length; i++) {
         let line = rawLines[i];
@@ -2078,16 +2066,18 @@
 
         if (!hasCoord && !timeStr && isSystemNoiseLine(line)) continue;
 
-        if (timeStr && !useColumnZipMode) {
+        if (timeStr && !hasCoord) {
+          timeQueue.push(timeStr);
           currentTime = timeStr;
+          continue;                      // 單獨的時間行，只排隊
         }
+        if (timeStr) currentTime = timeStr;
 
         COORD_REGEX.lastIndex = 0;
         let matches = line.match(COORD_REGEX);
         if (matches) {
           const parsedLine = parseSingleTaskLine(line, 'G');
-          const assignedTime = useColumnZipMode ? (standaloneTimes[codeLineIdx] || '') : (parsedLine.time || timeStr || currentTime);
-          codeLineIdx++;
+          const assignedTime = parsedLine.time || timeStr || timeQueue.shift() || currentTime;
 
           matches.forEach(m => {
             let rawCode = m.replace(/\s+/g, '').toUpperCase();
@@ -2114,7 +2104,7 @@
           if (/[路街巷段號]/.test(line)) {
             newTasks.push({
               code: '📍地址導航',
-              time: timeStr || currentTime,
+              time: timeStr || timeQueue.shift() || currentTime,
               note: cleanAndFixAddress(line),
               isND: /nd/i.test(line),
               lat: null,
