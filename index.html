@@ -442,7 +442,8 @@
     .btn-sheet-copy { background: #0284c7; color: #fff; }
     .btn-sheet-save { background: #eab308; color: #000; }
     .btn-sheet-del { background: #dc2626; color: #fff; }
-  </style>
+      .cad-dbg { background: rgba(255,45,85,.85); color:#fff; border:0; font-size:11px; padding:1px 4px; box-shadow:none; }
+</style>
 </head>
 <body>
 
@@ -1181,21 +1182,21 @@
         const a = m >= 235 ? 0 : (m <= 130 ? 255 : Math.round((235 - m) * 255 / 105));
         A[k] = a;
       }
-      const t = Math.max(2, Math.ceil(frameT / 2) + 1);       // 框線有一半在裁切範圍內
+      const t = Math.min(5, Math.max(2, Math.ceil(frameT / 2) + 1));   // 框線有一半在裁切範圍內；最多擦 5px，避免誤擦細線
       const inside = Math.min(W, H) > 4 * t ? t + 1 : 0;
       const kill = new Uint8Array(W * H);
-      const dark = (x, y) => x >= 0 && y >= 0 && x < W && y < H && A[y * W + x] > 60;
+      const dark = (x, y) => x >= 0 && y >= 0 && x < W && y < H && A[y * W + x] > 12;   // 任何墨跡(含極細線)都算「有線連過來」
       if (inside) {
         for (let y = 0; y < H; y++) for (let u = 0; u < t; u++) {
           // 左、右邊：往內看一格，沒有連到圖面線條 → 純框線，擦掉
-          if (A[y * W + u] && !(dark(inside, y - 1) || dark(inside, y) || dark(inside, y + 1))) kill[y * W + u] = 1;
+          if (A[y * W + u] && !(dark(inside, y - 2) || dark(inside, y - 1) || dark(inside, y) || dark(inside, y + 1) || dark(inside, y + 2))) kill[y * W + u] = 1;
           const xr = W - 1 - u;
-          if (A[y * W + xr] && !(dark(W - 1 - inside, y - 1) || dark(W - 1 - inside, y) || dark(W - 1 - inside, y + 1))) kill[y * W + xr] = 1;
+          if (A[y * W + xr] && !(dark(W - 1 - inside, y - 2) || dark(W - 1 - inside, y - 1) || dark(W - 1 - inside, y) || dark(W - 1 - inside, y + 1) || dark(W - 1 - inside, y + 2))) kill[y * W + xr] = 1;
         }
         for (let x = 0; x < W; x++) for (let v = 0; v < t; v++) {
-          if (A[v * W + x] && !(dark(x - 1, inside) || dark(x, inside) || dark(x + 1, inside))) kill[v * W + x] = 1;
+          if (A[v * W + x] && !(dark(x - 2, inside) || dark(x - 1, inside) || dark(x, inside) || dark(x + 1, inside) || dark(x + 2, inside))) kill[v * W + x] = 1;
           const yb = H - 1 - v;
-          if (A[yb * W + x] && !(dark(x - 1, H - 1 - inside) || dark(x, H - 1 - inside) || dark(x + 1, H - 1 - inside))) kill[yb * W + x] = 1;
+          if (A[yb * W + x] && !(dark(x - 2, H - 1 - inside) || dark(x - 1, H - 1 - inside) || dark(x, H - 1 - inside) || dark(x + 1, H - 1 - inside) || dark(x + 2, H - 1 - inside))) kill[yb * W + x] = 1;
         }
       }
       for (let i = 0, k = 0; i < d.length; i += 4, k++) {
@@ -1387,7 +1388,7 @@
 
       await cropMetaPromise;
       const cacheKey = `${mapId}|s${PDF_RENDER_SCALE}|g2`;
-      const cached = await idbGet('tiles', cacheKey);
+      const cached = CAD_DEBUG ? null : await idbGet('tiles', cacheKey);
       if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF
       let arrayBuf = (await idbGet('pdfs', mapId)) || null;
       for (const url of (arrayBuf ? [] : candidateUrls)) {
@@ -1425,6 +1426,7 @@
       cropCtx.imageSmoothingEnabled = true;
       cropCtx.drawImage(offCanvas, box.x, box.y, box.w, box.h, 0, 0, W, H);   // 框線中心對齊，剛好 800×500 公尺
       cleanCropCanvas(cropCanvas, box.t || 3);
+      if (CAD_DEBUG) window.__cadBox = Object.assign(window.__cadBox || {}, { [mapId]: box });
 
       const x800 = parseInt(mapId.substring(1, 3), 10);
       const y500 = parseInt(mapId.substring(3, 5), 10);
@@ -1433,6 +1435,8 @@
       return url;
     }
 
+    const CAD_DEBUG = /[?&]debug=1/.test(location.search);
+    const cadDebugLayer = L.layerGroup().addTo(map);
     const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資
     const MAX_CAD_VISIBLE = 4;    // 畫面最多同時用到 4 張（卡在四張交界）
     const MAX_CAD_KEEP = 6;       // 記憶體最多留 6 張
@@ -1520,6 +1524,14 @@
         const bounds = computeTileBounds(zone, x800, y500);
 
         const overlay = L.imageOverlay(dataUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
+        if (CAD_DEBUG) {
+          const c = tileCornersMerc(zone, x800, y500, true);
+          const ll = (q) => { const u = L.CRS.EPSG3857.unproject(L.point(q.x, q.y)); return [u.lat, u.lng]; };
+          const bx = (window.__cadBox || {})[mapId];
+          L.polygon([ll(c.sw), ll(c.se), ll(c.ne), ll(c.nw)], { color: '#ff2d55', weight: 2, fill: false, interactive: false })
+            .bindTooltip(`${mapId}${bx ? ` w${bx.w.toFixed(0)} h${bx.h.toFixed(0)} t${bx.t}` : ''}`, { permanent: true, direction: 'center', className: 'cad-dbg' })
+            .addTo(cadDebugLayer);
+        }
 
         while (loadedCadTiles.size >= MAX_CAD_KEEP) {
           const oldestKey = loadedCadTiles.keys().next().value;
@@ -1555,6 +1567,7 @@
         calibBox.style.display = 'none';
         document.getElementById('cad-nudge-pad').style.display = 'none';
         cadOverlayLayer.clearLayers();
+        cadDebugLayer.clearLayers();
         loadedCadTiles.clear();
       }
     };
