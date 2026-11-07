@@ -507,13 +507,16 @@
           <button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button>
         </div>
         <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
+        <div style="display:flex;gap:6px;margin-top:4px;border-top:1px solid #334155;padding-top:6px;">
+          <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂重選資料夾</button>
+          <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
+          <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
+        </div>
       </div>
       <div id="cad-status-pill">
-        <span id="cad-status-text">⚡ 圖資準備中...</span>
+        <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
         <button onclick="toggleNudgePad()" class="cad-mini-btn">⚙️校準</button>
-        <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂資料夾</button>
-        <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
-        <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑</button>
+        <button id="cad-pick-btn" onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂 選擇資料夾</button>
       </div>
       <input type="file" id="cad-folder-input" webkitdirectory multiple style="display:none">
       <input type="file" id="cad-files-input" accept=".pdf,.PDF,application/pdf" multiple style="display:none">
@@ -1271,7 +1274,9 @@
     async function refreshCadStatus() {
       const n = await idbCount('pdfs');
       const el = document.getElementById('cad-status-text');
-      if (el) el.innerText = n > 0 ? `⚡ 本地圖資 ${n} 張` : '⚡ 尚未匯入本地圖資';
+      if (el) { el.innerText = n > 0 ? `⚡ 本地圖資 ${n} 張` : '⚡ 尚未匯入本地圖資'; el.style.display = 'none'; }   // 平常不佔位，只有匯入中才顯示
+      const pick = document.getElementById('cad-pick-btn');
+      if (pick) pick.style.display = n > 0 ? 'none' : 'inline-block';                                              // 匯入後只剩「校準」
     }
 
     function median(arr) {
@@ -1299,8 +1304,9 @@
 
     async function importCadFileList(fileList) {
       const statusText = document.getElementById('cad-status-text');
+      if (statusText) statusText.style.display = 'inline';
       const files = Array.from(fileList).filter(f => /\.pdf$/i.test(f.name) && mapIdFromName(f.name));
-      if (files.length === 0) { alert('沒有找到圖號格式的 PDF（檔名需包含像 G3850 的圖號）。'); return; }
+      if (files.length === 0) { await refreshCadStatus(); alert('沒有找到圖號格式的 PDF（檔名需包含像 G3850 的圖號）。'); return; }
 
       let done = 0, samples = [];
       for (const f of files) {
