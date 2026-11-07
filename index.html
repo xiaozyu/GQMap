@@ -442,8 +442,7 @@
     .btn-sheet-copy { background: #0284c7; color: #fff; }
     .btn-sheet-save { background: #eab308; color: #000; }
     .btn-sheet-del { background: #dc2626; color: #fff; }
-      .cad-dbg { background: rgba(255,45,85,.85); color:#fff; border:0; font-size:11px; padding:1px 4px; box-shadow:none; }
-</style>
+  </style>
 </head>
 <body>
 
@@ -1091,16 +1090,32 @@
       const xs = [c.sw.x, c.se.x, c.nw.x, c.ne.x], ys = [c.sw.y, c.se.y, c.nw.y, c.ne.y];
       return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
     }
-    // ★ 貼圖範圍：沿用前一版（已驗證本地拼接正確）的幾何
+    // 貼圖範圍 = 旋轉後圖幅的外接矩形（圖片本身已按旋轉角度預先變形）
     function computeTileBounds(zone, x800, y500) {
-      const [baseX, baseY] = BASE_COORDS[zone] || BASE_COORDS['G'];
-      const swX = baseX + x800 * 800 + cadOffset.dx - 2;
-      const swY = baseY + y500 * 500 + cadOffset.dy - 2;
-      const neX = swX + 804;
-      const neY = swY + 504;
-      const sw = twd67ToWGS84(swX, swY);
-      const ne = twd67ToWGS84(neX, neY);
-      return [[sw.lat, sw.lng], [ne.lat, ne.lng]];
+      const bb = bboxOfCorners(tileCornersMerc(zone, x800, y500, true));
+      const a = L.CRS.EPSG3857.unproject(L.point(bb.minX, bb.minY));
+      const b = L.CRS.EPSG3857.unproject(L.point(bb.maxX, bb.maxY));
+      return [[a.lat, a.lng], [b.lat, b.lng]];
+    }
+
+    // 把「剛好 800×500 公尺」的裁切圖，依 TWD67 方格角度重新投影到 Mercator 正向畫布
+    function warpCropToMercator(src, zone, x800, y500) {
+      const c = tileCornersMerc(zone, x800, y500, false);
+      const bb = bboxOfCorners(c);
+      const W = src.width, H = src.height;
+      const s = Math.hypot(c.ne.x - c.nw.x, c.ne.y - c.nw.y) / W;       // 每像素多少 Mercator 公尺
+      const outW = Math.ceil((bb.maxX - bb.minX) / s), outH = Math.ceil((bb.maxY - bb.minY) / s);
+      const out = document.createElement('canvas');
+      out.width = outW; out.height = outH;
+      const o = out.getContext('2d');
+      o.imageSmoothingEnabled = true; o.imageSmoothingQuality = 'high';
+      o.setTransform(
+        (c.ne.x - c.nw.x) / (W * s), -(c.ne.y - c.nw.y) / (W * s),
+        (c.sw.x - c.nw.x) / (H * s), -(c.sw.y - c.nw.y) / (H * s),
+        (c.nw.x - bb.minX) / s,      (bb.maxY - c.nw.y) / s
+      );
+      o.drawImage(src, 0, 0);
+      return out;
     }
 
     function refreshAllCadTileBounds() {
@@ -1111,46 +1126,85 @@
       });
     }
 
+    // 找內框線「中心」（亞像素）。回傳 {x, y, w, h, t}；t = 框線粗細(px)
+    // 內框線中心 = 圖幅 800×500 公尺的邊界，所以不再往內縮，改由後面「只擦掉單純的框線」處理
     function findInnerGridBox(ctx, W, H) {
-      const imgData = ctx.getImageData(0, 0, W, H);
-      const data = imgData.data;
+      const data = ctx.getImageData(0, 0, W, H).data;
       function isBlackPx(x, y) {
         const i = (Math.floor(y) * W + Math.floor(x)) * 4;
         return data[i] < 110 && data[i+1] < 110 && data[i+2] < 110 && data[i+3] > 100;
       }
-      function countH(y, startX, endX) {
-        let cnt = 0, step = 4;
-        for (let x = startX; x <= endX; x += step) { if (isBlackPx(x, y)) cnt++; }
-        return cnt / ((endX - startX) / step);
+      function countH(y, a, b) { let c = 0, st = 4; for (let x = a; x <= b; x += st) if (isBlackPx(x, y)) c++; return c / ((b - a) / st); }
+      function countV(x, a, b) { let c = 0, st = 4; for (let y = a; y <= b; y += st) if (isBlackPx(x, y)) c++; return c / ((b - a) / st); }
+      // 把連續的「像線」的像素列合成一條線：{c:中心, t:粗細}
+      function clusters(vals) {
+        const out = [];
+        for (const v of vals) {
+          const last = out[out.length - 1];
+          if (last && v - last.end <= 2) { last.end = v; last.sum += v; last.n++; }
+          else out.push({ start: v, end: v, sum: v, n: 1 });
+        }
+        return out.map(o => ({ c: o.sum / o.n + 0.5, t: o.end - o.start + 1, first: o.start, last: o.end }));
       }
-      function countV(x, startY, endY) {
-        let cnt = 0, step = 4;
-        for (let y = startY; y <= endY; y += step) { if (isBlackPx(x, y)) cnt++; }
-        return cnt / ((endY - startY) / step);
-      }
-      let topLines = [];
-      for (let y = Math.floor(H * 0.02); y < H * 0.20; y++) {
-        if (countH(y, W * 0.25, W * 0.75) > 0.65) { if (topLines.length === 0 || y - topLines[topLines.length - 1] > 6) topLines.push(y); }
-      }
-      let top = (topLines.length >= 2 ? topLines[1] : (topLines[0] ? topLines[0] + 15 : Math.floor(H * 0.046))) + 25;
+      function scanH(y0, y1) { const r = []; for (let y = Math.floor(y0); y < y1; y++) if (countH(y, W * 0.25, W * 0.75) > 0.65) r.push(y); return clusters(r); }
+      function scanV(x0, x1) { const r = []; for (let x = Math.floor(x0); x < x1; x++) if (countV(x, H * 0.25, H * 0.65) > 0.65) r.push(x); return clusters(r); }
 
-      let leftLines = [];
-      for (let x = Math.floor(W * 0.015); x < W * 0.20; x++) {
-        if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (leftLines.length === 0 || x - leftLines[leftLines.length - 1] > 6) leftLines.push(x); }
-      }
-      let left = (leftLines.length >= 2 ? leftLines[1] : (leftLines[0] ? leftLines[0] + 15 : Math.floor(W * 0.047))) + 25;
+      const tops = scanH(H * 0.02, H * 0.20);
+      const top = tops.length >= 2 ? tops[1] : { c: (tops[0] ? tops[0].last + 15 : Math.floor(H * 0.046)), t: tops[0] ? tops[0].t : 3 };
+      const lefts = scanV(W * 0.015, W * 0.20);
+      const left = lefts.length >= 2 ? lefts[1] : { c: (lefts[0] ? lefts[0].last + 15 : Math.floor(W * 0.047)), t: lefts[0] ? lefts[0].t : 3 };
+      const rights = scanV(W * 0.80, W * 0.985);
+      const right = rights.length >= 2 ? rights[rights.length - 2] : { c: (rights.length ? rights[rights.length - 1].first - 15 : Math.floor(W * 0.953)), t: rights.length ? rights[rights.length - 1].t : 3 };
 
-      let rightLines = [];
-      for (let x = Math.floor(W * 0.985); x > W * 0.80; x--) {
-        if (countV(x, H * 0.25, H * 0.65) > 0.65) { if (rightLines.length === 0 || rightLines[rightLines.length - 1] - x > 6) rightLines.push(x); }
+      const w = right.c - left.c;
+      let h = w * 500 / 800;                      // 預設：由寬度推高度
+      // 嘗試實測下框線（只在預期位置附近 ±1.5% 頁高內找，且比例差 <1% 才採用）
+      const expBottom = top.c + h;
+      const bots = scanH(Math.max(0, expBottom - H * 0.015), Math.min(H, expBottom + H * 0.015));
+      if (bots.length) {
+        const near = bots.reduce((a, b) => Math.abs(a.c - expBottom) <= Math.abs(b.c - expBottom) ? a : b);
+        const hm = near.c - top.c;
+        if (Math.abs(hm - h) / h < 0.01) h = hm;
       }
-      let right = (rightLines.length >= 2 ? rightLines[1] : (rightLines[0] ? rightLines[0] - 15 : Math.floor(W * 0.953))) - 25;
-
-      const measuredW = right - left;
-      const targetH = Math.round(measuredW * (500 / 800));
-      return { x: left, y: top, w: measuredW, h: targetH, v: 3 };
+      const t = Math.max(top.t, left.t, right.t);
+      return { x: left.c, y: top.c, w, h, t, v: 2 };
     }
 
+    // 裁切後：白色→透明、線條→黑色(軟邊)；再把「只有框線沒有圖」的邊緣擦掉，圖與圖之間就不會有多餘的線
+    function cleanCropCanvas(cv, frameT) {
+      const W = cv.width, H = cv.height;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      const img = ctx.getImageData(0, 0, W, H), d = img.data;
+      const A = new Uint8Array(W * H);
+      for (let i = 0, k = 0; i < d.length; i += 4, k++) {
+        const m = Math.min(d[i], d[i+1], d[i+2]);
+        const a = m >= 235 ? 0 : (m <= 130 ? 255 : Math.round((235 - m) * 255 / 105));
+        A[k] = a;
+      }
+      const t = Math.max(2, Math.ceil(frameT / 2) + 1);       // 框線有一半在裁切範圍內
+      const inside = Math.min(W, H) > 4 * t ? t + 1 : 0;
+      const kill = new Uint8Array(W * H);
+      const dark = (x, y) => x >= 0 && y >= 0 && x < W && y < H && A[y * W + x] > 60;
+      if (inside) {
+        for (let y = 0; y < H; y++) for (let u = 0; u < t; u++) {
+          // 左、右邊：往內看一格，沒有連到圖面線條 → 純框線，擦掉
+          if (A[y * W + u] && !(dark(inside, y - 1) || dark(inside, y) || dark(inside, y + 1))) kill[y * W + u] = 1;
+          const xr = W - 1 - u;
+          if (A[y * W + xr] && !(dark(W - 1 - inside, y - 1) || dark(W - 1 - inside, y) || dark(W - 1 - inside, y + 1))) kill[y * W + xr] = 1;
+        }
+        for (let x = 0; x < W; x++) for (let v = 0; v < t; v++) {
+          if (A[v * W + x] && !(dark(x - 1, inside) || dark(x, inside) || dark(x + 1, inside))) kill[v * W + x] = 1;
+          const yb = H - 1 - v;
+          if (A[yb * W + x] && !(dark(x - 1, H - 1 - inside) || dark(x, H - 1 - inside) || dark(x + 1, H - 1 - inside))) kill[yb * W + x] = 1;
+        }
+      }
+      for (let i = 0, k = 0; i < d.length; i += 4, k++) {
+        d[i] = 0; d[i+1] = 0; d[i+2] = 0;
+        d[i+3] = kill[k] ? 0 : A[k];
+      }
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    }
 
 
     // ==================================================================
@@ -1212,8 +1266,7 @@
     }
 
     // 圖框位置：匯入時取多張圖的「中位數」存起來，所有圖幅用同一組裁切值 → 相鄰圖線條才會對齊
-    let cropPersisted = false;   // 圖框值是否可靠（匯入取樣 / 多張取樣）→ 才會把畫好的圖幅存快取
-    let cropMetaPromise = idbGet('meta', 'crop').then(v => { if (v && v.w && v.v === 3) { cachedInnerCrop = v; cropPersisted = true; } });
+    let cropMetaPromise = idbGet('meta', 'crop').then(v => { if (v && v.w && v.v === 2) cachedInnerCrop = v; });   // 舊版(有縮進)的值作廢
 
     async function refreshCadStatus() {
       const n = await idbCount('pdfs');
@@ -1271,9 +1324,8 @@
       }
       if (samples.length > 0) {
         const w = median(samples.map(b => b.w));
-        cachedInnerCrop = { x: median(samples.map(b => b.x)), y: median(samples.map(b => b.y)), w, h: Math.round(w * 500 / 800), v: 3 };
+        cachedInnerCrop = { x: median(samples.map(b => b.x)), y: median(samples.map(b => b.y)), w, h: median(samples.map(b => b.h)), t: median(samples.map(b => b.t)), v: 2 };
         await idbPut('meta', 'crop', cachedInnerCrop);
-        cropPersisted = true;
       }
 
       // 清掉畫面上舊的疊圖，用新的重畫
@@ -1308,7 +1360,7 @@
     window.clearCadStore = async () => {
       if (!confirm('確定清除已匯入的本地圖資？')) return;
       await idbClear('pdfs'); await idbClear('meta'); await idbClear('tiles');
-      cachedInnerCrop = null; cropPersisted = false;
+      cachedInnerCrop = null;
       cadOverlayLayer.clearLayers(); loadedCadTiles.clear();
       await refreshCadStatus();
     };
@@ -1321,99 +1373,71 @@
     });
     refreshCadStatus();
 
-    async function getPdfBuffer(mapId) {
+    async function fetchAndRenderPdfMap(mapId) {
       const zone = mapId[0];
-      const subFolder = `${zone}${mapId.substring(1, 3)}XX`;
+      const xStr = mapId.substring(1, 3);
+      const subFolder = `${zone}${xStr}XX`;
+
       const candidateUrls = [
         `${PDF_BASE_FOLDER}/${subFolder}/${mapId}.PDF`,
         `${PDF_BASE_FOLDER}/${subFolder}/${mapId}.pdf`,
         `${PDF_BASE_FOLDER}/${mapId}.PDF`,
         `${PDF_BASE_FOLDER}/${mapId}.pdf`
       ];
-      let buf = await idbGet('pdfs', mapId);
-      if (buf) return buf;
-      for (const url of candidateUrls) {
+
+      await cropMetaPromise;
+      const cacheKey = `${mapId}|s${PDF_RENDER_SCALE}|g2`;
+      const cached = await idbGet('tiles', cacheKey);
+      if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF
+      let arrayBuf = (await idbGet('pdfs', mapId)) || null;
+      for (const url of (arrayBuf ? [] : candidateUrls)) {
         try {
           const resp = await fetch(url);
-          if (resp.ok) return await resp.arrayBuffer();
+          if (resp.ok) {
+            arrayBuf = await resp.arrayBuffer();
+            break;
+          }
         } catch (e) {}
       }
-      throw new Error(`找不到 ${mapId}.PDF`);
-    }
+      if (!arrayBuf) throw new Error(`找不到 ${mapId}.PDF`);
 
-    // 雲端模式沒有「匯入取樣」→ 改用畫面附近最多 5 張圖量框，取中位數；全部圖幅共用同一組裁切值（和本地匯入一致）
-    let _calibPromise = null;
-    function calibrateCropFromIds(ids) {
-      if (_calibPromise) return _calibPromise;
-      _calibPromise = (async () => {
-        const samples = [];
-        for (const id of ids) {
-          try {
-            const buf = await getPdfBuffer(id);
-            const { ctx, viewport } = await renderPdfBufferToCanvas(buf);
-            samples.push(findInnerGridBox(ctx, viewport.width, viewport.height));
-          } catch (e) {}
-        }
-        if (!samples.length) return;
-        const w = median(samples.map(b => b.w));
-        cachedInnerCrop = { x: median(samples.map(b => b.x)), y: median(samples.map(b => b.y)), w, h: Math.round(w * 500 / 800), v: 3 };
-        if (samples.length >= 3) { await idbPut('meta', 'crop', cachedInnerCrop); cropPersisted = true; }
-      })().finally(() => { _calibPromise = null; });
-      return _calibPromise;
-    }
+      const pdf = await pdfjsLib.getDocument(new Uint8Array(arrayBuf)).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = viewport.width;
+      offCanvas.height = viewport.height;
+      const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+      await page.render({ canvasContext: offCtx, viewport }).promise;
 
-    async function fetchAndRenderPdfMap(mapId) {
-      await cropMetaPromise;
-      const cacheKey = `${mapId}|s${PDF_RENDER_SCALE}|g3`;
-      if (cropPersisted && !CAD_DEBUG) {
-        const cached = await idbGet('tiles', cacheKey);
-        if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF
-      }
-      const arrayBuf = await getPdfBuffer(mapId);
-      const { ctx: offCtx, viewport } = await renderPdfBufferToCanvas(arrayBuf);
-      const offCanvas = offCtx.canvas;
+      // 每張圖各自量框（精準貼合）；若量到的結果和參考值差太多（偵測失敗）就退回參考值
+      let box = null;
+      try { box = findInnerGridBox(offCtx, viewport.width, viewport.height); } catch (e) {}
+      if (!cachedInnerCrop && box) cachedInnerCrop = box;
+      const ref = cachedInnerCrop;
+      if (!box || (ref && (Math.abs(box.w - ref.w) / ref.w > 0.015 || Math.abs(box.h - ref.h) / ref.h > 0.015))) box = ref;
 
-      if (!cachedInnerCrop) {
-        cachedInnerCrop = findInnerGridBox(offCtx, viewport.width, viewport.height);
-      }
-
-      const W = cachedInnerCrop.w;
-      const H = cachedInnerCrop.h;
+      const W = Math.round(box.w), H = Math.round(W * 500 / 800);
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = W;
       cropCanvas.height = H;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-      cropCtx.drawImage(offCanvas, cachedInnerCrop.x, cachedInnerCrop.y, W, H, 0, 0, W, H);
+      cropCtx.imageSmoothingEnabled = true;
+      cropCtx.drawImage(offCanvas, box.x, box.y, box.w, box.h, 0, 0, W, H);   // 框線中心對齊，剛好 800×500 公尺
+      cleanCropCanvas(cropCanvas, box.t || 3);
 
-      const imgData = cropCtx.getImageData(0, 0, W, H);
-      const d = imgData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i+1], b = d[i+2];
-        if (r > 215 && g > 215 && b > 215) {
-          d[i+3] = 0;
-        } else {
-          d[i] = 0;
-          d[i+1] = 0;
-          d[i+2] = 0;
-          d[i+3] = 255;
-        }
-      }
-      cropCtx.putImageData(imgData, 0, 0);
-      if (CAD_DEBUG) window.__cadBox = Object.assign(window.__cadBox || {}, { [mapId]: cachedInnerCrop });
-      const url = cropCanvas.toDataURL('image/png');
-      if (cropPersisted && !CAD_DEBUG) { try { await idbPut('tiles', cacheKey, url); } catch (e) {} }
+      const x800 = parseInt(mapId.substring(1, 3), 10);
+      const y500 = parseInt(mapId.substring(3, 5), 10);
+      const url = warpCropToMercator(cropCanvas, zone, x800, y500).toDataURL('image/png');
+      try { await idbPut('tiles', cacheKey, url); } catch (e) {}
       return url;
     }
 
-
-    const CAD_DEBUG = /[?&]debug=1/.test(location.search);
-    const cadDebugLayer = L.layerGroup().addTo(map);
     const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資
     const MAX_CAD_VISIBLE = 4;    // 畫面最多同時用到 4 張（卡在四張交界）
     const MAX_CAD_KEEP = 6;       // 記憶體最多留 6 張
     let cadLoadGen = 0;           // 每次畫面移動就 +1，舊的排程自動作廢
     let cadLoadTimer = null;
-    const statusTextEl = () => document.getElementById('cad-status-text');
 
     function loadVisibleCadTiles() {
       clearTimeout(cadLoadTimer);
@@ -1464,12 +1488,6 @@
         loadedCadTiles.delete(k);
       }
 
-      await cropMetaPromise;
-      if (!cachedInnerCrop) {
-        if (statusTextEl()) statusTextEl().innerText = '⏳ 校正圖框位置（首次）...';
-        await calibrateCropFromIds(cands.slice(0, 5).map(c => c.id));
-        if (gen !== cadLoadGen) return;
-      }
       for (const mapId of needed) {
         if (!isCadOverlayEnabled || gen !== cadLoadGen) break;   // 畫面又動了 → 放棄舊排程
         await ensureCadTileLoaded(mapId);
@@ -1502,14 +1520,6 @@
         const bounds = computeTileBounds(zone, x800, y500);
 
         const overlay = L.imageOverlay(dataUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
-        if (CAD_DEBUG) {
-          const c = tileCornersMerc(zone, x800, y500, true);
-          const ll = (q) => { const u = L.CRS.EPSG3857.unproject(L.point(q.x, q.y)); return [u.lat, u.lng]; };
-          const bx = (window.__cadBox || {})[mapId];
-          L.polygon([ll(c.sw), ll(c.se), ll(c.ne), ll(c.nw)], { color: '#ff2d55', weight: 2, fill: false, interactive: false })
-            .bindTooltip(`${mapId}${bx ? ` w${bx.w.toFixed(0)} h${bx.h.toFixed(0)}` : ''}`, { permanent: true, direction: 'center', className: 'cad-dbg' })
-            .addTo(cadDebugLayer);
-        }
 
         while (loadedCadTiles.size >= MAX_CAD_KEEP) {
           const oldestKey = loadedCadTiles.keys().next().value;
@@ -1545,7 +1555,6 @@
         calibBox.style.display = 'none';
         document.getElementById('cad-nudge-pad').style.display = 'none';
         cadOverlayLayer.clearLayers();
-        cadDebugLayer.clearLayers();
         loadedCadTiles.clear();
       }
     };
