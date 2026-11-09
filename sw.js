@@ -1,29 +1,41 @@
-const CACHE_NAME = 'gq-nav-clean-v1';
+// 每次改版把版號 +1,舊快取會自動清掉
+const CACHE_NAME = 'gq-nav-v3';
+const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+// 程式庫與圖釘圖示（版本固定的檔案）：也存一份，沒訊號時 App 才打得開。地圖圖磚、路線 API 一律不存。
+const LIB_HOSTS = ['unpkg.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'raw.githubusercontent.com'];
 
-// 安裝時立即接管，不等待舊版關閉
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(APP_SHELL)).catch(() => {}));
 });
 
-// 啟動時強制刪除所有舊名字的系統殘留快取
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-// 網路優先策略：有網路抓最新程式，沒網路才讀快取，確保不會卡舊版
+// 網路優先(有網路永遠拿最新版),成功後順手存一份;沒網路才用快取
+// 只快取自己網站的檔案與上面列的程式庫,不快取地圖圖磚/第三方 API;大的圖資 PDF 交給 App 內的 IndexedDB
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  const isLib = LIB_HOSTS.includes(url.hostname);
+  if (url.origin !== location.origin && !isLib) return;
+  if (/\.pdf$/i.test(url.pathname)) return;
+
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(req)
+      .then((res) => {
+        if (res && (res.ok || (isLib && res.type === 'opaque'))) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((r) => r || caches.match('./index.html')))
   );
 });
