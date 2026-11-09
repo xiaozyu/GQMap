@@ -509,7 +509,7 @@
           <button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button>
         </div>
         <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
-        <div style="font-size:9px;color:#64748b;">v7 · 清晰字體</div><div id="cad-debug" style="font-size:8px;color:#64748b;font-family:monospace;max-width:230px;line-height:1.3;"></div>
+        <div style="font-size:9px;color:#64748b;">v8 · 單件匯入</div><div id="cad-debug" style="font-size:8px;color:#64748b;font-family:monospace;max-width:230px;line-height:1.3;"></div>
         <div style="display:flex;gap:6px;margin-top:4px;border-top:1px solid #334155;padding-top:6px;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
@@ -2151,6 +2151,19 @@
         }
       }
 
+      if (newTasks.length === 0) {
+        // 只複製一件時：格式常常不像整張派工單 → 比照下方輸入框的處理方式（圖號或地址都吃）
+        const cand = rawLines.filter(l => !isSystemNoiseLine(l) && !formatTimeStandard(l));
+        if (cand.length >= 1 && cand.length <= 2) {
+          const one = cand.join(' ').slice(0, 60);
+          const t0 = rawLines.map(formatTimeStandard).find(Boolean) || null;
+          let ok = false;
+          try { ok = await processAndSaveTaskInput(t0 ? one + ' ' + t0 : one, null, 'G'); } catch (e) {}
+          if (ok) return;
+        }
+        showUndoToast('匯入沒有新增案件（內容已存在或格式看不出圖號／地址）', null);
+        return;
+      }
       if (newTasks.length > 0) {
         const startIndex = tasks.length;
         newTasks.forEach(n => { if (n.code === '📍地址導航') geoPending.add(n); });
