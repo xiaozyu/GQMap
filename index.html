@@ -294,8 +294,11 @@
     }
     .nudge-btn:active { background: #3b82f6; transform: scale(0.95); }
 
+    #here-wrap { position: absolute; top: 8px; left: 8px; z-index: 800; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+    #here-time { font: 10px monospace; color: rgba(30,41,59,0.62); text-shadow: 0 0 2px rgba(255,255,255,0.95), 0 0 3px rgba(255,255,255,0.8);
+      white-space: nowrap; letter-spacing: 0.3px; }
     #here-code {
-      position: absolute; top: 8px; left: 8px; z-index: 800; cursor: pointer;
+      position: static; z-index: 800; cursor: pointer; pointer-events: auto;
       background: rgba(15,23,42,0.82); color: #fde047; border: 1px solid #475569;
       border-radius: 8px; padding: 3px 8px; font-family: monospace; font-weight: bold;
       font-size: 13px; line-height: 1.25; display: none;
@@ -497,7 +500,7 @@
     <div id="leaflet-map"></div>
     <iframe id="streetview-frame" src="about:blank"></iframe>
 
-    <div id="here-code" title="畫面中心所在圖號"></div>
+    <div id="here-wrap"><div id="here-code" title="畫面中心所在圖號"></div><div id="here-time"></div></div>
     <div id="here-cross"><span id="here-cross-label"></span></div>
     <div id="mapBanner">
       <span id="mapBannerText">📍 請在畫面上點選位置...</span>
@@ -524,7 +527,7 @@
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v18</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v19</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1001,6 +1004,10 @@
       }
       const kick = () => { if (!raf) raf = requestAnimationFrame(upd); };
       map.on('move zoomend', kick);
+      const tEl = document.getElementById('here-time');
+      const pad = (n) => String(n).padStart(2, '0');
+      const tick = () => { const d = new Date(); tEl.textContent = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+      tick(); setInterval(tick, 15000);
       const cross = document.getElementById('here-cross');
       try { if (localStorage.getItem('tpc_cross') === '1') cross.style.display = 'block'; } catch (e) {}
       const lbl = document.getElementById('here-cross-label');
