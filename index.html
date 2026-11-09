@@ -279,6 +279,8 @@
       background: #334155; border: 1px solid #64748b; color: #fff; border-radius: 4px;
       padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: bold;
     }
+    body, .leaflet-container, #cad-nudge-pad, #cad-nudge-pad * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    input, textarea { -webkit-user-select: text; user-select: text; }
     #cad-nudge-pad {
       background: rgba(15, 23, 42, 0.95); border: 1px solid #475569;
       border-radius: 10px; padding: 10px; display: none; flex-direction: column;
@@ -507,6 +509,7 @@
           <button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button>
         </div>
         <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
+        <div style="font-size:9px;color:#64748b;">v6 · 清晰字體</div>
         <div style="display:flex;gap:6px;margin-top:4px;border-top:1px solid #334155;padding-top:6px;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
@@ -572,7 +575,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = 2.0;   // 每公尺約 4.7 像素（原本 3.0 的 A1 整頁 7152×5052，手機吃不消）
+    const PDF_RENDER_SCALE = 3.0;   // 每公尺約 4.7 像素（原本 3.0 的 A1 整頁 7152×5052，手機吃不消）
     // 台電 A1 圖框範本（單位：PDF 點，scale=1）。實測 G3557~G3561 五張框位置完全相同：
     // 圖幅 = 最外圈 100m 格線，剛好 800×500 公尺。
     const CAD_TPL = { pw: 2384, ph: 1684, frame: { x: 243.5, y: 169.1667, w: 1889.6667, h: 1181 } };
@@ -1420,7 +1423,7 @@
 
     // 本地匯入與雲端共用同一套流程：有匯入就用本地 PDF，沒有就從網站抓；之後的裁切、拼接、快取完全一樣
     const CAD_CLOUD_VER = 1;      // 雲端圖資 PDF 有更新時把這個數字 +1，舊快取就會作廢
-    const CAD_CACHE_TAG = `s${PDF_RENDER_SCALE}|g5|c${CAD_CLOUD_VER}`;
+    const CAD_CACHE_TAG = `s${PDF_RENDER_SCALE}|g6|c${CAD_CLOUD_VER}`;
     const canvasToBlob = (cv) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/png'));
 
     function dropCadTile(key) {
