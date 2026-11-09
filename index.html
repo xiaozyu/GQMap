@@ -116,7 +116,7 @@
 
     .task-list-section {
       background: #131d31; border-radius: 5px; border: 1px solid #1e293b;
-      padding: 2px 3px; height: 185px; overflow-y: auto; touch-action: pan-y;
+      padding: 2px 3px; height: 142px; overflow-y: auto; touch-action: pan-y;
     }
 
     .task-row {
@@ -509,7 +509,7 @@
           <button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button>
         </div>
         <div id="cad-offset-label" style="font-size:10px;color:#38bdf8;font-family:monospace;">X:0m, Y:0m</div>
-        <div style="font-size:9px;color:#64748b;">v6 · 清晰字體</div>
+        <div style="font-size:9px;color:#64748b;">v7 · 清晰字體</div><div id="cad-debug" style="font-size:8px;color:#64748b;font-family:monospace;max-width:230px;line-height:1.3;"></div>
         <div style="display:flex;gap:6px;margin-top:4px;border-top:1px solid #334155;padding-top:6px;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="importCadFiles()" class="cad-mini-btn" style="background:#0284c7;">📄選檔</button>
@@ -1065,7 +1065,18 @@
     window.toggleNudgePad = () => {
       const pad = document.getElementById('cad-nudge-pad');
       pad.style.display = (pad.style.display === 'flex') ? 'none' : 'flex';
+      if (pad.style.display === 'flex') showCadDebug();
     };
+    async function showCadDebug() {
+      const el = document.getElementById('cad-debug');
+      if (!el) return;
+      const ids = Array.from(loadedCadTiles.keys()).slice(0, 4), rows = [];
+      for (const id of ids) {
+        let t = null; try { t = await idbGet('meta', 'dbg|' + id); } catch (e) {}
+        rows.push(id + ' ' + (t || '(快取,無紀錄)'));
+      }
+      el.textContent = rows.join('\n'); el.style.whiteSpace = 'pre-line';
+    }
 
     window.nudgeCadOverlay = (dxMeters, dyMeters) => {
       cadOffset.dx += dxMeters;
@@ -1371,6 +1382,7 @@
       const cached = await idbGet('tiles', cacheKey);
       if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF（Blob）
       let arrayBuf = (await idbGet('pdfs', mapId)) || null;
+      const srcName = arrayBuf ? '本地' : '雲端';
       for (const url of (arrayBuf ? [] : candidateUrls)) {
         try {
           const resp = await fetch(url);
@@ -1388,9 +1400,9 @@
       const vp1 = page.getViewport({ scale: 1 });
 
       // 圖框位置（scale=1 的 PDF 點）：A1 範本直接用；尺寸不同的才用低解析度偵測
-      let fr = null;
+      let fr = null, frMode = '偵測';
       if (Math.abs(vp1.width - CAD_TPL.pw) < 3 && Math.abs(vp1.height - CAD_TPL.ph) < 3) {
-        fr = CAD_TPL.frame;
+        fr = CAD_TPL.frame; frMode = '模板';
       } else {
         const ds = 1.5, vpd = page.getViewport({ scale: ds });
         const dc = document.createElement('canvas');
@@ -1418,12 +1430,13 @@
       const blob = await canvasToBlob(warped);
       warped.width = warped.height = 0; cropCanvas.width = cropCanvas.height = 0;   // 立刻釋放記憶體
       try { await idbPut('tiles', cacheKey, blob); } catch (e) {}
+      try { await idbPut('meta', 'dbg|' + mapId, `${srcName} ${Math.round(vp1.width)}x${Math.round(vp1.height)} ${frMode} x${fr.x.toFixed(1)} y${fr.y.toFixed(1)} w${fr.w.toFixed(1)} h${fr.h.toFixed(1)}`); } catch (e) {}
       return blob;
     }
 
     // 本地匯入與雲端共用同一套流程：有匯入就用本地 PDF，沒有就從網站抓；之後的裁切、拼接、快取完全一樣
     const CAD_CLOUD_VER = 1;      // 雲端圖資 PDF 有更新時把這個數字 +1，舊快取就會作廢
-    const CAD_CACHE_TAG = `s${PDF_RENDER_SCALE}|g6|c${CAD_CLOUD_VER}`;
+    const CAD_CACHE_TAG = `s${PDF_RENDER_SCALE}|g7|c${CAD_CLOUD_VER}`;
     const canvasToBlob = (cv) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/png'));
 
     function dropCadTile(key) {
