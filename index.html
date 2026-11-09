@@ -524,7 +524,7 @@
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v16</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v18</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -723,10 +723,31 @@
       return { x, y };
     }
 
+    // TWD97 → TWD67：與 twd67ToWGS84 用同一組仿射參數（內政部公式）反推，全台通用
+    function twd97ToTWD67(x97, y97) {
+      const A = 0.00001549, B = 0.000006521;
+      let x = x97 - 828, y = y97 + 207;                      // 初值
+      for (let i = 0; i < 4; i++) {
+        x = x97 - (807.8 + A * x + B * y);
+        y = y97 - (-248.6 + A * y - B * x);
+      }
+      return { x, y };
+    }
+    // 依 TWD67 座標找所在區（每區 東西80km × 南北50km；沒有對應區的地方回傳 null）
+    function zoneOfTWD67(x, y) {
+      for (const z in BASE_COORDS) {
+        const [bx, by] = BASE_COORDS[z];
+        if (x >= bx && x < bx + 80000 && y >= by && y < by + 50000) return z;
+      }
+      return null;
+    }
     function coordToPowerCode(lat, lng) {
       const pt97 = wgs84ToTWD97(lat, lng);
-      const x67 = pt97.x - 828, y67 = pt97.y + 207;
-      let dx = x67 - 170000, dy = y67 - 2650000;
+      const p67 = twd97ToTWD67(pt97.x, pt97.y), x67 = p67.x, y67 = p67.y;
+      const zone = zoneOfTWD67(x67, y67);
+      if (!zone) return '(超出圖號範圍)';
+      const [bx, by] = BASE_COORDS[zone];
+      let dx = x67 - bx, dy = y67 - by;
       let xMap = Math.floor(dx / 800), yMap = Math.floor(dy / 500);
       let remX = dx - xMap * 800, remY = dy - yMap * 500;
       let subXIndex = Math.floor(remX / 100), subYIndex = Math.floor(remY / 100);
@@ -735,7 +756,7 @@
       let ptX = Math.floor((remX - subXIndex * 100) / 10);
       let ptY = Math.floor((remY - subYIndex * 100) / 10);
       const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
-      return `G${pad2(xMap)}${pad2(yMap)}${subX}${subY}${Math.min(Math.max(ptX, 0), 9)}${Math.min(Math.max(ptY, 0), 9)}`;
+      return `${zone}${pad2(xMap)}${pad2(yMap)}${subX}${subY}${Math.min(Math.max(ptX, 0), 9)}${Math.min(Math.max(ptY, 0), 9)}`;
     }
 
     function getTaskLatLng(t) {
@@ -1544,29 +1565,31 @@
       const sw97 = wgs84ToTWD97(b.getSouth(), b.getWest());
       const ne97 = wgs84ToTWD97(b.getNorth(), b.getEast());
       const M = 60;
-      const minX67 = sw97.x - 828 - M, minY67 = sw97.y + 207 - M;
-      const maxX67 = ne97.x - 828 + M, maxY67 = ne97.y + 207 + M;
-
-      const startX = Math.floor((minX67 - 170000) / 800);
-      const endX   = Math.floor((maxX67 - 170000) / 800);
-      const startY = Math.floor((minY67 - 2650000) / 500);
-      const endY   = Math.floor((maxY67 - 2650000) / 500);
+      const sw67 = twd97ToTWD67(sw97.x, sw97.y), ne67 = twd97ToTWD67(ne97.x, ne97.y);
+      const minX67 = sw67.x - M, minY67 = sw67.y - M;
+      const maxX67 = ne67.x + M, maxY67 = ne67.y + M;
 
       const pad2 = (n) => String(Math.max(0, n)).padStart(2, '0');
       const center = map.getCenter();
-      const centerMapId = coordToPowerCode(center.lat, center.lng).substring(0, 5).toUpperCase();
+      const cc = coordToPowerCode(center.lat, center.lng);
+      const centerMapId = /^[A-Z]\d{4}/.test(cc) ? cc.substring(0, 5).toUpperCase() : '';
 
       const cands = [];
-      for (let x = startX; x <= endX; x++) {
-        for (let y = startY; y <= endY; y++) {
-          if (x < 0 || x > 99 || y < 0 || y > 99) continue;
-          const id = `G${pad2(x)}${pad2(y)}`;
-          const bd = computeTileBounds('G', x, y);
-          const dLat = (bd[0][0] + bd[1][0]) / 2 - center.lat, dLng = (bd[0][1] + bd[1][1]) / 2 - center.lng;
-          cands.push({ id, dist: id === centerMapId ? -1 : dLat * dLat + dLng * dLng });
+      for (const zone in BASE_COORDS) {                       // 畫面範圍跨到哪一區就算哪一區
+        const [bx, by] = BASE_COORDS[zone];
+        if (maxX67 < bx || minX67 >= bx + 80000 || maxY67 < by || minY67 >= by + 50000) continue;
+        const sx = Math.max(0, Math.floor((minX67 - bx) / 800)), ex = Math.min(99, Math.floor((maxX67 - bx) / 800));
+        const sy = Math.max(0, Math.floor((minY67 - by) / 500)), ey = Math.min(99, Math.floor((maxY67 - by) / 500));
+        for (let x = sx; x <= ex; x++) {
+          for (let y = sy; y <= ey; y++) {
+            const id = `${zone}${pad2(x)}${pad2(y)}`;
+            const bd = computeTileBounds(zone, x, y);
+            const dLat = (bd[0][0] + bd[1][0]) / 2 - center.lat, dLng = (bd[0][1] + bd[1][1]) / 2 - center.lng;
+            cands.push({ id, dist: id === centerMapId ? -1 : dLat * dLat + dLng * dLng });
+          }
         }
       }
-      if (!cands.some(c => c.id === centerMapId)) cands.push({ id: centerMapId, dist: -1 });
+      if (centerMapId && !cands.some(c => c.id === centerMapId)) cands.push({ id: centerMapId, dist: -1 });
       cands.sort((p, q) => p.dist - q.dist);
       const needed = cands.slice(0, MAX_CAD_VISIBLE).map(c => c.id);   // 中央那張排第一
       const sig = needed.join(',');
