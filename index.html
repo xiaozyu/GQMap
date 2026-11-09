@@ -572,7 +572,10 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = 3.0;
+    const PDF_RENDER_SCALE = 2.0;   // 每公尺約 4.7 像素（原本 3.0 的 A1 整頁 7152×5052，手機吃不消）
+    // 台電 A1 圖框範本（單位：PDF 點，scale=1）。實測 G3557~G3561 五張框位置完全相同：
+    // 圖幅 = 最外圈 100m 格線，剛好 800×500 公尺。
+    const CAD_TPL = { pw: 2384, ph: 1684, frame: { x: 243.5, y: 169.1667, w: 1889.6667, h: 1181 } };
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -1044,7 +1047,6 @@
     };
 
     let isCadOverlayEnabled = false;
-    let cachedInnerCrop = null;
     const loadedCadTiles = new Map();
     const loadingCadSet = new Set();
 
@@ -1267,9 +1269,6 @@
       });
     }
 
-    // 圖框位置：匯入時取多張圖的「中位數」存起來，所有圖幅用同一組裁切值 → 相鄰圖線條才會對齊
-    let cropMetaPromise = idbGet('meta', 'crop').then(v => { if (v && v.w && v.v === 2) cachedInnerCrop = v; });   // 舊版(有縮進)的值作廢
-
     async function refreshCadStatus() {
       const n = await idbCount('pdfs');
       const el = document.getElementById('cad-status-text');
@@ -1278,27 +1277,10 @@
       if (pick) pick.style.display = n > 0 ? 'none' : 'inline-block';                                              // 匯入後只剩「校準」
     }
 
-    function median(arr) {
-      const a = [...arr].sort((x, y) => x - y);
-      const m = Math.floor(a.length / 2);
-      return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
-    }
-
     function mapIdFromName(name) {
       const base = name.split(/[\\/]/).pop();
       const m = base.match(/([A-Za-z]\d{4})/);
       return m ? m[1].toUpperCase() : null;
-    }
-
-    async function renderPdfBufferToCanvas(buf) {
-      const pdf = await pdfjsLib.getDocument(new Uint8Array(buf.slice(0))).promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
-      const c = document.createElement('canvas');
-      c.width = viewport.width; c.height = viewport.height;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      return { ctx, viewport };
     }
 
     async function importCadFileList(fileList) {
@@ -1307,38 +1289,31 @@
       const files = Array.from(fileList).filter(f => /\.pdf$/i.test(f.name) && mapIdFromName(f.name));
       if (files.length === 0) { await refreshCadStatus(); alert('沒有找到圖號格式的 PDF（檔名需包含像 G3850 的圖號）。'); return; }
 
-      let done = 0, samples = [];
-      for (const f of files) {
-        const id = mapIdFromName(f.name);
-        const buf = await f.arrayBuffer();
-        await idbPut('pdfs', id, buf);
-        done++;
-        if (statusText && (done % 5 === 0 || done === files.length)) statusText.innerText = `⏳ 匯入中 ${done}/${files.length}`;
-      }
-
-      // 取樣最多 7 張（平均分布）計算圖框中位數
-      if (statusText) statusText.innerText = '⏳ 校正圖框位置...';
-      const step = Math.max(1, Math.floor(files.length / 7));
-      const picks = files.filter((_, i) => i % step === 0).slice(0, 7);
-      for (const f of picks) {
-        try {
-          const buf = await f.arrayBuffer();
-          const { ctx, viewport } = await renderPdfBufferToCanvas(buf);
-          samples.push(findInnerGridBox(ctx, viewport.width, viewport.height));
-        } catch (e) {}
-      }
-      if (samples.length > 0) {
-        const w = median(samples.map(b => b.w));
-        cachedInnerCrop = { x: median(samples.map(b => b.x)), y: median(samples.map(b => b.y)), w, h: median(samples.map(b => b.h)), t: median(samples.map(b => b.t)), v: 2 };
-        await idbPut('meta', 'crop', cachedInnerCrop);
-      }
-
-      // 清掉畫面上舊的疊圖，用新的重畫
+      // 先清掉舊疊圖與舊快取，之後用新的重畫
       try { await idbClear('tiles'); } catch (e) {}
-      cadOverlayLayer.clearLayers();
-      loadedCadTiles.clear();
+      dropAllCadTiles();
+
+      // 只看檔名就排好順序：離目前畫面中央最近的先匯入
+      const c0 = map.getCenter();
+      const ordered = files.map(f => {
+        const id = mapIdFromName(f.name);
+        const bd = computeTileBounds(id[0], parseInt(id.substring(1, 3), 10), parseInt(id.substring(3, 5), 10));
+        const dLat = (bd[0][0] + bd[1][0]) / 2 - c0.lat, dLng = (bd[0][1] + bd[1][1]) / 2 - c0.lng;
+        return { f, id, d: dLat * dLat + dLng * dLng };
+      }).sort((p, q) => p.d - q.d);
+
+      let done = 0;
+      for (const it of ordered) {
+        const buf = await it.f.arrayBuffer();
+        await idbPut('pdfs', it.id, buf);
+        done++;
+        if (statusText && (done % 5 === 0 || done === ordered.length)) statusText.innerText = `⏳ 匯入中 ${done}/${ordered.length}`;
+        if (done === Math.min(6, ordered.length) && isCadOverlayEnabled) loadVisibleCadTiles();   // 最近的幾張好了就先顯示
+        if (done % 10 === 0) await new Promise(r => setTimeout(r, 0));                            // 讓畫面喘口氣
+      }
+
       await refreshCadStatus();
-      alert(`✅ 已匯入 ${files.length} 張圖資（圖框取樣 ${samples.length} 張）`);
+      alert(`✅ 已匯入 ${files.length} 張圖資`);
       if (isCadOverlayEnabled) loadVisibleCadTiles();
     }
 
@@ -1365,8 +1340,7 @@
     window.clearCadStore = async () => {
       if (!confirm('確定清除已匯入的本地圖資？')) return;
       await idbClear('pdfs'); await idbClear('meta'); await idbClear('tiles');
-      cachedInnerCrop = null;
-      cadOverlayLayer.clearLayers(); loadedCadTiles.clear();
+      dropAllCadTiles();
       await refreshCadStatus();
     };
     ['cad-folder-input', 'cad-files-input'].forEach(id => {
@@ -1390,10 +1364,9 @@
         `${PDF_BASE_FOLDER}/${mapId}.pdf`
       ];
 
-      await cropMetaPromise;
-      const cacheKey = `${mapId}|s${PDF_RENDER_SCALE}|g2`;
+      const cacheKey = `${mapId}|${CAD_CACHE_TAG}`;
       const cached = await idbGet('tiles', cacheKey);
-      if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF
+      if (cached) return cached;                       // 已畫過 → 直接用，不用再解 PDF（Blob）
       let arrayBuf = (await idbGet('pdfs', mapId)) || null;
       for (const url of (arrayBuf ? [] : candidateUrls)) {
         try {
@@ -1408,41 +1381,87 @@
 
       const pdf = await pdfjsLib.getDocument(new Uint8Array(arrayBuf)).promise;
       const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
-      const offCanvas = document.createElement('canvas');
-      offCanvas.width = viewport.width;
-      offCanvas.height = viewport.height;
-      const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
-      await page.render({ canvasContext: offCtx, viewport }).promise;
+      const S = PDF_RENDER_SCALE;
+      const vp1 = page.getViewport({ scale: 1 });
 
-      // 每張圖各自量框（精準貼合）；若量到的結果和參考值差太多（偵測失敗）就退回參考值
-      let box = null;
-      try { box = findInnerGridBox(offCtx, viewport.width, viewport.height); } catch (e) {}
-      if (!cachedInnerCrop && box) cachedInnerCrop = box;
-      const ref = cachedInnerCrop;
-      if (!box || (ref && (Math.abs(box.w - ref.w) / ref.w > 0.015 || Math.abs(box.h - ref.h) / ref.h > 0.015))) box = ref;
+      // 圖框位置（scale=1 的 PDF 點）：A1 範本直接用；尺寸不同的才用低解析度偵測
+      let fr = null;
+      if (Math.abs(vp1.width - CAD_TPL.pw) < 3 && Math.abs(vp1.height - CAD_TPL.ph) < 3) {
+        fr = CAD_TPL.frame;
+      } else {
+        const ds = 1.5, vpd = page.getViewport({ scale: ds });
+        const dc = document.createElement('canvas');
+        dc.width = vpd.width; dc.height = vpd.height;
+        const dctx = dc.getContext('2d', { willReadFrequently: true });
+        await page.render({ canvasContext: dctx, viewport: vpd }).promise;
+        const bx = findInnerGridBox(dctx, vpd.width, vpd.height);
+        dc.width = dc.height = 0;
+        fr = { x: bx.x / ds, y: bx.y / ds, w: bx.w / ds, h: bx.h / ds };
+      }
 
-      const W = Math.round(box.w), H = Math.round(W * 500 / 800);
+      // 只畫圖框那一塊（不畫外面的空白與標題欄）：省記憶體、省時間
+      const vp = page.getViewport({ scale: S });
+      const W = Math.round(fr.w * S), H = Math.round(W * 500 / 800);
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = W;
       cropCanvas.height = H;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
-      cropCtx.imageSmoothingEnabled = true;
-      cropCtx.drawImage(offCanvas, box.x, box.y, box.w, box.h, 0, 0, W, H);   // 框線中心對齊，剛好 800×500 公尺
-      cleanCropCanvas(cropCanvas, box.t || 3);
+      await page.render({ canvasContext: cropCtx, viewport: vp, transform: [1, 0, 0, 1, -fr.x * S, -fr.y * S] }).promise;
+      cleanCropCanvas(cropCanvas, 1);
 
       const x800 = parseInt(mapId.substring(1, 3), 10);
       const y500 = parseInt(mapId.substring(3, 5), 10);
-      const url = warpCropToMercator(cropCanvas, zone, x800, y500).toDataURL('image/png');
-      try { await idbPut('tiles', cacheKey, url); } catch (e) {}
-      return url;
+      const warped = warpCropToMercator(cropCanvas, zone, x800, y500);
+      const blob = await canvasToBlob(warped);
+      warped.width = warped.height = 0; cropCanvas.width = cropCanvas.height = 0;   // 立刻釋放記憶體
+      try { await idbPut('tiles', cacheKey, blob); } catch (e) {}
+      return blob;
     }
+
+    // 本地匯入與雲端共用同一套流程：有匯入就用本地 PDF，沒有就從網站抓；之後的裁切、拼接、快取完全一樣
+    const CAD_CLOUD_VER = 1;      // 雲端圖資 PDF 有更新時把這個數字 +1，舊快取就會作廢
+    const CAD_CACHE_TAG = `s${PDF_RENDER_SCALE}|g5|c${CAD_CLOUD_VER}`;
+    const canvasToBlob = (cv) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/png'));
+
+    function dropCadTile(key) {
+      const t = loadedCadTiles.get(key);
+      if (t) {
+        if (t.overlay) cadOverlayLayer.removeLayer(t.overlay);
+        if (t.url) URL.revokeObjectURL(t.url);          // 釋放記憶體
+      }
+      loadedCadTiles.delete(key);
+    }
+    function dropAllCadTiles() {
+      for (const k of Array.from(loadedCadTiles.keys())) dropCadTile(k);
+      cadOverlayLayer.clearLayers();
+      lastCadSig = '';
+    }
+    // 清掉舊版本留下的圖幅快取（key 不是現行版本的全部刪除）
+    async function pruneTileCache() {
+      try {
+        const db = await cadDb();
+        await new Promise((res) => {
+          const tx = db.transaction('tiles', 'readwrite');
+          const st = tx.objectStore('tiles');
+          const req = st.openKeyCursor();
+          req.onsuccess = () => {
+            const cur = req.result;
+            if (!cur) return;
+            if (!String(cur.key).endsWith('|' + CAD_CACHE_TAG)) st.delete(cur.key);
+            cur.continue();
+          };
+          tx.oncomplete = res; tx.onerror = res; tx.onabort = res;
+        });
+      } catch (e) {}
+    }
+    setTimeout(pruneTileCache, 4000);
 
     const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資
     const MAX_CAD_VISIBLE = 4;    // 畫面最多同時用到 4 張（卡在四張交界）
     const MAX_CAD_KEEP = 6;       // 記憶體最多留 6 張
     let cadLoadGen = 0;           // 每次畫面移動就 +1，舊的排程自動作廢
     let cadLoadTimer = null;
+    let lastCadSig = '';          // 上次處理的圖幅組合；沒變就不重算
 
     function loadVisibleCadTiles() {
       clearTimeout(cadLoadTimer);
@@ -1483,21 +1502,22 @@
       if (!cands.some(c => c.id === centerMapId)) cands.push({ id: centerMapId, dist: -1 });
       cands.sort((p, q) => p.dist - q.dist);
       const needed = cands.slice(0, MAX_CAD_VISIBLE).map(c => c.id);   // 中央那張排第一
+      const sig = needed.join(',');
+      if (sig === lastCadSig && needed.every(id => loadedCadTiles.has(id))) return;   // 畫面移動但圖幅沒變 → 不重算
 
       // 釋放不需要的舊圖（保留需要的）
       for (const k of Array.from(loadedCadTiles.keys())) {
         if (loadedCadTiles.size <= MAX_CAD_KEEP - needed.length) break;
         if (needed.includes(k)) continue;
-        const old = loadedCadTiles.get(k);
-        if (old && old.overlay) cadOverlayLayer.removeLayer(old.overlay);
-        loadedCadTiles.delete(k);
+        dropCadTile(k);
       }
 
       for (const mapId of needed) {
-        if (!isCadOverlayEnabled || gen !== cadLoadGen) break;   // 畫面又動了 → 放棄舊排程
+        if (!isCadOverlayEnabled || gen !== cadLoadGen) return;  // 畫面又動了 → 放棄舊排程
         await ensureCadTileLoaded(mapId);
         await new Promise(r => setTimeout(r, 30));               // 讓手機喘口氣，地圖保持可拖動
       }
+      lastCadSig = sig;
     }
 
     async function ensureCadTileLoaded(mapId) {
@@ -1518,22 +1538,18 @@
       if (statusText) statusText.innerText = `⏳ 載入圖資 ${mapId}...`;
 
       try {
-        const dataUrl = await fetchAndRenderPdfMap(mapId);
+        const blob = await fetchAndRenderPdfMap(mapId);
+        const objUrl = URL.createObjectURL(blob);
         const zone = mapId[0];
         const x800 = parseInt(mapId.substring(1, 3), 10);
         const y500 = parseInt(mapId.substring(3, 5), 10);
         const bounds = computeTileBounds(zone, x800, y500);
 
-        const overlay = L.imageOverlay(dataUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
+        const overlay = L.imageOverlay(objUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
 
-        while (loadedCadTiles.size >= MAX_CAD_KEEP) {
-          const oldestKey = loadedCadTiles.keys().next().value;
-          const oldest = loadedCadTiles.get(oldestKey);
-          if (oldest && oldest.overlay) cadOverlayLayer.removeLayer(oldest.overlay);
-          loadedCadTiles.delete(oldestKey);
-        }
+        while (loadedCadTiles.size >= MAX_CAD_KEEP) dropCadTile(loadedCadTiles.keys().next().value);
 
-        loadedCadTiles.set(mapId, { dataUrl, zone, x800, y500, overlay });
+        loadedCadTiles.set(mapId, { url: objUrl, zone, x800, y500, overlay });
         if (statusText) {
           const activeKeys = Array.from(loadedCadTiles.keys()).filter(k => loadedCadTiles.get(k).overlay);
           statusText.innerText = `⚡ 已顯示 ${activeKeys.length} 張`;
@@ -1559,8 +1575,7 @@
         btn.classList.remove('cad-mode-active');
         calibBox.style.display = 'none';
         document.getElementById('cad-nudge-pad').style.display = 'none';
-        cadOverlayLayer.clearLayers();
-        loadedCadTiles.clear();
+        dropAllCadTiles();
       }
     };
 
@@ -1568,13 +1583,14 @@
       loadVisibleCadTiles();
     });
 
+    const _pinIconCache = {};
     function getCasePinIcon(isSelected, isND) {
       const pinColor = isSelected ? 'gold' : (isND ? 'red' : 'blue');
-      return L.icon({
+      return _pinIconCache[pinColor] || (_pinIconCache[pinColor] = L.icon({
         iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${pinColor}.png`,
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
         iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-      });
+      }));
     }
 
     function reloadBaseMarkers() {
@@ -1860,6 +1876,7 @@
           draggable: isAddrTask,
           zIndexOffset: baseZIndex
         }).addTo(markersLayer);
+        marker._selFlag = isSelected;
 
         if (isAddrTask) {
           // 位置不準時，直接把圖釘拖到正確位置；會記住這個地址
@@ -1940,6 +1957,8 @@
         if (!marker) return;
         const isND = Boolean(t.isND || /nd/i.test(t.note || ''));
         const isSelected = (idx === currentIndex);
+        if (marker._selFlag === isSelected) return;     // 狀態沒變就不重畫圖釘
+        marker._selFlag = isSelected;
         marker.setIcon(getCasePinIcon(isSelected, isND));
         marker.setZIndexOffset(isSelected ? 5000 : (isND ? 3000 + idx * 10 : 1000 + idx * 10));
         const tt = marker.getTooltip();
@@ -2455,8 +2474,7 @@
         taskList.appendChild(row);
       });
 
-      if (sortableInstance) sortableInstance.destroy();
-      sortableInstance = new Sortable(taskList, {
+      if (!sortableInstance) sortableInstance = new Sortable(taskList, {   // 只建立一次，之後換內容不用重建
         animation: 180,
         delay: 150,
         delayOnTouchOnly: true,
@@ -2697,12 +2715,13 @@
 
     function updateLivePosition(pos, forceCenter = false) {
       userLatLng = [pos.coords.latitude, pos.coords.longitude];
+      const prevCode = currentUserCode;
       currentUserCode = coordToPowerCode(userLatLng[0], userLatLng[1]);
       const accuracy = Math.min(pos.coords.accuracy || 20, 120);
 
       if (userMarker) {
         userMarker.setLatLng(userLatLng);
-        userMarker.setTooltipContent(`📍 ${currentUserCode}`);
+        if (currentUserCode !== prevCode) userMarker.setTooltipContent(`📍 ${currentUserCode}`);   // 圖號沒變就不更新文字
         userCircle.setLatLng(userLatLng);
         userCircle.setRadius(accuracy);
       } else {
