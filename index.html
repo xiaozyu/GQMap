@@ -534,7 +534,7 @@
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v32</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v44</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -991,6 +991,11 @@
       "Google 道路": googleRoads,
       "Google 衛星混合": googleHybrid
     }, null, { position: 'topright' }).addTo(map);
+    // 圖層切換鈕搬到地圖外層、疊在畫圖層之上，畫圖時也能切換底圖
+    (function () {
+      const c = document.querySelector('.leaflet-control-layers'), mc = document.querySelector('.map-container');
+      if (c && mc) { mc.appendChild(c); c.style.cssText += ';position:absolute;top:10px;right:10px;z-index:900;margin:0;float:none;'; }
+    })();
 
     // 點擊地圖空白處時收合微調面板
     map.on('click', (e) => {
@@ -2959,20 +2964,36 @@
       ctx.strokeText(text, 0, -lw * (off || 1.2)); ctx.fillStyle = color; ctx.fillText(text, 0, -lw * (off || 1.2));
       ctx.restore();
     }
+    function bdDrawAll(g, list, ex) {                      // 白底永遠在最底層，其餘依畫的順序
+      ex = ex || [];
+      list.forEach(x => { if (x.t === 'rect' && !ex.includes(x)) bdDrawShape(g, x); });
+      list.forEach(x => { if (x.t !== 'rect' && !ex.includes(x)) bdDrawShape(g, x); });
+    }
     function bdDrawShape(ctx, sh) {
       const lw = bdLw();
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       if (sh.t === 'free') {
-        ctx.strokeStyle = sh.c || '#dc2626'; ctx.lineWidth = lw * (sh.w || 1); ctx.setLineDash([]);
+        ctx.strokeStyle = sh.c || '#dc2626'; ctx.lineWidth = lw * (sh.w || 1); ctx.setLineDash([]); ctx.globalAlpha = sh.a == null ? 1 : sh.a;
         ctx.beginPath(); sh.p.forEach((q, i) => { const p = bdPx(q); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
         if (sh.p.length === 1) { const p = bdPx(sh.p[0]); ctx.lineTo(p[0] + 0.1, p[1]); }
-        ctx.stroke();
+        ctx.stroke(); ctx.globalAlpha = 1;
+      } else if (sh.t === 'rect') {
+        const p1 = bdPx(sh.a), p2 = bdPx(sh.b);
+        ctx.globalAlpha = sh.al == null ? 1 : sh.al; ctx.fillStyle = '#fff';
+        ctx.fillRect(Math.min(p1[0], p2[0]), Math.min(p1[1], p2[1]), Math.abs(p2[0] - p1[0]), Math.abs(p2[1] - p1[1])); ctx.globalAlpha = 1;
+      } else if (sh.t === 'line') {
+        const p1 = bdPx(sh.a), p2 = bdPx(sh.b), w = lw * (sh.w || 1);
+        ctx.globalAlpha = sh.al == null ? 1 : sh.al; ctx.strokeStyle = sh.c || '#dc2626'; ctx.lineWidth = w; ctx.lineCap = sh.dash ? 'butt' : 'round';
+        ctx.setLineDash(sh.dash ? [w * 3.5, w * 2.2] : []);
+        ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineCap = 'round';
       } else if (sh.t === 'text') {
+        if (sh === BD.editSh) return;
         const p = bdPx(sh.a), fs = bdTextFs(sh);
         ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(sh.rot || 0);
         ctx.font = `bold ${fs}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.lineWidth = fs * 0.3; ctx.strokeStyle = '#fff'; ctx.strokeText(sh.text, 0, 0);
-        ctx.fillStyle = sh.c || '#dc2626'; ctx.fillText(sh.text, 0, 0);
+        const lines = String(sh.text).split('\n'), lh = fs * 1.25;
+        ctx.lineWidth = fs * 0.3; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round'; ctx.fillStyle = sh.c || '#dc2626';
+        lines.forEach((t, i) => { const y = (i - (lines.length - 1) / 2) * lh; ctx.strokeText(t, 0, y); ctx.fillText(t, 0, y); });
         ctx.restore();
       } else {
         const p1 = bdPx(sh.a), p2 = bdPx(sh.b), len = bdGround(sh.a, sh.b);
@@ -2989,23 +3010,23 @@
     }
     function bdStatus() {
       const el = document.getElementById('bd-status'); if (!el) return;
-      const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', erase: '橡皮擦：劃過筆跡即擦除', dim: '量長度：拉一條直線，自動標長度', text: '文字：點空白新增｜拖曳移動｜■縮放｜↻旋轉｜再點一下改字' };
+      const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', line: '直線：拉一條直線（右邊可選實線／虛線）', rect: '白底：斜拉出一塊矩形，蓋住下方雜亂圖面（永遠在筆跡下面）',  erase: '橡皮擦：劃過筆跡即擦除（白底只有碰到邊緣才會擦）', select: '選取：點一下選物件（再點同處＝換下一層）｜拖曳移動｜端點圓圈可拉｜文字可縮放旋轉｜左下角可刪除', dim: '量長度：拉線｜點端點附近可微調｜端點靠近別的端點會吸附釘住（拖一個全部一起動，長按＝單獨拿起最後一條）', text: '文字：點空白新增（可換行）｜拖曳移動｜縮放｜旋轉｜再點一下改字' };
       el.textContent = `${BD.centerCode}  ｜ ${names[BD.tool] || ''}`;
     }
     function bdRedrawNow() {
       bdSyncView();
       if (BD.cache && BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k) bdDropCache();
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
-      if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) bdDrawShape(ctx, BD.mv.sh); }
-      else { BD.shapes.forEach(s => bdDrawShape(ctx, s)); }
-      bdDrawUi(); bdStatus();
+      if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
+      else { bdDrawAll(ctx, BD.shapes); }
+      bdDrawUi(); bdStatus(); bdSelUi(); if (BD.edit) bdPlaceInl();
     }
     function bdRedraw() { if (BD.raf) return; BD.raf = requestAnimationFrame(() => { BD.raf = 0; bdRedrawNow(); }); }
     function bdMakeCache(except) {                       // 編輯單一物件時，其餘物件先畫成一張底，之後每一格只畫被動的那個
       bdDropCache();
       bdSyncView();
       const c = document.createElement('canvas'); c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr);
-      const g = bdCtx(c); BD.shapes.forEach(s => { if (s !== except) bdDrawShape(g, s); });
+      const g = bdCtx(c); const ex = Array.isArray(except) ? except : [except]; bdDrawAll(g, BD.shapes, ex);
       BD.cache = c; BD.cacheStamp = BD.minX + '|' + BD.maxY + '|' + BD.k;
     }
     function bdDropCache() { if (BD.cache) { BD.cache.width = BD.cache.height = 0; BD.cache = null; } }
@@ -3014,7 +3035,9 @@
       g.strokeStyle = sh.c || '#dc2626'; g.lineWidth = bdLw() * (sh.w || 1); g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([]);
       g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0] + 0.01, q[1]); g.stroke();
     }
-    function bdPreview() { const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H); if (BD.cur) bdDrawShape(g, BD.cur); }
+    function bdPreview() { const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H); if (BD.cur) {
+      if (BD.cur.t === 'rect') { const p1 = bdPx(BD.cur.a), p2 = bdPx(BD.cur.b), x = Math.min(p1[0], p2[0]), y = Math.min(p1[1], p2[1]), w = Math.abs(p2[0] - p1[0]), h = Math.abs(p2[1] - p1[1]); g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillRect(x, y, w, h); g.strokeStyle = '#2563eb'; g.lineWidth = 2; g.setLineDash([6, 4]); g.strokeRect(x, y, w, h); g.setLineDash([]); }
+      else bdDrawShape(g, BD.cur); } }
     function bdLayout() {                                   // 畫圖層貼齊地圖區塊（直的就直的、橫的就橫的）
       const r = document.getElementById('leaflet-map').getBoundingClientRect(), root = document.getElementById('board');
       BD.rx = r.left; BD.ry = r.top; BD.W = Math.round(r.width); BD.H = Math.round(r.height); BD.dpr = Math.min(3, window.devicePixelRatio || 1);
@@ -3033,7 +3056,12 @@
       const r = 14 / BD.s / BD.k;          // 約 14 螢幕像素（換成 Mercator 公尺）
       const keep = BD.shapes.filter(s => {
         if (s.t === 'free') { for (let i = 0; i < s.p.length; i++) { if (Math.hypot(s.p[i][0] - pt[0], s.p[i][1] - pt[1]) < r) return false; if (i && bdDistSeg(pt, s.p[i - 1], s.p[i]) < r) return false; } return true; }
-        if (s.t === 'text') return Math.hypot(s.a[0] - pt[0], s.a[1] - pt[1]) > r * 2;
+        if (s.t === 'rect') {
+          const p1 = bdPx(s.a), p2 = bdPx(s.b), pp = bdPx(pt), x0 = Math.min(p1[0], p2[0]), x1 = Math.max(p1[0], p2[0]), y0 = Math.min(p1[1], p2[1]), y1 = Math.max(p1[1], p2[1]);
+          const inside = pp[0] >= x0 - 14 && pp[0] <= x1 + 14 && pp[1] >= y0 - 14 && pp[1] <= y1 + 14, deep = pp[0] > x0 + 14 && pp[0] < x1 - 14 && pp[1] > y0 + 14 && pp[1] < y1 - 14;
+          return !(inside && !deep);                        // 橡皮擦只有碰到白底的邊緣才會擦掉它
+        }
+        if (s.t === 'text') { const l = bdToLocal(s, pt), bx = bdTextBox(s); return !(Math.abs(l[0]) <= bx.w / 2 + 6 && Math.abs(l[1]) <= bx.h / 2 + 6); }
         return bdDistSeg(pt, s.a, s.b) > r;
       });
       if (keep.length !== BD.shapes.length) { if (!BD.erasing) { bdPush(); BD.erasing = true; } BD.shapes = keep; bdRedraw(); }
@@ -3065,8 +3093,9 @@
     const bdTextFs = (sh) => Math.max(6, BD.k * 3.5 * (sh.scale || 1));
     function bdTextBox(sh) {
       const g = BD.ink.getContext('2d'), fs = bdTextFs(sh);
-      g.save(); g.font = `bold ${fs}px sans-serif`; const w = g.measureText(sh.text).width; g.restore();
-      return { w: w + fs * 0.5, h: fs * 1.35 };
+      const lines = String(sh.text).split('\n');
+      g.save(); g.font = `bold ${fs}px sans-serif`; const w = Math.max(...lines.map(t => g.measureText(t).width)); g.restore();
+      return { w: w + fs * 0.5, h: fs * 0.1 + lines.length * fs * 1.25 };
     }
     // 把螢幕點（Mercator）換成文字方塊的本地座標（原點在中心、已反旋轉），單位：畫板像素
     function bdToLocal(sh, pt) {
@@ -3087,7 +3116,12 @@
     }
     function bdDrawUi() {
       const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H);
-      const sh = BD.sel; if (!sh || BD.tool !== 'text') return;
+      if (BD.tool === 'dim') {                                  // 量長度：兩端畫圓圈提示可拖曳（任意位置按住圓圈附近即可微調，手指不用蓋在點上）
+        g.lineWidth = 2; g.strokeStyle = '#2563eb'; g.fillStyle = 'rgba(255,255,255,0.35)';
+        BD.shapes.forEach(sh0 => { if (sh0.t !== 'dim') return; [sh0.a, sh0.b].forEach(q => { const p = bdPx(q); g.beginPath(); g.arc(p[0], p[1], 11, 0, Math.PI * 2); g.fill(); g.stroke(); }); });
+      }
+      if (BD.tool === 'select' && !BD.edit) { bdDrawSel(g); }
+      const sh = BD.sel; if (!sh || BD.tool !== 'text' || BD.edit) return;
       const h = bdTextHandles(sh), c = bdPx(sh.a), u = 1 / BD.s;
       g.save(); g.translate(c[0], c[1]); g.rotate(sh.rot || 0);
       g.strokeStyle = '#2563eb'; g.lineWidth = 2 * u; g.setLineDash([6 * u, 4 * u]);
@@ -3112,15 +3146,27 @@
         #board { position: absolute; left: 0; top: 0; width: 100px; height: 100px; z-index: 850; display: none; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; }
         #bd-wrap { position: absolute; inset: 0; overflow: hidden; touch-action: none; pointer-events: none; }
         #board.act #bd-wrap { pointer-events: auto; }
-        #bd-rail, #bd-pen-pop, #bd-msg { pointer-events: auto; }
+        #bd-rail, #bd-panel, #bd-msg { pointer-events: auto; }
+        #bd-sdel { position: absolute; left: 8px; bottom: 64px; z-index: 6; display: none; width: 48px; height: 48px; border-radius: 50%; font-size: 22px; background: #b91c1c; border-color: #fecaca; pointer-events: auto; }
+        #board.sel #bd-sdel { display: flex; }
+        #board.sel #bd-rail { bottom: 116px; }
+        #bd-ur { position: absolute; left: 8px; bottom: 8px; z-index: 6; display: flex; gap: 8px; pointer-events: auto; }
+        #bd-ur .bt { width: 48px; height: 48px; border-radius: 50%; font-size: 22px; }
+        body.bd-on #cad-calib-box { display: none !important; }
+        #board.editing #bd-status, #board.sel #bd-status { display: none; }
+        #bd-selbar { position: absolute; left: 54px; right: 8px; top: 40px; z-index: 8; display: none; align-items: center; gap: 6px; background: rgba(15,23,42,0.92); border-radius: 10px; padding: 5px 8px; pointer-events: auto; }
+        #board.sel #bd-selbar { display: flex; }
+        #bd-selbar button { color: #fff; background: #475569; border: 0; border-radius: 8px; padding: 7px 11px; font-size: 13px; font-weight: bold; }
+        #bd-txt { position: absolute; left: 54px; right: 8px; top: 40px; z-index: 8; display: none; align-items: center; gap: 6px; background: rgba(15,23,42,0.92); border-radius: 10px; padding: 5px 8px; pointer-events: auto; }
+        #bd-txt button { color: #fff; background: #475569; border: 0; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: bold; }
+        #bd-inl { position: absolute; z-index: 7; display: none; pointer-events: auto; box-sizing: border-box; resize: none; overflow: hidden; text-align: center; font-weight: bold; font-family: sans-serif; outline: none; border: 2px dashed #2563eb; background: rgba(255,255,255,0.78); white-space: pre; margin: 0; transform-origin: 50% 50%; }
         #bd-stage { position: absolute; left: 0; top: 0; pointer-events: none; }
         #bd-stage canvas { position: absolute; left: 0; top: 0; display: block; }
-        #board.clean #bd-top, #board.clean #bd-status, #board.clean #bd-rail, #board.clean #bd-pen-pop { display: none !important; }
-        #bd-rail { position: absolute; left: 4px; top: 44px; bottom: 4px; width: 46px; display: flex; flex-direction: column; gap: 5px; z-index: 2; overflow-y: auto; }
+        #bd-rail { position: absolute; left: 4px; top: 44px; bottom: 62px; width: 46px; display: flex; flex-direction: column; gap: 5px; z-index: 2; overflow-y: auto; }
         #bd-top { position: absolute; left: 4px; right: 54px; top: 4px; height: 38px; display: flex; align-items: center; gap: 3px; z-index: 2; pointer-events: none; }
         #bd-top > * { pointer-events: auto; }
         #bd-top .sp { flex: 1; pointer-events: none; }
-        .bt { background: rgba(30,41,59,0.96); color: #fff; border: 1px solid #475569; border-radius: 10px; width: 46px; height: 42px; flex: 0 0 auto; font-size: 17px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; }
+        .bt { background: rgba(30,41,59,0.96); color: #fff; border: 1px solid #475569; border-radius: 10px; width: 46px; height: 36px; flex: 0 0 auto; font-size: 17px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; }
         #bd-top .bt { width: 32px; height: 34px; border-radius: 8px; font-size: 15px; }
         #bd-top .bt small { display: none; }
         .bt small { font-size: 9px; font-weight: normal; color: #cbd5e1; }
@@ -3128,32 +3174,43 @@
         .bd-sep { height: 1px; background: #475569; margin: 2px 6px; flex: 0 0 auto; }
         #bd-top .bd-vsep { display: none; }
         #bd-status { position: absolute; left: 54px; top: 44px; color: #fde047; font: bold 11px sans-serif; background: rgba(15,23,42,0.85); padding: 3px 8px; border-radius: 6px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-        #bd-colorbtn span { display: block; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #0f172a; }
-        #bd-pen-pop { position: absolute; left: 54px; top: 66px; z-index: 5; background: rgba(15,23,42,0.97); border: 1px solid #64748b; border-radius: 12px; padding: 8px; display: none; width: 232px; }
-        #bd-colors { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-        .bd-sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #94a3b8; padding: 0; }
+        #bd-panel { position: absolute; left: 54px; top: 70px; z-index: 5; display: none; gap: 7px; padding: 7px; background: rgba(15,23,42,0.88); border: 1px solid #64748b; border-radius: 12px; touch-action: none; }
+        #board.pen #bd-panel { display: flex; }
+        #bd-ln { display: none; flex-direction: column; gap: 4px; }
+        #board.ln #bd-ln { display: flex; }
+        #bd-ln button { width: 57px; height: 28px; border-radius: 8px; border: 1px solid #64748b; background: #334155; color: #fff; font-size: 12px; font-weight: bold; padding: 0; }
+        #bd-ln button.on { background: #f97316; border-color: #fff; }
+        .bd-sl { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #e2e8f0; font: 10px sans-serif; width: 34px; }
+        .bd-sl .trk { position: relative; width: 26px; height: 150px; background: #334155; border-radius: 13px; touch-action: none; overflow: hidden; }
+        .bd-sl .fil { position: absolute; left: 0; right: 0; bottom: 0; background: #f97316; }
+        .bd-sl .val { font-size: 10px; color: #fde047; height: 12px; }
+        #bd-pdot { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+        #bd-pdot i { display: block; border-radius: 50%; background: #dc2626; border: 1px solid #fff; }
+        #bd-colors { display: grid; grid-template-columns: repeat(2, 26px); gap: 5px; align-content: start; }
+        .bd-sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #94a3b8; padding: 0; }
         .bd-sw.on { border: 3px solid #fff; box-shadow: 0 0 0 2px #f97316; }
-        .bd-row { display: flex; align-items: center; gap: 6px; color: #e2e8f0; font-size: 12px; margin-bottom: 6px; }
-        .bd-row input { flex: 1; } #bd-prev { background: #fff; border-radius: 6px; width: 100%; height: 30px; }
         #bd-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3; background: rgba(15,23,42,0.92); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; text-align: center; }`;
       document.head.appendChild(css);
       const d = document.createElement('div'); d.id = 'board';
       d.innerHTML = `<div id="bd-wrap"><div id="bd-stage"><canvas id="bd-ink"></canvas><canvas id="bd-ui" style="pointer-events:none"></canvas></div></div>
         <div id="bd-msg"></div>
         <div id="bd-status"></div>
-        <div id="bd-pen-pop">
-          <div id="bd-colors"></div>
-          <div class="bd-row"><span>粗細</span><input type="range" id="bd-w" min="0.3" max="6" step="0.1"><span id="bd-wv"></span></div>
-          <canvas id="bd-prev" width="200" height="30"></canvas>
+        <button class="bt" id="bd-sdel" onclick="bdSelDel()" title="刪除選取的物件">🗑</button>
+        <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作）">↪</button></div>
+        <div id="bd-selbar"><span id="bd-seltxt" style="color:#fde047;font:bold 12px sans-serif"></span><span style="flex:1"></span><button id="bd-sedit" onclick="bdSelEdit()">編輯文字</button><button onclick="bdSelNone()">取消</button></div>
+        <textarea id="bd-inl" spellcheck="false" placeholder="輸入文字"></textarea>
+        <div id="bd-txt"><span style="color:#fde047;font:bold 12px sans-serif">直接打字，Enter＝換行</span><span style="flex:1"></span><button id="bd-txdel" style="background:#7f1d1d">刪除</button><button id="bd-txcan">取消</button><button id="bd-txok" style="background:#f97316">完成</button></div>
+        <div id="bd-panel">
+          <div class="bd-sl"><div id="bd-pdot"><i></i></div><div class="trk" id="bd-wtrk"><div class="fil"></div></div><div class="val" id="bd-wv"></div><span>粗細</span></div>
+          <div class="bd-sl"><div style="height:26px"></div><div class="trk" id="bd-atrk"><div class="fil"></div></div><div class="val" id="bd-av"></div><span>透明</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px"><div id="bd-colors"></div>
+            <div id="bd-ln"><button data-d="0" onclick="bdSetDash(false)">實線</button><button data-d="1" onclick="bdSetDash(true)">虛線</button></div></div>
         </div>
         <div id="bd-top">
           <button class="bt" onclick="closeBoard()" style="background:#7f1d1d;" title="離開畫板">✕</button>
           <div class="sp"></div>
-          <button class="bt" onclick="bdUndo()" title="復原">↩</button>
-          <button class="bt" onclick="bdRedo()" title="重做">↪</button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdFitAll()" title="縮放到剛好框住所有筆跡（再按 💾 輸出這個範圍）">⤢</button>
-          <button class="bt" onclick="bdClean()" title="隱藏工具列 6 秒，方便用手機截圖">📷</button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdExport('share')" title="分享">📤</button>
           <button class="bt" onclick="bdExport('save')" title="存成圖片">💾</button>
@@ -3162,12 +3219,13 @@
         </div>
         <div id="bd-rail">
           <button class="bt" data-tool="free" onclick="bdToolTap('free')"><span id="bd-pen-dot" style="font-size:19px">✍</span><small>筆</small></button>
-          <button class="bt" data-tool="erase" onclick="bdTool('erase')">🧽<small>橡皮擦</small></button>
-          <button class="bt" data-tool="dim" onclick="bdTool('dim')"><span style="color:#60a5fa">↔</span><small>量長度</small></button>
+          <button class="bt" data-tool="line" onclick="bdToolTap('line')"><span style="font-size:19px">╱</span><small>直線</small></button>
+          <button class="bt" data-tool="rect" onclick="bdToolTap('rect')"><span style="font-size:19px">▭</span><small>白底</small></button>
+          <button class="bt" data-tool="erase" onclick="bdToolTap('erase')"><span style="font-size:19px">🧽</span><small>橡皮擦</small></button>
+          <button class="bt" data-tool="select" onclick="bdToolTap('select')"><span style="font-size:19px">☝</span><small>選取</small></button>
+          <button class="bt" data-tool="dim" onclick="bdToolTap('dim')"><span style="color:#60a5fa">↔</span><small>量長度</small></button>
           <button class="bt" data-tool="text" onclick="bdToolTap('text')">🅰<small>文字</small></button>
           <div class="bd-sep"></div>
-          <button class="bt" id="bd-finger" onclick="bdToggleFinger()" title="手指能不能畫圖（雙指一律是縮放／平移）">👆<small>手指:移動</small></button>
-          <button class="bt" id="bd-colorbtn" onclick="bdPenPop(document.getElementById('bd-pen-pop').style.display !== 'block')" title="顏色與粗細"><span id="bd-cdot"></span><small>顏色/粗細</small></button>
         </div>`;
       document.querySelector('.map-container').appendChild(d);
       BD.ui = document.getElementById('bd-ui'); BD.ink = document.getElementById('bd-ink'); BD.stage = document.getElementById('bd-stage');
@@ -3212,25 +3270,75 @@
           }
           // 4) 空白處：已選取就先取消選取，否則新增文字
           if (BD.sel) { BD.sel = null; bdRedraw(); return; }
-          const txt = prompt('要標示的文字（例如：新1A#2 31.4M）');
-          if (txt && txt.trim()) {
-            bdPush(); const sh = { t: 'text', a: pt, text: txt.trim(), scale: 18 / (BD.k * 3.5), rot: 0, c: BD.pen.c }; BD.shapes.push(sh); BD.sel = sh; bdSave(); bdRedraw();
-          }
+          const tmp = { t: 'text', a: pt, text: '', scale: 18 / (BD.k * 3.5), rot: 0, c: BD.pen.c };
+          bdTextEdit(tmp, false, (txt) => {
+            if (txt && txt.trim()) { bdPush(); tmp.text = txt.replace(/\s+$/, ''); BD.shapes.push(tmp); BD.sel = tmp; bdSave(); }
+          });
           return;
+        }
+        if (BD.tool === 'select') {
+          const R = e.pointerType === 'touch' ? 30 : 16, pp = bdPx(pt), so = BD.selObj;
+          const startMove = (obj, part, was) => {
+            bdPush(); const i = BD.shapes.indexOf(obj), cl = JSON.parse(JSON.stringify(obj)); BD.shapes[i] = cl; BD.selObj = cl; bdMakeCache(cl);
+            BD.mv = { mode: 'sel', sh: cl, part: part || 'all', last: pt, start: pt, moved: false, wasSel: was };
+            drawing = true; bdRedraw();
+          };
+          if (so && so.t === 'text') {
+            const h = bdTextHandles(so), l = bdToLocal(so, pt), near = (q) => Math.hypot(l[0] - q[0], l[1] - q[1]) <= h.r * 1.8;
+            const mode = near(h.rotH) ? 'rot' : (near(h.scaleH) ? 'scale' : null);
+            if (mode) {
+              bdPush(); const i = BD.shapes.indexOf(so), cl = JSON.parse(JSON.stringify(so)); BD.shapes[i] = cl; BD.selObj = cl; bdMakeCache(cl);
+              const c = bdPx(cl.a), q = bdPx(pt);
+              BD.mv = { mode, sh: cl, moved: true, d0: Math.hypot(q[0] - c[0], q[1] - c[1]) || 1, s0: cl.scale || 1 };
+              drawing = true; return;
+            }
+          }
+          if (so && so.b && so.t !== 'free') for (const part of ['a', 'b']) { const q = bdPx(so[part]); if (Math.hypot(q[0] - pp[0], q[1] - pp[1]) <= R) { startMove(so, part, true); return; } }
+          const hits = bdHitAll(pt);
+          if (!hits.length) { BD.selObj = null; bdRedraw(); return; }
+          if (so && hits.includes(so)) { startMove(so, 'all', true); return; }
+          startMove(hits[0], 'all', false); return;
+        }
+        if (BD.tool === 'dim') {
+          const R = e.pointerType === 'touch' ? 46 : 24, pp = bdPx(pt), ends = [];
+          BD.shapes.forEach((sh, i) => { if (sh.t === 'dim') [['a', sh.a], ['b', sh.b]].forEach(([part, q]) => { const px = bdPx(q); ends.push({ sh, part, q, i, px, d: Math.hypot(px[0] - pp[0], px[1] - pp[1]) }); }); });
+          ends.sort((x, y) => x.d - y.d || y.i - x.i);
+          const best = ends.length && ends[0].d <= R ? ends[0] : null;
+          if (best) {
+            // 吸附在一起的端點（座標相同）是「釘住」的：拖其中一個，整組一起動；長按則只拿起最後畫的那條
+            const cluster = ends.filter(x => x.q[0] === best.q[0] && x.q[1] === best.q[1]);
+            const grab = (list, startPt) => {
+              bdPush(); const cmap = new Map(); const items = [];
+              list.forEach(en => { let cl = cmap.get(en.sh); if (!cl) { const i = BD.shapes.indexOf(en.sh); cl = JSON.parse(JSON.stringify(en.sh)); BD.shapes[i] = cl; cmap.set(en.sh, cl); } items.push({ sh: cl, part: en.part }); });
+              bdMakeCache(Array.from(cmap.values()));
+              BD.mv = { mode: 'line', sh: items[0].sh, part: items[0].part, also: items.slice(1), last: startPt, start: startPt, moved: false };
+              drawing = true;
+            };
+            if (cluster.length === 1) { grab(cluster, pt); return; }
+            drawing = true;
+            BD.peel = { x: e.clientX, y: e.clientY, pt, grab: () => grab(cluster, pt), timer: setTimeout(() => {
+              if (!BD.peel) return;
+              const top = cluster.slice().sort((x, y) => y.i - x.i)[0]; BD.peel = null; drawing = false; grab([top], pt);
+              try { navigator.vibrate && navigator.vibrate(40); } catch (_) {}
+              const m0 = document.getElementById('bd-msg'); m0.textContent = '已單獨拿起最後畫的那條，拖曳分開'; m0.style.display = 'block'; setTimeout(() => { m0.style.display = 'none'; }, 1200);
+            }, 380) };
+            return;
+          }
         }
         drawing = true; BD.erasing = false;
         if (BD.tool === 'erase') { bdEraseAt(pt); return; }
-        BD.cur = BD.tool === 'free' ? { t: 'free', p: [pt], c: BD.pen.c, w: BD.pen.w } : { t: BD.tool, a: pt, b: pt };
-        if (BD.tool === 'free') bdInkSeg(BD.cur, pt, pt); else bdPreview();
+        BD.cur = BD.tool === 'line' ? { t: 'line', a: pt, b: pt, c: BD.ln.c, w: BD.ln.w, al: BD.ln.a == null ? 1 : BD.ln.a, dash: !!BD.ln.dash } : BD.tool === 'rect' ? { t: 'rect', a: pt, b: pt, al: BD.rc.a == null ? 1 : BD.rc.a } : BD.tool === 'free' ? { t: 'free', p: [pt], c: BD.pen.c, w: BD.pen.w, a: BD.pen.a == null ? 1 : BD.pen.a } : { t: BD.tool, a: pt, b: pt };
+        if (BD.tool === 'free' && BD.cur.a >= 1) bdInkSeg(BD.cur, pt, pt); else bdPreview();
       };
       wrap.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        if (BD.edit) { bdTextFinish(document.getElementById('bd-inl').value); return; }
         try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
         const isTouch = e.pointerType === 'touch';
         if (isTouch) {                                   // 手指：平移／縮放地圖本身；筆：畫圖
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          if (touches.size === 1 && BD.fingerDraw && !drawing) { drawId = e.pointerId; startDraw(e); return; }
-          if (touches.size === 1) pan = { x: e.clientX, y: e.clientY };
+          if (drawing && drawId === null) return;            // 筆正在畫 → 手掌／手指忽略（防誤觸）
+          if (touches.size === 1 && !drawing) { drawId = e.pointerId; startDraw(e); return; }   // 單指＝畫（跟筆一樣）
           if (touches.size === 2) {
             abortDraw(); pan = null; const [p, q] = Array.from(touches.values());
             pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: map.getZoom(), mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
@@ -3253,6 +3361,10 @@
           return;
         }
         if (!drawing) return;
+        if (BD.peel) {
+          if (Math.hypot(e.clientX - BD.peel.x, e.clientY - BD.peel.y) < 7) return;
+          clearTimeout(BD.peel.timer); const g0 = BD.peel.grab; BD.peel = null; g0();
+        }
         if (BD.mv) {
           const m = BD.mv, pt = bdPtOf(e);
           if (m.mode === 'rot') {
@@ -3264,14 +3376,14 @@
             m.sh.scale = Math.max(0.02, Math.min(400, m.s0 * (Math.hypot(q[0] - c[0], q[1] - c[1]) / m.d0)));
           } else {
             if (Math.hypot(pt[0] - m.start[0], pt[1] - m.start[1]) * BD.k * BD.s > 5) m.moved = true;
-            if (m.moved) { bdShift(m.sh, m.part || 'all', pt[0] - m.last[0], pt[1] - m.last[1]); m.last = pt; }
+            if (m.moved) { bdShift(m.sh, m.part || 'all', pt[0] - m.last[0], pt[1] - m.last[1]); (m.also || []).forEach(o => bdShift(o.sh, o.part, pt[0] - m.last[0], pt[1] - m.last[1])); m.last = pt; }
           }
           bdRedraw(); return;
         }
         let evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || []; if (!evs.length) evs = [e];
         if (BD.tool === 'erase') { evs.forEach(ev => bdEraseAt(bdPtOf(ev))); return; }
         if (!BD.cur) return;
-        if (BD.cur.t === 'free') { evs.forEach(ev => { const q = bdPtOf(ev), last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); bdInkSeg(BD.cur, last, q); }); }
+        if (BD.cur.t === 'free') { evs.forEach(ev => { const q = bdPtOf(ev), last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); if (BD.cur.a >= 1) bdInkSeg(BD.cur, last, q); }); if (BD.cur.a < 1) bdPreview(); }
         else { BD.cur.b = bdPtOf(e); bdPreview(); }
       });
       const up = (e) => {
@@ -3279,7 +3391,7 @@
           touches.delete(e.pointerId);
           if (e.pointerId !== drawId) {
             if (touches.size < 2) pinch = null;
-            if (touches.size === 1 && !BD.fingerDraw) { const r = Array.from(touches.values())[0]; pan = { x: r.x, y: r.y }; } else if (!touches.size) pan = null;
+            if (touches.size === 1) { const r = Array.from(touches.values())[0]; pan = { x: r.x, y: r.y }; } else if (!touches.size) pan = null;
             return;
           }
           drawId = null;
@@ -3288,26 +3400,37 @@
         drawing = false; BD.erasing = false;
         if (BD.mv) {
           const m = BD.mv; BD.mv = null;
+          if (m.mode === 'line' && m.moved) {                       // 拖完靠近別的端點 → 吸附釘在一起
+            const moving = [{ sh: m.sh, part: m.part }].concat(m.also || []), mv0 = moving[0], cur = mv0.sh[mv0.part], cp = bdPx(cur);
+            let bd = 16, hit = null;
+            BD.shapes.forEach(sh => { if (sh.t !== 'dim' || moving.some(o => o.sh === sh)) return; [sh.a, sh.b].forEach(q => { const px = bdPx(q), d = Math.hypot(px[0] - cp[0], px[1] - cp[1]); if (d < bd) { bd = d; hit = q; } }); });
+            if (hit) moving.forEach(o => { o.sh[o.part] = hit.slice(); });
+          }
           if (!m.moved) {
             BD.hist.pop();                                          // 只是點一下 → 不留歷史
+            if (m.mode === 'sel' && m.wasSel && m.part === 'all') {   // 在已選取的地方再點一下 → 換選下面一層的物件
+              const hits = bdHitAll(m.start), i = hits.indexOf(BD.selObj);
+              if (hits.length > 1 && i >= 0) BD.selObj = hits[(i + 1) % hits.length];
+            }
             if (m.mode === 'move' && m.wasSel) {
-              const txt = prompt('修改文字（清空＝刪除）', m.sh.text);
-              if (txt !== null) {
-                bdPush();
-                if (txt.trim() === '') { BD.shapes = BD.shapes.filter(x => x !== m.sh); BD.sel = null; }
-                else m.sh.text = txt.trim();
-              }
+              bdEditText(m.sh);
             }
           }
           bdDropCache(); bdSave(); bdRedrawNow(); return;
         }
+        if (BD.peel) { clearTimeout(BD.peel.timer); BD.peel = null; }
         const c = BD.cur; BD.cur = null;
         if (c) {
           let ok = true;
+          if (c.t === 'dim') {                                   // 終點靠近既有端點 → 吸附（方便多條線共用一點）
+            const bp = bdPx(c.b); let bd = 14, hit = null;
+            BD.shapes.forEach(sh => { if (sh.t === 'dim') [sh.a, sh.b].forEach(q => { const px = bdPx(q), d = Math.hypot(px[0] - bp[0], px[1] - bp[1]); if (d < bd) { bd = d; hit = q; } }); });
+            if (hit) c.b = hit.slice();
+          }
           if (c.t !== 'free') { const a = bdPx(c.a), b = bdPx(c.b); ok = Math.hypot(a[0] - b[0], a[1] - b[1]) * BD.s > 6; }
           else c.p = c.p.map(q => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100]);
           if (ok) { bdPush(); BD.shapes.push(c); bdSave(); }
-          if (c.t === 'free') { if (!ok) bdRedrawNow(); } else bdRedrawNow();
+          if (c.t === 'free' && (c.a == null || c.a >= 1)) { if (!ok) bdRedrawNow(); } else bdRedrawNow();
         } else { bdSave(); bdRedrawNow(); }
       };
       wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up);
@@ -3319,54 +3442,131 @@
       try { let rt = 0; new ResizeObserver(() => { if (!BD.on) return; clearTimeout(rt); rt = setTimeout(bdLayout, 120); }).observe(document.getElementById('leaflet-map')); } catch (e) {}
       const colors = document.getElementById('bd-colors');
       BD_COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'bd-sw'; b.dataset.c = c; b.style.background = c; b.onclick = () => bdSetColor(c); colors.appendChild(b); });
-      document.getElementById('bd-w').addEventListener('input', (e) => bdSetWidth(e.target.value));
-      wrap.addEventListener('pointerdown', () => bdPenPop(false), true);   // 點畫面其他地方就收起筆設定
+      const slider = (id, get) => {                              // 直式滑桿：上＝大／不透明，下＝小／透明
+        const t = document.getElementById(id); let on = false;
+        const set = (e) => { const r = t.getBoundingClientRect(); get(Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height))); };
+        t.addEventListener('pointerdown', (e) => { on = true; try { t.setPointerCapture(e.pointerId); } catch (_) {} set(e); e.preventDefault(); e.stopPropagation(); });
+        t.addEventListener('pointermove', (e) => { if (on) set(e); });
+        t.addEventListener('pointerup', () => { on = false; }); t.addEventListener('pointercancel', () => { on = false; });
+      };
+      slider('bd-wtrk', (f) => { bdCfg().w = Math.round((0.3 + f * 7.7) * 10) / 10; bdPenUi(); });
+      slider('bd-atrk', (f) => { bdCfg().a = Math.round((0.1 + f * 0.9) * 20) / 20; bdPenUi(); });
       bdPenUi();
       document.getElementById('map-floating-controls').addEventListener('click', (e) => {   // 按右側其他功能（📍🚗⚡…）→ 自動回瀏覽，地圖才點得到
         if (BD.on && BD.tool !== 'none' && !e.target.closest('#drawModeBtn') && !e.target.closest('#moreBtn')) bdTool('none');
       }, true);
     }
+    // 直接在畫面上的文字框裡打字（跟著文字的位置／大小／旋轉），不跳視窗
+    function bdPlaceInl() {
+      if (!BD.edit) return;
+      const sh = BD.edit.sh, ta = document.getElementById('bd-inl'), fs = bdTextFs(sh), lines = ta.value.split('\n');
+      const g = BD.ink.getContext('2d'); g.save(); g.font = `bold ${fs}px sans-serif`; const w = Math.max(fs * 3, ...lines.map(t => g.measureText(t).width)) + fs * 0.9; g.restore();
+      const h = lines.length * fs * 1.25 + fs * 0.5, pc = bdPx(sh.a), st = ta.style;
+      st.fontSize = fs + 'px'; st.lineHeight = (fs * 1.25) + 'px'; st.padding = `${fs * 0.2}px ${fs * 0.35}px`; st.color = sh.c || '#dc2626';
+      st.width = w + 'px'; st.height = h + 'px'; st.left = (pc[0] - w / 2) + 'px'; st.top = (pc[1] - h / 2) + 'px'; st.transform = `rotate(${sh.rot || 0}rad)`;
+    }
+    function bdTextFinish(v) {
+      const e = BD.edit; if (!e) return;
+      BD.edit = null; BD.editSh = null; document.getElementById('board').classList.remove('editing');
+      const ta = document.getElementById('bd-inl'); ta.style.display = 'none'; ta.blur(); document.getElementById('bd-txt').style.display = 'none';
+      e.cb(v); bdDropCache(); bdRedrawNow();
+    }
+    const BD_NAMES = { free: '筆跡', line: '直線', rect: '白底', text: '文字', dim: '量長度', new: '新設線', old: '舊線' };
+    function bdHitAll(pt) {                                   // 點到的所有物件，上面的在前；白底最後（它在最底層）
+      const r = 18 / BD.k, out = [], rects = [];
+      for (let i = BD.shapes.length - 1; i >= 0; i--) {
+        const sh = BD.shapes[i];
+        if (sh.t === 'rect') { const x0 = Math.min(sh.a[0], sh.b[0]) - r * 0.4, x1 = Math.max(sh.a[0], sh.b[0]) + r * 0.4, y0 = Math.min(sh.a[1], sh.b[1]) - r * 0.4, y1 = Math.max(sh.a[1], sh.b[1]) + r * 0.4; if (pt[0] >= x0 && pt[0] <= x1 && pt[1] >= y0 && pt[1] <= y1) rects.push(sh); }
+        else if (sh.t === 'text') { const l = bdToLocal(sh, pt), bx = bdTextBox(sh), pad = 10; if (Math.abs(l[0]) <= bx.w / 2 + pad && Math.abs(l[1]) <= bx.h / 2 + pad) out.push(sh); }
+        else if (sh.t === 'free') { let hit = sh.p.length === 1 && Math.hypot(sh.p[0][0] - pt[0], sh.p[0][1] - pt[1]) < r; for (let j = 1; j < sh.p.length && !hit; j++) if (bdDistSeg(pt, sh.p[j - 1], sh.p[j]) < r) hit = true; if (hit) out.push(sh); }
+        else if (bdDistSeg(pt, sh.a, sh.b) < r) out.push(sh);
+      }
+      return out.concat(rects);
+    }
+    function bdSelBounds(sh) {
+      if (sh.t === 'free') { const ps = sh.p.map(bdPx); return [Math.min(...ps.map(q => q[0])), Math.min(...ps.map(q => q[1])), Math.max(...ps.map(q => q[0])), Math.max(...ps.map(q => q[1]))]; }
+      const p1 = bdPx(sh.a), p2 = bdPx(sh.b); return [Math.min(p1[0], p2[0]), Math.min(p1[1], p2[1]), Math.max(p1[0], p2[0]), Math.max(p1[1], p2[1])];
+    }
+    function bdDrawSel(g) {
+      const sh = BD.selObj; if (!sh) return;
+      g.save(); g.strokeStyle = '#2563eb'; g.lineWidth = 2; g.setLineDash([7, 4]);
+      if (sh.t === 'text') {
+        const c = bdPx(sh.a), h = bdTextHandles(sh), bx = h.box; g.translate(c[0], c[1]); g.rotate(sh.rot || 0); g.strokeRect(-bx.w / 2, -bx.h / 2, bx.w, bx.h);
+        g.setLineDash([]); g.beginPath(); g.moveTo(0, -bx.h / 2); g.lineTo(h.rotH[0], h.rotH[1]); g.stroke();
+        g.fillStyle = '#fff'; g.lineWidth = 2.5; g.beginPath(); g.arc(h.rotH[0], h.rotH[1], h.r, 0, Math.PI * 2); g.fill(); g.stroke();
+        g.fillStyle = '#2563eb'; g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('↻', h.rotH[0], h.rotH[1] + 0.5);
+        g.fillStyle = '#fff'; g.fillRect(h.scaleH[0] - h.r * 0.8, h.scaleH[1] - h.r * 0.8, h.r * 1.6, h.r * 1.6); g.strokeRect(h.scaleH[0] - h.r * 0.8, h.scaleH[1] - h.r * 0.8, h.r * 1.6, h.r * 1.6);
+        g.fillStyle = '#2563eb'; g.fillText('⤡', h.scaleH[0], h.scaleH[1] + 0.5);
+      } else {
+        const b = bdSelBounds(sh); g.strokeRect(b[0] - 8, b[1] - 8, b[2] - b[0] + 16, b[3] - b[1] + 16); g.setLineDash([]);
+        if (sh.b) [sh.a, sh.b].forEach(q => { const p = bdPx(q); g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 9, 0, Math.PI * 2); g.fill(); g.stroke(); });
+      }
+      g.restore();
+    }
+    function bdSelUi() {
+      const board = document.getElementById('board'), on = BD.tool === 'select' && !!BD.selObj && !BD.edit;
+      board.classList.toggle('sel', on);
+      if (on) { document.getElementById('bd-seltxt').textContent = '已選取：' + (BD_NAMES[BD.selObj.t] || '物件'); document.getElementById('bd-sedit').style.display = BD.selObj.t === 'text' ? '' : 'none'; }
+    }
+    window.bdSelDel = () => { const o = BD.selObj; if (!o) return; bdPush(); BD.shapes = BD.shapes.filter(x => x !== o); BD.selObj = null; BD.sel = null; bdSave(); bdRedraw(); };
+    window.bdSelNone = () => { BD.selObj = null; bdRedraw(); };
+    window.bdSelEdit = () => { if (BD.selObj && BD.selObj.t === 'text') bdEditText(BD.selObj); };
+    function bdEditText(sh) {
+      bdTextEdit(sh, true, (txt) => {
+        if (txt === null) return;
+        bdPush(); const i = BD.shapes.indexOf(sh); if (i < 0) return;
+        if (txt.trim() === '') { BD.shapes = BD.shapes.filter(x => x !== sh); BD.sel = null; if (BD.selObj === sh) BD.selObj = null; }
+        else { const cl = JSON.parse(JSON.stringify(sh)); cl.text = txt.replace(/\s+$/, ''); BD.shapes[i] = cl; BD.sel = cl; if (BD.selObj === sh) BD.selObj = cl; }
+        bdSave(); bdRedrawNow();
+      });
+    }
+    function bdTextEdit(sh, isEdit, cb) {
+      const ta = document.getElementById('bd-inl');
+      BD.edit = { sh, cb }; BD.editSh = isEdit ? sh : null; document.getElementById('board').classList.add('editing');
+      ta.value = sh.text || ''; ta.style.display = 'block'; document.getElementById('bd-txt').style.display = 'flex';
+      ta.oninput = bdPlaceInl;
+      document.getElementById('bd-txok').onclick = () => bdTextFinish(ta.value);
+      document.getElementById('bd-txcan').onclick = () => bdTextFinish(null);
+      const del = document.getElementById('bd-txdel'); del.style.display = isEdit ? '' : 'none'; del.onclick = () => bdTextFinish('');
+      bdDropCache(); bdRedrawNow(); bdPlaceInl();
+      setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
+    }
     window.bdTool = (t) => {
-      BD.tool = t; document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; { const pp = document.getElementById('bd-pen-pop'); if (pp && t !== 'free' && t !== 'text') pp.style.display = 'none'; } if (BD.ink && BD.ink.width > 1) bdDrawUi();
+      BD.tool = t; BD.selObj = null; if (document.getElementById('bd-w') === null) bdPenUi(); document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; document.getElementById('board').classList.toggle('pen', t === 'free' || t === 'text' || t === 'line' || t === 'rect'); document.getElementById('board').classList.toggle('ln', t === 'line'); if (BD.ink && BD.ink.width > 1) bdDrawUi();
       document.querySelectorAll('#bd-rail .bt[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
       bdStatus();
     };
     const BD_COLORS = ['#dc2626', '#111827', '#2563eb', '#16a34a', '#f97316', '#9333ea', '#ca8a04', '#0891b2'];
+    const bdLoad = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
+    BD.ln = bdLoad('tpc_ln', { c: '#dc2626', w: 1, a: 1, dash: false });       // 直線自己的顏色／粗細／透明／虛實（和筆分開）
+    BD.rc = bdLoad('tpc_rc', { a: 1 });                                        // 白底自己的透明度
+    const bdCfg = () => BD.tool === 'line' ? BD.ln : (BD.tool === 'rect' ? BD.rc : BD.pen);
+    window.bdSetDash = (d) => { BD.ln.dash = !!d; bdPenUi(); };
     function bdPenUi() {
-      const cd = document.getElementById('bd-cdot'); if (cd) { const d = Math.round(10 + BD.pen.w * 3.2); cd.style.width = cd.style.height = Math.min(30, d) + 'px'; cd.style.background = BD.pen.c; }
+      const C = bdCfg(); if (C.a == null) C.a = 1; if (C.w == null) C.w = 1; if (!C.c) C.c = '#dc2626';
+      document.querySelectorAll('#bd-ln button').forEach(b => b.classList.toggle('on', (b.dataset.d === '1') === !!BD.ln.dash));
       const dot = document.getElementById('bd-pen-dot'); if (dot) { dot.style.color = BD.pen.c; dot.style.textShadow = BD.pen.c === '#111827' ? '0 0 2px #fff' : 'none'; }
-      document.querySelectorAll('#bd-colors .bd-sw').forEach(b => b.classList.toggle('on', b.dataset.c === BD.pen.c));
-      const w = document.getElementById('bd-w'); if (w) w.value = BD.pen.w;
-      const wv = document.getElementById('bd-wv'); if (wv) wv.textContent = BD.pen.w.toFixed(1) + '×';
-      const cv = document.getElementById('bd-prev');
-      if (cv) {
-        const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
-        g.strokeStyle = BD.pen.c; g.lineCap = 'round'; g.lineWidth = Math.max(1, Math.min(26, bdLw() * BD.pen.w));
-        g.beginPath(); g.moveTo(14, 15); g.bezierCurveTo(60, 2, 110, 28, 186, 15); g.stroke();
-      }
-      try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); } catch (e) {}
+      document.querySelectorAll('#bd-colors .bd-sw').forEach(b => b.classList.toggle('on', b.dataset.c === C.c));
+      const wf = document.querySelector('#bd-wtrk .fil'); if (wf) wf.style.height = ((C.w - 0.3) / 7.7 * 100) + '%';
+      const af = document.querySelector('#bd-atrk .fil'); if (af) af.style.height = ((C.a - 0.1) / 0.9 * 100) + '%';
+      const wv = document.getElementById('bd-wv'); if (wv) wv.textContent = C.w.toFixed(1) + '×';
+      const av = document.getElementById('bd-av'); if (av) av.textContent = Math.round(C.a * 100) + '%';
+      const pd = document.querySelector('#bd-pdot i'); if (pd) { const d = Math.max(3, Math.min(26, 3 + C.w * 2.6)); pd.style.width = pd.style.height = d + 'px'; pd.style.background = C.c; pd.style.opacity = C.a; }
+      try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); localStorage.setItem('tpc_ln', JSON.stringify(BD.ln)); localStorage.setItem('tpc_rc', JSON.stringify(BD.rc)); } catch (e) {}
     }
-    window.bdPenPop = (show) => { document.getElementById('bd-pen-pop').style.display = show ? 'block' : 'none'; if (show) bdPenUi(); };
+    window.bdPenPop = () => {};
     window.bdToolTap = (t) => {
       bdPenPop(false);
       bdTool(BD.tool === t ? 'none' : t);               // 開關：再按一次就關，關掉後手指直接移動地圖
     };
     window.bdSetColor = (c) => {
-      BD.pen.c = c;
+      bdCfg().c = c;
       if (BD.sel && BD.tool === 'text') {                      // 選取中的文字一併換色
         bdPush(); const i = BD.shapes.indexOf(BD.sel), cl = JSON.parse(JSON.stringify(BD.sel)); cl.c = c; BD.shapes[i] = cl; BD.sel = cl; bdSave(); bdRedraw();
       }
       bdPenUi();
     };
-    window.bdSetWidth = (v) => { BD.pen.w = Math.max(0.3, Math.min(6, parseFloat(v) || 1)); bdPenUi(); };
-    window.bdToggleFinger = () => {
-      BD.fingerDraw = !BD.fingerDraw; try { localStorage.setItem('tpc_finger', BD.fingerDraw ? '1' : ''); } catch (e) {}
-      bdFingerUi();
-    };
-    function bdFingerUi() {
-      const b = document.getElementById('bd-finger'); if (!b) return;
-      b.classList.toggle('on', !!BD.fingerDraw); b.querySelector('small').textContent = BD.fingerDraw ? '手指:畫圖' : '手指:移動';
-    }
+    
     window.bdFitAll = () => {
       const pts = [];
       BD.shapes.forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
@@ -3375,13 +3575,8 @@
       const sw = E3857().unproject(L.point(Math.min(...xs), Math.min(...ys))), ne = E3857().unproject(L.point(Math.max(...xs), Math.max(...ys)));
       map.fitBounds(L.latLngBounds(sw, ne), { padding: [70, 70], animate: false, maxZoom: 21 });
     };
-    let bdCleanT = 0;
-    window.bdClean = () => {
-      const r = document.getElementById('board'); r.classList.add('clean'); clearTimeout(bdCleanT);
-      bdCleanT = setTimeout(() => r.classList.remove('clean'), 6000);
-    };
-    window.bdUndo = () => { if (!BD.hist.length) return; BD.sel = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
-    window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
+    window.bdUndo = () => { if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
+    window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.selObj = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
     window.bdClearAll = () => { if (!BD.shapes.length || !confirm('清空這一天的所有筆跡？（可按復原找回）')) return; bdPush(); BD.sel = null; BD.shapes = []; bdSave(); bdRedraw(); };
     window.bdExport = async (mode) => {
       const msg = document.getElementById('bd-msg'), say = (t, ms) => { msg.textContent = t; msg.style.display = t ? 'block' : 'none'; if (ms) setTimeout(() => { msg.style.display = 'none'; }, ms); };
@@ -3400,12 +3595,12 @@
           bdRenderBase(v).catch(() => ({ count: 0, tainted: false })),
           isCadOverlayEnabled ? bdRenderBg(bdTilesFor(v.minX, v.minX + v.W / v.k, v.maxY - v.H / v.k, v.maxY), (t) => say(t), v).catch(() => null) : Promise.resolve(null)
         ]);
-        if (base.count && !base.tainted) g.drawImage(base.cv, 0, 0); else if (base.count) note = '（國土測繪底圖不允許存入圖片：這張只含圖資＋筆跡。要完整畫面請按 📷 後用手機截圖）';
+        if (base.count && !base.tainted) g.drawImage(base.cv, 0, 0); else if (base.count) note = '（國土測繪底圖不允許存入圖片：這張只含圖資＋筆跡。要完整畫面請改用手機截圖）';
         if (cad && cad.got) { g.globalCompositeOperation = 'multiply'; g.drawImage(cad.cv, 0, 0); g.globalCompositeOperation = 'source-over'; cad.cv.width = 0; }
         base.cv && (base.cv.width = 0);
       } catch (e) { console.warn(e); }
       BD.k = v.k; BD.fx = f;                                   // 把筆跡以匯出解析度畫上去
-      BD.shapes.forEach(sh => bdDrawShape(g, sh));
+      bdDrawAll(g, BD.shapes);
       BD.k = saved.k; BD.fx = saved.fx;
       const now = new Date(), pad = (n) => String(n).padStart(2, '0');
       const stamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -3419,7 +3614,7 @@
       let blob = null;
       try { blob = await canvasToBlob(out); } catch (e) { blob = null; }
       out.width = out.height = 0;
-      if (!blob) { say('⚠ 無法產生圖片，請按 📷 隱藏工具列後用手機截圖', 3500); return; }
+      if (!blob) { say('⚠ 無法產生圖片，請改用手機截圖', 3500); return; }
       const name = `施工圖_${code}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.png`;
       say(note ? note : '', note ? 3500 : 0);
       if (mode === 'share' && navigator.canShare) {
@@ -3438,9 +3633,8 @@
       if (streetviewframe.style.display === 'block') { alert('街景模式下不能畫圖，請先回到地圖'); return; }
       bdEnsureDom();
       BD.on = true; BD.fx = 1; BD.tool = 'none';
-      try { BD.fingerDraw = !!localStorage.getItem('tpc_finger'); } catch (e) { BD.fingerDraw = false; }
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
-      document.getElementById('board').style.display = 'block'; bdFingerUi();
+      document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
       try { BD.shapes = JSON.parse(localStorage.getItem(bdKey()) || '[]'); } catch (e) { BD.shapes = []; }
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
@@ -3448,7 +3642,7 @@
     };
     window.closeBoard = () => {
       BD.on = false; BD.cur = null; BD.sel = null; bdDropCache();
-      const r = document.getElementById('board'); r.style.display = 'none'; r.classList.remove('clean', 'act');
+      const r = document.getElementById('board'); r.style.display = 'none'; r.classList.remove('act');
       document.body.classList.remove('bd-on'); document.getElementById('drawModeBtn').classList.remove('tracking-active');
       bdPenPop(false);
       map.options.zoomSnap = (BD.zs === undefined ? 1 : BD.zs);
