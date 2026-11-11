@@ -255,15 +255,6 @@
     .float-btn.disp-mode-3 { background: #10b981; color: #fff; border-color: #fff; box-shadow: 0 0 10px #10b981; }
     .float-btn.disp-mode-4 { background: #64748b; color: #fff; border-color: #fff; box-shadow: 0 0 10px #64748b; }
 
-    #fullscreen-restore-btn {
-      position: absolute; top: 12px; right: 12px; z-index: 2500;
-      background: rgba(15, 23, 42, 0.85); border: 1.5px solid #38bdf8; color: #38bdf8;
-      border-radius: 50%; width: 44px; height: 44px; font-size: 18px;
-      display: none; align-items: center; justify-content: center;
-      cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.6); backdrop-filter: blur(4px);
-    }
-    #fullscreen-restore-btn:active { background: #0284c7; color: #fff; transform: scale(0.95); }
-
     #cad-calib-box {
       position: absolute; bottom: 16px; left: 10px; z-index: 900;
       display: none; flex-direction: column; gap: 6px;
@@ -528,11 +519,6 @@
     </div>
 
     <!-- 全螢幕清淨模式返回按鈕 -->
-    <div id="fullscreen-restore-btn" onclick="toggleFullscreenCleanMode()" title="退出清淨模式">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 14v6h6M20 10V4h-6M14 4l6 6M10 20l-6-6"/>
-      </svg>
-    </div>
 
     <!-- 左下角：微調十字鍵 -->
     <div id="cad-calib-box">
@@ -548,7 +534,7 @@
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v29</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v32</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -571,9 +557,9 @@
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
         <div class="float-btn" id="measureBtn" onclick="toggleMeasureMode()" title="量距離：依序點兩個點（再點一下重新量，按鈕關閉清除）">📏</div>
-        <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫板：用目前畫面位置的PDF高清底圖，另開一張來畫（不動原地圖）">✏️</div>
+        <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
       </div>
-      <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫板">⋯</div>
+      <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
     </div>
   </div>
 
@@ -1125,7 +1111,6 @@
       isFullscreenClean = !isFullscreenClean;
       const topSec = document.getElementById('top-section');
       const navBar = document.getElementById('nav-action-bar');
-      const restoreBtn = document.getElementById('fullscreen-restore-btn');
       const cleanBtn = document.getElementById('cleanModeBtn');
 
       if (isFullscreenClean) {
@@ -1137,7 +1122,6 @@
           topSec.style.display = 'none';
           navBar.style.display = 'none';
         }, 200);
-        restoreBtn.style.display = 'flex';
         cleanBtn.classList.add('tracking-active');
       } else {
         topSec.style.display = 'block';
@@ -1148,7 +1132,6 @@
           navBar.style.transform = 'translateY(0)';
           navBar.style.opacity = '1';
         }, 10);
-        restoreBtn.style.display = 'none';
         cleanBtn.classList.remove('tracking-active');
       }
       setTimeout(() => map.invalidateSize(), 250);
@@ -1163,7 +1146,6 @@
         else if (auto) { auto = false; if (isFullscreenClean) toggleFullscreenCleanMode(); }
       };
       document.getElementById('cleanModeBtn').addEventListener('click', () => { auto = false; });
-      document.getElementById('fullscreen-restore-btn').addEventListener('click', () => { auto = false; });
       (mq.addEventListener ? mq.addEventListener('change', apply) : mq.addListener(apply));
       setTimeout(apply, 600);
     })();
@@ -2837,8 +2819,8 @@
       measAddPoint(e.latlng);
     });
 
-    // ===== ✏️ 畫板：把「目前畫面範圍」用 PDF 原檔高解析重畫成獨立畫面，在上面用筆畫（不動原地圖）=====
-    const BD = { pen: (() => { try { return Object.assign({ c: '#dc2626', w: 1 }, JSON.parse(localStorage.getItem('tpc_pen') || '{}')); } catch (e) { return { c: '#dc2626', w: 1 }; } })(), on: false, shapes: [], hist: [], redo: [], tool: 'free', fingerDraw: false, k: 10, minX: 0, maxY: 0, W: 0, H: 0,
+    // ===== ✏️ 畫圖：凍結「目前看到的地圖畫面」直接在上面畫（筆跡存地理座標；手指可平移縮放地圖）=====
+    const BD = { pen: (() => { try { return Object.assign({ c: '#dc2626', w: 1 }, JSON.parse(localStorage.getItem('tpc_pen') || '{}')); } catch (e) { return { c: '#dc2626', w: 1 }; } })(), on: false, shapes: [], hist: [], redo: [], tool: 'free', dpr: 1, fx: 1, rx: 0, ry: 0, k: 10, minX: 0, maxY: 0, W: 0, H: 0,
                  s: 1, tx: 0, ty: 0, cur: null, centerCode: '', lat: 24 };
     const E3857 = () => L.CRS.EPSG3857;
     async function loadPdfBuffer(mapId) {
@@ -2879,11 +2861,10 @@
       }
       return out.slice(0, 6);
     }
-    // 把每張圖幅的 PDF 直接以「畫板像素」為目標畫上去（含旋轉對位），只畫範圍內，解析度由 k 決定
-    async function bdRenderBg(tiles, onMsg) {
-      const bg = BD.bg; bg.width = BD.W; bg.height = BD.H;
-      const g = bg.getContext('2d'); g.clearRect(0, 0, BD.W, BD.H);
-      const k = BD.k;
+    // 匯出用：把每張圖幅 PDF 以目標畫布像素重畫（含旋轉對位）。v = {W,H,k,minX,maxY}
+    async function bdRenderBg(tiles, onMsg, v) {
+      const bg = document.createElement('canvas'); bg.width = v.W; bg.height = v.H;
+      const g = bg.getContext('2d'), k = v.k;
       let got = 0;
       for (const t of tiles) {
         if (onMsg) onMsg(`⏳ 讀取圖資 ${t.id}…`);
@@ -2897,9 +2878,9 @@
           const c = tileCornersMerc(t.zone, t.x, t.y, true);
           const a = k * (c.ne.x - c.nw.x) / fr.w, b = -k * (c.ne.y - c.nw.y) / fr.w;
           const cc = k * (c.sw.x - c.nw.x) / fr.h, d = -k * (c.sw.y - c.nw.y) / fr.h;
-          const e = k * (c.nw.x - BD.minX) - a * fr.x - cc * fr.y, f = k * (BD.maxY - c.nw.y) - b * fr.x - d * fr.y;
-          const px = (P) => [k * (P.x - BD.minX), k * (BD.maxY - P.y)];
-          const tmp = document.createElement('canvas'); tmp.width = BD.W; tmp.height = BD.H;
+          const e = k * (c.nw.x - v.minX) - a * fr.x - cc * fr.y, f = k * (v.maxY - c.nw.y) - b * fr.x - d * fr.y;
+          const px = (P) => [k * (P.x - v.minX), k * (v.maxY - P.y)];
+          const tmp = document.createElement('canvas'); tmp.width = v.W; tmp.height = v.H;
           const tc = tmp.getContext('2d');
           tc.save(); tc.beginPath();
           [c.nw, c.ne, c.se, c.sw].forEach((P, i) => { const q = px(P); i ? tc.lineTo(q[0], q[1]) : tc.moveTo(q[0], q[1]); });
@@ -2912,46 +2893,54 @@
         } catch (err) { console.warn('board tile fail', t.id, err); }
         try { if (pdf) pdf.destroy(); } catch (e) {}
       }
-      return got;
+      return { cv: bg, got };
     }
 
-    // 底圖（國土測繪 / Google 等，跟地圖目前選的一樣）：依畫板範圍抓 Web Mercator 圖磚貼上
+    // 匯出用：底圖（國土測繪 / Google，跟地圖目前選的一樣）依範圍抓圖磚；來源不給 CORS 就標記 tainted（不能存圖）
     function bdBaseLayer() {
       for (const l of [nlscEMap, nlscPhoto, googleRoads, googleHybrid]) if (map.hasLayer(l)) return l;
       return nlscEMap;
     }
-    async function bdRenderBase() {
-      const cv = BD.base; cv.width = BD.W; cv.height = BD.H;
-      const g = cv.getContext('2d'); g.clearRect(0, 0, BD.W, BD.H);
-      BD.baseTainted = false; BD.baseCount = 0;
+    async function bdRenderBase(v) {
+      const cv = document.createElement('canvas'); cv.width = v.W; cv.height = v.H;
+      const g = cv.getContext('2d'), res = { cv, tainted: false, count: 0 };
       const layer = bdBaseLayer(), tpl = layer._url, subs = layer.options.subdomains;
-      const maxZ = layer.options.maxNativeZoom || 19, ORG = 20037508.342789244, FULL = ORG * 2, k = BD.k;
-      const Wm = BD.W / k, Hm = BD.H / k, maxX = BD.minX + Wm, minY = BD.maxY - Hm;
+      const maxZ = layer.options.maxNativeZoom || 19, ORG = 20037508.342789244, FULL = ORG * 2, k = v.k;
+      const Wm = v.W / k, Hm = v.H / k, maxX = v.minX + Wm, minY = v.maxY - Hm;
       let z = Math.min(maxZ, Math.ceil(Math.log2(FULL * k / 256)));
-      const cnt = (zz) => { const sz = FULL / Math.pow(2, zz); return (Math.floor((maxX + ORG) / sz) - Math.floor((BD.minX + ORG) / sz) + 1) * (Math.floor((ORG - minY) / sz) - Math.floor((ORG - BD.maxY) / sz) + 1); };
-      while (z > 12 && cnt(z) > 30) z--;
+      const cnt = (zz) => { const sz = FULL / Math.pow(2, zz); return (Math.floor((maxX + ORG) / sz) - Math.floor((v.minX + ORG) / sz) + 1) * (Math.floor((ORG - minY) / sz) - Math.floor((ORG - v.maxY) / sz) + 1); };
+      while (z > 12 && cnt(z) > 40) z--;
       const sz = FULL / Math.pow(2, z);
-      const tx0 = Math.floor((BD.minX + ORG) / sz), tx1 = Math.floor((maxX + ORG) / sz);
-      const ty0 = Math.floor((ORG - BD.maxY) / sz), ty1 = Math.floor((ORG - minY) / sz);
+      const tx0 = Math.floor((v.minX + ORG) / sz), tx1 = Math.floor((maxX + ORG) / sz);
+      const ty0 = Math.floor((ORG - v.maxY) / sz), ty1 = Math.floor((ORG - minY) / sz);
       const jobs = [];
       for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
         const url = tpl.replace('{z}', z).replace('{x}', tx).replace('{y}', ty).replace('{s}', subs ? subs[(tx + ty) % subs.length] : '');
-        const dx = (tx * sz - ORG - BD.minX) * k, dy = (BD.maxY - (ORG - ty * sz)) * k, dw = sz * k;
-        jobs.push(new Promise((res) => {
+        const dx = (tx * sz - ORG - v.minX) * k, dy = (v.maxY - (ORG - ty * sz)) * k, dw = sz * k;
+        jobs.push(new Promise((r) => {
           const load = (cors) => {
             const im = new Image(); if (cors) im.crossOrigin = 'anonymous';
-            im.onload = () => { g.drawImage(im, dx, dy, dw + 0.6, dw + 0.6); BD.baseCount++; if (!cors) BD.baseTainted = true; res(); };
-            im.onerror = () => { if (cors) load(false); else res(); };
+            im.onload = () => { g.drawImage(im, dx, dy, dw + 0.6, dw + 0.6); res.count++; if (!cors) res.tainted = true; r(); };
+            im.onerror = () => { if (cors) load(false); else r(); };
             im.src = url;
           };
           load(true);
         }));
       }
       await Promise.all(jobs);
+      return res;
     }
 
     // ---- 資料與繪製（筆跡存 Mercator 公尺座標，與畫板範圍無關，重開還在）----
     const bdKey = () => 'tpc_board_' + activeDate;
+    const BD_ORG = 20037508.342789244;
+    const bdLw = () => Math.max(1.5 * BD.fx, BD.k * 0.5);                 // 1 倍粗細的線寬（隨縮放：約 0.5 公尺寬，最細 1.5px）
+    const bdCtx = (cv) => { const g = cv.getContext('2d'); g.setTransform(BD.dpr, 0, 0, BD.dpr, 0, 0); return g; };
+    function bdSyncView() {                                                // 讓筆跡座標對準「地圖此刻」的位置與縮放
+      const z = map.getZoom(), k = 256 * Math.pow(2, z) / (2 * BD_ORG), pb = map.getPixelBounds().min;
+      BD.k = k; BD.minX = pb.x / k - BD_ORG; BD.maxY = BD_ORG - pb.y / k; BD.z = z;
+      const c = map.getCenter(); BD.lat = c.lat; BD.centerCode = coordToPowerCode(c.lat, c.lng);
+    }
     const bdPx = (p) => [(p[0] - BD.minX) * BD.k, (BD.maxY - p[1]) * BD.k];
     const bdMerc = (x, y) => [BD.minX + x / BD.k, BD.maxY - y / BD.k];
     const bdGround = (a, b) => map.distance(E3857().unproject(L.point(a[0], a[1])), E3857().unproject(L.point(b[0], b[1])));
@@ -2961,7 +2950,7 @@
     }
     function bdPush() { BD.hist.push(BD.shapes.slice()); if (BD.hist.length > 80) BD.hist.shift(); BD.redo = []; }
     function bdLabel(ctx, p1, p2, text, color, off) {
-      const fs = Math.max(14, BD.k * 1.1), lw = Math.max(2, BD.k * 0.12);
+      const fs = 14 * BD.fx, lw = bdLw();
       let ang = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
       if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
       ctx.save(); ctx.translate((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2); ctx.rotate(ang);
@@ -2971,7 +2960,7 @@
       ctx.restore();
     }
     function bdDrawShape(ctx, sh) {
-      const lw = Math.max(2, BD.k * 0.12);
+      const lw = bdLw();
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       if (sh.t === 'free') {
         ctx.strokeStyle = sh.c || '#dc2626'; ctx.lineWidth = lw * (sh.w || 1); ctx.setLineDash([]);
@@ -3000,36 +2989,41 @@
     }
     function bdStatus() {
       const el = document.getElementById('bd-status'); if (!el) return;
-      const names = { free: '筆', erase: '橡皮擦：劃過筆跡即擦除', dim: '量長度：拉一條直線，自動標長度', text: '文字：點空白新增｜拖曳移動｜■縮放｜↻旋轉｜再點一下改字' };
+      const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', erase: '橡皮擦：劃過筆跡即擦除', dim: '量長度：拉一條直線，自動標長度', text: '文字：點空白新增｜拖曳移動｜■縮放｜↻旋轉｜再點一下改字' };
       el.textContent = `${BD.centerCode}  ｜ ${names[BD.tool] || ''}`;
     }
     function bdRedrawNow() {
-      const ctx = BD.ink.getContext('2d'); ctx.clearRect(0, 0, BD.W, BD.H);
-      if (BD.cache) { ctx.drawImage(BD.cache, 0, 0); if (BD.mv) bdDrawShape(ctx, BD.mv.sh); }
+      bdSyncView();
+      if (BD.cache && BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k) bdDropCache();
+      const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
+      if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) bdDrawShape(ctx, BD.mv.sh); }
       else { BD.shapes.forEach(s => bdDrawShape(ctx, s)); }
       bdDrawUi(); bdStatus();
     }
     function bdRedraw() { if (BD.raf) return; BD.raf = requestAnimationFrame(() => { BD.raf = 0; bdRedrawNow(); }); }
     function bdMakeCache(except) {                       // 編輯單一物件時，其餘物件先畫成一張底，之後每一格只畫被動的那個
       bdDropCache();
-      const c = document.createElement('canvas'); c.width = BD.W; c.height = BD.H;
-      const g = c.getContext('2d'); BD.shapes.forEach(s => { if (s !== except) bdDrawShape(g, s); });
-      BD.cache = c;
+      bdSyncView();
+      const c = document.createElement('canvas'); c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr);
+      const g = bdCtx(c); BD.shapes.forEach(s => { if (s !== except) bdDrawShape(g, s); });
+      BD.cache = c; BD.cacheStamp = BD.minX + '|' + BD.maxY + '|' + BD.k;
     }
     function bdDropCache() { if (BD.cache) { BD.cache.width = BD.cache.height = 0; BD.cache = null; } }
     function bdInkSeg(sh, a, b) {                        // 畫筆：只畫新增的那一小段，不重畫全部
-      const g = BD.ink.getContext('2d'), p = bdPx(a), q = bdPx(b);
-      g.strokeStyle = sh.c || '#dc2626'; g.lineWidth = Math.max(2, BD.k * 0.12) * (sh.w || 1); g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([]);
+      const g = bdCtx(BD.ink), p = bdPx(a), q = bdPx(b);
+      g.strokeStyle = sh.c || '#dc2626'; g.lineWidth = bdLw() * (sh.w || 1); g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([]);
       g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0] + 0.01, q[1]); g.stroke();
     }
-    function bdPreview() { const g = BD.ui.getContext('2d'); g.clearRect(0, 0, BD.W, BD.H); if (BD.cur) bdDrawShape(g, BD.cur); }
-    function bdApplyView() { BD.stage.style.transform = `translate(${BD.tx}px,${BD.ty}px) scale(${BD.s})`; }
-    function bdFit() {
-      const L0 = 60, T0 = 46, cw = window.innerWidth - L0 - 4, ch = window.innerHeight - T0 - 4;
-      BD.s = Math.min(cw / BD.W, ch / BD.H);
-      BD.tx = L0 + (cw - BD.W * BD.s) / 2; BD.ty = T0 + (ch - BD.H * BD.s) / 2; bdApplyView();
+    function bdPreview() { const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H); if (BD.cur) bdDrawShape(g, BD.cur); }
+    function bdLayout() {                                   // 畫圖層貼齊地圖區塊（直的就直的、橫的就橫的）
+      const r = document.getElementById('leaflet-map').getBoundingClientRect(), root = document.getElementById('board');
+      BD.rx = r.left; BD.ry = r.top; BD.W = Math.round(r.width); BD.H = Math.round(r.height); BD.dpr = Math.min(3, window.devicePixelRatio || 1);
+      root.style.left = '0px'; root.style.top = '0px'; root.style.width = BD.W + 'px'; root.style.height = BD.H + 'px';
+      [BD.ink, BD.ui].forEach(c => { c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr); c.style.width = BD.W + 'px'; c.style.height = BD.H + 'px'; });
+      BD.stage.style.width = BD.W + 'px'; BD.stage.style.height = BD.H + 'px';
+      bdDropCache(); bdRedrawNow();
     }
-    function bdPtOf(e) { const x = (e.clientX - BD.tx) / BD.s, y = (e.clientY - BD.ty) / BD.s; return bdMerc(x, y); }
+    function bdPtOf(e) { bdSyncView(); return bdMerc(e.clientX - BD.rx, e.clientY - BD.ry); }
     function bdDistSeg(p, a, b) {
       const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
       let t = l2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
@@ -3049,7 +3043,7 @@
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
         const sh = BD.shapes[i];
         if (sh.t === 'text') {
-          const fsm = Math.max(14, BD.k * 0.9) / BD.k, w = sh.text.length * fsm * 0.62 + r;
+          const fsm = bdTextFs(sh) / BD.k, w = sh.text.length * fsm * 0.62 + r;
           if (pt[0] >= sh.a[0] - r && pt[0] <= sh.a[0] + w && Math.abs(pt[1] - sh.a[1]) <= fsm * 0.7 + r * 0.5) return { sh, part: 'all' };
         } else if (sh.t === 'free') {
           for (let j = 1; j < sh.p.length; j++) if (bdDistSeg(pt, sh.p[j - 1], sh.p[j]) < r) return { sh, part: 'all' };
@@ -3068,7 +3062,7 @@
       else if (part === 'b') sh.b = [sh.b[0] + dx, sh.b[1] + dy];
       else { sh.a = [sh.a[0] + dx, sh.a[1] + dy]; sh.b = [sh.b[0] + dx, sh.b[1] + dy]; }
     }
-    const bdTextFs = (sh) => Math.max(14, BD.k * 0.9) * (sh.scale || 1);
+    const bdTextFs = (sh) => Math.max(6, BD.k * 3.5 * (sh.scale || 1));
     function bdTextBox(sh) {
       const g = BD.ink.getContext('2d'), fs = bdTextFs(sh);
       g.save(); g.font = `bold ${fs}px sans-serif`; const w = g.measureText(sh.text).width; g.restore();
@@ -3092,7 +3086,7 @@
       return null;
     }
     function bdDrawUi() {
-      const g = BD.ui.getContext('2d'); g.clearRect(0, 0, BD.W, BD.H);
+      const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H);
       const sh = BD.sel; if (!sh || BD.tool !== 'text') return;
       const h = bdTextHandles(sh), c = bdPx(sh.a), u = 1 / BD.s;
       g.save(); g.translate(c[0], c[1]); g.rotate(sh.rot || 0);
@@ -3114,25 +3108,28 @@
       if (document.getElementById('board')) return;
       const css = document.createElement('style');
       css.textContent = `
-        #board { position: fixed; inset: 0; z-index: 4000; background: #0f172a; display: none; touch-action: none; -webkit-user-select: none; user-select: none; }
-        #bd-wrap { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
-        #bd-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; will-change: transform; }
+        body.bd-on #here-wrap, body.bd-on #here-cross { display: none !important; }
+        #board { position: absolute; left: 0; top: 0; width: 100px; height: 100px; z-index: 850; display: none; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+        #bd-wrap { position: absolute; inset: 0; overflow: hidden; touch-action: none; pointer-events: none; }
+        #board.act #bd-wrap { pointer-events: auto; }
+        #bd-rail, #bd-pen-pop, #bd-msg { pointer-events: auto; }
+        #bd-stage { position: absolute; left: 0; top: 0; pointer-events: none; }
         #bd-stage canvas { position: absolute; left: 0; top: 0; display: block; }
-        #bd-bg { mix-blend-mode: multiply; }
-        #bd-rail { position: absolute; left: 4px; top: 46px; bottom: 4px; width: 52px; display: flex; flex-direction: column; gap: 5px; z-index: 2; overflow-y: auto; }
-        #bd-top { position: absolute; left: 4px; right: 4px; top: 4px; height: 38px; display: flex; align-items: center; gap: 5px; z-index: 2; pointer-events: none; }
+        #board.clean #bd-top, #board.clean #bd-status, #board.clean #bd-rail, #board.clean #bd-pen-pop { display: none !important; }
+        #bd-rail { position: absolute; left: 4px; top: 44px; bottom: 4px; width: 46px; display: flex; flex-direction: column; gap: 5px; z-index: 2; overflow-y: auto; }
+        #bd-top { position: absolute; left: 4px; right: 54px; top: 4px; height: 38px; display: flex; align-items: center; gap: 3px; z-index: 2; pointer-events: none; }
         #bd-top > * { pointer-events: auto; }
         #bd-top .sp { flex: 1; pointer-events: none; }
-        .bt { background: rgba(30,41,59,0.96); color: #fff; border: 1px solid #475569; border-radius: 10px; width: 52px; height: 46px; flex: 0 0 auto; font-size: 18px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; }
-        #bd-top .bt { width: 42px; height: 36px; border-radius: 9px; font-size: 16px; }
+        .bt { background: rgba(30,41,59,0.96); color: #fff; border: 1px solid #475569; border-radius: 10px; width: 46px; height: 42px; flex: 0 0 auto; font-size: 17px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; }
+        #bd-top .bt { width: 32px; height: 34px; border-radius: 8px; font-size: 15px; }
         #bd-top .bt small { display: none; }
         .bt small { font-size: 9px; font-weight: normal; color: #cbd5e1; }
         .bt.on { background: #f97316; border-color: #fff; } .bt.on small { color: #fff; }
         .bd-sep { height: 1px; background: #475569; margin: 2px 6px; flex: 0 0 auto; }
-        #bd-top .bd-vsep { width: 1px; height: 22px; background: #64748b; flex: 0 0 auto; }
-        #bd-status { color: #fde047; font: bold 11px sans-serif; background: rgba(15,23,42,0.85); padding: 3px 8px; border-radius: 6px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+        #bd-top .bd-vsep { display: none; }
+        #bd-status { position: absolute; left: 54px; top: 44px; color: #fde047; font: bold 11px sans-serif; background: rgba(15,23,42,0.85); padding: 3px 8px; border-radius: 6px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
         #bd-colorbtn span { display: block; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #0f172a; }
-        #bd-pen-pop { position: absolute; left: 62px; top: 50px; z-index: 5; background: rgba(15,23,42,0.97); border: 1px solid #64748b; border-radius: 12px; padding: 8px; display: none; width: 232px; }
+        #bd-pen-pop { position: absolute; left: 54px; top: 66px; z-index: 5; background: rgba(15,23,42,0.97); border: 1px solid #64748b; border-radius: 12px; padding: 8px; display: none; width: 232px; }
         #bd-colors { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
         .bd-sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #94a3b8; padding: 0; }
         .bd-sw.on { border: 3px solid #fff; box-shadow: 0 0 0 2px #f97316; }
@@ -3141,8 +3138,9 @@
         #bd-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3; background: rgba(15,23,42,0.92); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; text-align: center; }`;
       document.head.appendChild(css);
       const d = document.createElement('div'); d.id = 'board';
-      d.innerHTML = `<div id="bd-wrap"><div id="bd-stage"><canvas id="bd-base"></canvas><canvas id="bd-bg"></canvas><canvas id="bd-ink"></canvas><canvas id="bd-ui" style="pointer-events:none"></canvas></div></div>
+      d.innerHTML = `<div id="bd-wrap"><div id="bd-stage"><canvas id="bd-ink"></canvas><canvas id="bd-ui" style="pointer-events:none"></canvas></div></div>
         <div id="bd-msg"></div>
+        <div id="bd-status"></div>
         <div id="bd-pen-pop">
           <div id="bd-colors"></div>
           <div class="bd-row"><span>粗細</span><input type="range" id="bd-w" min="0.3" max="6" step="0.1"><span id="bd-wv"></span></div>
@@ -3150,15 +3148,15 @@
         </div>
         <div id="bd-top">
           <button class="bt" onclick="closeBoard()" style="background:#7f1d1d;" title="離開畫板">✕</button>
-          <div id="bd-status"></div>
           <div class="sp"></div>
           <button class="bt" onclick="bdUndo()" title="復原">↩</button>
           <button class="bt" onclick="bdRedo()" title="重做">↪</button>
           <div class="bd-vsep"></div>
-          <button class="bt" id="bd-basebtn" onclick="bdToggleBase()" title="底圖開關">🗺<small>底圖:開</small></button>
+          <button class="bt" onclick="bdFitAll()" title="縮放到剛好框住所有筆跡（再按 💾 輸出這個範圍）">⤢</button>
+          <button class="bt" onclick="bdClean()" title="隱藏工具列 6 秒，方便用手機截圖">📷</button>
           <div class="bd-vsep"></div>
-          <button class="bt" onclick="bdExport('share',true)" title="分享">📤</button>
-          <button class="bt" onclick="bdExport('save',true)" title="存成圖片">💾</button>
+          <button class="bt" onclick="bdExport('share')" title="分享">📤</button>
+          <button class="bt" onclick="bdExport('save')" title="存成圖片">💾</button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdClearAll()" title="清空">🗑</button>
         </div>
@@ -3168,12 +3166,21 @@
           <button class="bt" data-tool="dim" onclick="bdTool('dim')"><span style="color:#60a5fa">↔</span><small>量長度</small></button>
           <button class="bt" data-tool="text" onclick="bdToolTap('text')">🅰<small>文字</small></button>
           <div class="bd-sep"></div>
+          <button class="bt" id="bd-finger" onclick="bdToggleFinger()" title="手指能不能畫圖（雙指一律是縮放／平移）">👆<small>手指:移動</small></button>
           <button class="bt" id="bd-colorbtn" onclick="bdPenPop(document.getElementById('bd-pen-pop').style.display !== 'block')" title="顏色與粗細"><span id="bd-cdot"></span><small>顏色/粗細</small></button>
         </div>`;
-      document.body.appendChild(d);
-      BD.ui = document.getElementById('bd-ui'); BD.base = document.getElementById('bd-base'); BD.bg = document.getElementById('bd-bg'); BD.ink = document.getElementById('bd-ink'); BD.stage = document.getElementById('bd-stage');
+      document.querySelector('.map-container').appendChild(d);
+      BD.ui = document.getElementById('bd-ui'); BD.ink = document.getElementById('bd-ink'); BD.stage = document.getElementById('bd-stage');
       const wrap = document.getElementById('bd-wrap'), touches = new Map();
-      let pan = null, pinch = null, drawing = false;
+      let pan = null, pinch = null, drawing = false, drawId = null;
+      const abortDraw = () => {
+        if (!drawing) return;
+        drawing = false; drawId = null; BD.erasing = false;
+        if (BD.cur) { BD.cur = null; bdPreview(); }
+        if (BD.mv) { BD.mv = null; bdDropCache(); }
+        bdSave(); bdRedrawNow();
+      };
+      const mapPt = (x, y) => L.point(x - BD.rx, y - BD.ry);
       const startDraw = (e) => {
         const pt = bdPtOf(e);
         if (BD.tool === 'text') {
@@ -3207,7 +3214,7 @@
           if (BD.sel) { BD.sel = null; bdRedraw(); return; }
           const txt = prompt('要標示的文字（例如：新1A#2 31.4M）');
           if (txt && txt.trim()) {
-            bdPush(); const sh = { t: 'text', a: pt, text: txt.trim(), scale: 1, rot: 0, c: BD.pen.c }; BD.shapes.push(sh); BD.sel = sh; bdSave(); bdRedraw();
+            bdPush(); const sh = { t: 'text', a: pt, text: txt.trim(), scale: 18 / (BD.k * 3.5), rot: 0, c: BD.pen.c }; BD.shapes.push(sh); BD.sel = sh; bdSave(); bdRedraw();
           }
           return;
         }
@@ -3220,12 +3227,13 @@
         e.preventDefault();
         try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
         const isTouch = e.pointerType === 'touch';
-        if (isTouch && !BD.fingerDraw) {
+        if (isTouch) {                                   // 手指：平移／縮放地圖本身；筆：畫圖
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          if (touches.size === 1) pan = { x: e.clientX, y: e.clientY, tx: BD.tx, ty: BD.ty };
+          if (touches.size === 1 && BD.fingerDraw && !drawing) { drawId = e.pointerId; startDraw(e); return; }
+          if (touches.size === 1) pan = { x: e.clientX, y: e.clientY };
           if (touches.size === 2) {
-            pan = null; const [p, q] = Array.from(touches.values());
-            pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), s: BD.s, tx: BD.tx, ty: BD.ty, mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
+            abortDraw(); pan = null; const [p, q] = Array.from(touches.values());
+            pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: map.getZoom(), mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
           }
           return;
         }
@@ -3233,14 +3241,15 @@
         startDraw(e);
       });
       wrap.addEventListener('pointermove', (e) => {
-        if (touches.has(e.pointerId)) {
+        if (touches.has(e.pointerId) && e.pointerId !== drawId) {
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (pinch && touches.size >= 2) {
             const [p, q] = Array.from(touches.values()), d = Math.hypot(p.x - q.x, p.y - q.y);
-            const s = Math.max(0.05, Math.min(14, pinch.s * d / pinch.d)), mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
-            const bx = (pinch.mx - pinch.tx) / pinch.s, by = (pinch.my - pinch.ty) / pinch.s;
-            BD.s = s; BD.tx = mx - bx * s; BD.ty = my - by * s; bdApplyView();
-          } else if (pan) { BD.tx = pan.tx + e.clientX - pan.x; BD.ty = pan.ty + e.clientY - pan.y; bdApplyView(); }
+            const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+            map.panBy([pinch.mx - mx, pinch.my - my], { animate: false });
+            pinch.mx = mx; pinch.my = my;
+            map.setZoomAround(mapPt(mx, my), pinch.z + Math.log2(d / pinch.d), { animate: false });
+          } else if (pan) { map.panBy([pan.x - e.clientX, pan.y - e.clientY], { animate: false }); pan.x = e.clientX; pan.y = e.clientY; }
           return;
         }
         if (!drawing) return;
@@ -3252,14 +3261,14 @@
             if (Math.abs(((m.sh.rot * 180 / Math.PI) % 90 + 90) % 90) < 2.5 || Math.abs(((m.sh.rot * 180 / Math.PI) % 90 + 90) % 90 - 90) < 2.5) m.sh.rot = Math.round(m.sh.rot / (Math.PI / 2)) * Math.PI / 2;   // 靠近 0/90° 自動吸附
           } else if (m.mode === 'scale') {
             const c = bdPx(m.sh.a), q = bdPx(pt);
-            m.sh.scale = Math.max(0.3, Math.min(12, m.s0 * (Math.hypot(q[0] - c[0], q[1] - c[1]) / m.d0)));
+            m.sh.scale = Math.max(0.02, Math.min(400, m.s0 * (Math.hypot(q[0] - c[0], q[1] - c[1]) / m.d0)));
           } else {
             if (Math.hypot(pt[0] - m.start[0], pt[1] - m.start[1]) * BD.k * BD.s > 5) m.moved = true;
             if (m.moved) { bdShift(m.sh, m.part || 'all', pt[0] - m.last[0], pt[1] - m.last[1]); m.last = pt; }
           }
           bdRedraw(); return;
         }
-        const evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [e];
+        let evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || []; if (!evs.length) evs = [e];
         if (BD.tool === 'erase') { evs.forEach(ev => bdEraseAt(bdPtOf(ev))); return; }
         if (!BD.cur) return;
         if (BD.cur.t === 'free') { evs.forEach(ev => { const q = bdPtOf(ev), last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); bdInkSeg(BD.cur, last, q); }); }
@@ -3268,9 +3277,12 @@
       const up = (e) => {
         if (touches.has(e.pointerId)) {
           touches.delete(e.pointerId);
-          if (touches.size < 2) pinch = null;
-          if (touches.size === 1) { const r = Array.from(touches.values())[0]; pan = { x: r.x, y: r.y, tx: BD.tx, ty: BD.ty }; } else if (!touches.size) pan = null;
-          return;
+          if (e.pointerId !== drawId) {
+            if (touches.size < 2) pinch = null;
+            if (touches.size === 1 && !BD.fingerDraw) { const r = Array.from(touches.values())[0]; pan = { x: r.x, y: r.y }; } else if (!touches.size) pan = null;
+            return;
+          }
+          drawId = null;
         }
         if (!drawing) return;
         drawing = false; BD.erasing = false;
@@ -3300,20 +3312,23 @@
       };
       wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up);
       wrap.addEventListener('wheel', (e) => {
-        e.preventDefault(); const f = e.deltaY < 0 ? 1.15 : 1 / 1.15, s = Math.max(0.05, Math.min(14, BD.s * f));
-        const bx = (e.clientX - BD.tx) / BD.s, by = (e.clientY - BD.ty) / BD.s;
-        BD.s = s; BD.tx = e.clientX - bx * s; BD.ty = e.clientY - by * s; bdApplyView();
+        e.preventDefault(); map.setZoomAround(mapPt(e.clientX, e.clientY), map.getZoom() + (e.deltaY < 0 ? 0.4 : -0.4), { animate: false });
       }, { passive: false });
-      window.addEventListener('resize', () => { if (BD.on) bdFit(); });
+      window.addEventListener('resize', () => { if (BD.on) setTimeout(bdLayout, 250); });
+      map.on('move zoom', () => { if (BD.on) bdRedraw(); });
+      try { let rt = 0; new ResizeObserver(() => { if (!BD.on) return; clearTimeout(rt); rt = setTimeout(bdLayout, 120); }).observe(document.getElementById('leaflet-map')); } catch (e) {}
       const colors = document.getElementById('bd-colors');
       BD_COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'bd-sw'; b.dataset.c = c; b.style.background = c; b.onclick = () => bdSetColor(c); colors.appendChild(b); });
       document.getElementById('bd-w').addEventListener('input', (e) => bdSetWidth(e.target.value));
       wrap.addEventListener('pointerdown', () => bdPenPop(false), true);   // 點畫面其他地方就收起筆設定
       bdPenUi();
+      document.getElementById('map-floating-controls').addEventListener('click', (e) => {   // 按右側其他功能（📍🚗⚡…）→ 自動回瀏覽，地圖才點得到
+        if (BD.on && BD.tool !== 'none' && !e.target.closest('#drawModeBtn') && !e.target.closest('#moreBtn')) bdTool('none');
+      }, true);
     }
     window.bdTool = (t) => {
-      BD.tool = t; if (t !== 'text') BD.sel = null; { const pp = document.getElementById('bd-pen-pop'); if (pp && t !== 'free' && t !== 'text') pp.style.display = 'none'; } if (BD.ink && BD.ink.width > 1) bdDrawUi();
-      document.querySelectorAll('#bd-tools .bt[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+      BD.tool = t; document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; { const pp = document.getElementById('bd-pen-pop'); if (pp && t !== 'free' && t !== 'text') pp.style.display = 'none'; } if (BD.ink && BD.ink.width > 1) bdDrawUi();
+      document.querySelectorAll('#bd-rail .bt[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
       bdStatus();
     };
     const BD_COLORS = ['#dc2626', '#111827', '#2563eb', '#16a34a', '#f97316', '#9333ea', '#ca8a04', '#0891b2'];
@@ -3326,16 +3341,15 @@
       const cv = document.getElementById('bd-prev');
       if (cv) {
         const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
-        g.strokeStyle = BD.pen.c; g.lineCap = 'round'; g.lineWidth = Math.max(1, Math.min(26, Math.max(2, BD.k * 0.12) * BD.pen.w * BD.s));
+        g.strokeStyle = BD.pen.c; g.lineCap = 'round'; g.lineWidth = Math.max(1, Math.min(26, bdLw() * BD.pen.w));
         g.beginPath(); g.moveTo(14, 15); g.bezierCurveTo(60, 2, 110, 28, 186, 15); g.stroke();
       }
       try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); } catch (e) {}
     }
     window.bdPenPop = (show) => { document.getElementById('bd-pen-pop').style.display = show ? 'block' : 'none'; if (show) bdPenUi(); };
     window.bdToolTap = (t) => {
-      const pop = document.getElementById('bd-pen-pop');
-      if (BD.tool === t && (t === 'free' || t === 'text')) bdPenPop(pop.style.display !== 'block');
-      else { bdPenPop(false); bdTool(t); }
+      bdPenPop(false);
+      bdTool(BD.tool === t ? 'none' : t);               // 開關：再按一次就關，關掉後手指直接移動地圖
     };
     window.bdSetColor = (c) => {
       BD.pen.c = c;
@@ -3345,46 +3359,69 @@
       bdPenUi();
     };
     window.bdSetWidth = (v) => { BD.pen.w = Math.max(0.3, Math.min(6, parseFloat(v) || 1)); bdPenUi(); };
-    window.bdToggleBase = () => {
-      BD.baseOn = !BD.baseOn;
-      BD.base.style.display = BD.baseOn ? 'block' : 'none';
-      document.getElementById('bd-basebtn').querySelector('small').textContent = BD.baseOn ? '底圖:開' : '底圖:關';
-    };
     window.bdToggleFinger = () => {
-      BD.fingerDraw = !BD.fingerDraw;
-      const b = document.getElementById('bd-finger');
-      b.classList.toggle('on', BD.fingerDraw); b.querySelector('small').textContent = BD.fingerDraw ? '手指:畫圖' : '手指:移動';
+      BD.fingerDraw = !BD.fingerDraw; try { localStorage.setItem('tpc_finger', BD.fingerDraw ? '1' : ''); } catch (e) {}
+      bdFingerUi();
+    };
+    function bdFingerUi() {
+      const b = document.getElementById('bd-finger'); if (!b) return;
+      b.classList.toggle('on', !!BD.fingerDraw); b.querySelector('small').textContent = BD.fingerDraw ? '手指:畫圖' : '手指:移動';
+    }
+    window.bdFitAll = () => {
+      const pts = [];
+      BD.shapes.forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
+      if (!pts.length) return;
+      const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+      const sw = E3857().unproject(L.point(Math.min(...xs), Math.min(...ys))), ne = E3857().unproject(L.point(Math.max(...xs), Math.max(...ys)));
+      map.fitBounds(L.latLngBounds(sw, ne), { padding: [70, 70], animate: false, maxZoom: 21 });
+    };
+    let bdCleanT = 0;
+    window.bdClean = () => {
+      const r = document.getElementById('board'); r.classList.add('clean'); clearTimeout(bdCleanT);
+      bdCleanT = setTimeout(() => r.classList.remove('clean'), 6000);
     };
     window.bdUndo = () => { if (!BD.hist.length) return; BD.sel = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
     window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
     window.bdClearAll = () => { if (!BD.shapes.length || !confirm('清空這一天的所有筆跡？（可按復原找回）')) return; bdPush(); BD.sel = null; BD.shapes = []; bdSave(); bdRedraw(); };
-    window.bdExport = async (mode, withBg) => {
-      const out = document.createElement('canvas'); out.width = BD.W; out.height = BD.H;
+    window.bdExport = async (mode) => {
+      const msg = document.getElementById('bd-msg'), say = (t, ms) => { msg.textContent = t; msg.style.display = t ? 'block' : 'none'; if (ms) setTimeout(() => { msg.style.display = 'none'; }, ms); };
+      say('⏳ 產生高解析圖片…');
+      { const r0 = document.getElementById('leaflet-map').getBoundingClientRect(); if (Math.round(r0.width) !== BD.W || Math.round(r0.height) !== BD.H) bdLayout(); }
+      bdSyncView();
+      const f = Math.max(1, Math.min(4 * BD.dpr, 3600 / Math.max(BD.W, BD.H)));
+      const v = { W: Math.round(BD.W * f), H: Math.round(BD.H * f), k: BD.k * f, minX: BD.minX, maxY: BD.maxY };
+      const saved = { k: BD.k, fx: BD.fx }, code = BD.centerCode, lat = BD.lat;
+      const out = document.createElement('canvas'); out.width = v.W; out.height = v.H;
       const g = out.getContext('2d');
       let note = '';
-      if (withBg) {
-        g.fillStyle = '#fff'; g.fillRect(0, 0, BD.W, BD.H);
-        if (BD.baseOn && BD.baseCount) {
-          if (!BD.baseTainted) g.drawImage(BD.base, 0, 0); else note = '（底圖來源不允許存入圖片：這張只含圖資＋筆跡）';
-        }
-        g.globalCompositeOperation = 'multiply'; g.drawImage(BD.bg, 0, 0); g.globalCompositeOperation = 'source-over';
-      }
-      bdRedrawNow(); g.drawImage(BD.ink, 0, 0);
+      try {
+        g.fillStyle = '#fff'; g.fillRect(0, 0, v.W, v.H);
+        const [base, cad] = await Promise.all([
+          bdRenderBase(v).catch(() => ({ count: 0, tainted: false })),
+          isCadOverlayEnabled ? bdRenderBg(bdTilesFor(v.minX, v.minX + v.W / v.k, v.maxY - v.H / v.k, v.maxY), (t) => say(t), v).catch(() => null) : Promise.resolve(null)
+        ]);
+        if (base.count && !base.tainted) g.drawImage(base.cv, 0, 0); else if (base.count) note = '（國土測繪底圖不允許存入圖片：這張只含圖資＋筆跡。要完整畫面請按 📷 後用手機截圖）';
+        if (cad && cad.got) { g.globalCompositeOperation = 'multiply'; g.drawImage(cad.cv, 0, 0); g.globalCompositeOperation = 'source-over'; cad.cv.width = 0; }
+        base.cv && (base.cv.width = 0);
+      } catch (e) { console.warn(e); }
+      BD.k = v.k; BD.fx = f;                                   // 把筆跡以匯出解析度畫上去
+      BD.shapes.forEach(sh => bdDrawShape(g, sh));
+      BD.k = saved.k; BD.fx = saved.fx;
       const now = new Date(), pad = (n) => String(n).padStart(2, '0');
       const stamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-      if (withBg) {
-        const fs = Math.max(12, BD.k * 0.7), bar = 10 * BD.k / Math.cos(BD.lat * Math.PI / 180), m = fs * 0.8;
-        g.font = `${fs}px monospace`; g.textBaseline = 'bottom'; g.lineJoin = 'round';
-        g.textAlign = 'right'; g.lineWidth = fs * 0.25; g.strokeStyle = '#fff'; g.fillStyle = 'rgba(30,41,59,0.75)';
-        g.strokeText(`${BD.centerCode}  ${stamp}`, BD.W - m, BD.H - m); g.fillText(`${BD.centerCode}  ${stamp}`, BD.W - m, BD.H - m);
-        g.strokeStyle = '#111'; g.lineWidth = Math.max(2, BD.k * 0.1);
-        g.beginPath(); g.moveTo(m, BD.H - m - fs); g.lineTo(m + bar, BD.H - m - fs); g.moveTo(m, BD.H - m - fs - 5); g.lineTo(m, BD.H - m - fs + 5); g.moveTo(m + bar, BD.H - m - fs - 5); g.lineTo(m + bar, BD.H - m - fs + 5); g.stroke();
-        g.textAlign = 'left'; g.fillStyle = '#111'; g.fillText('10 m', m + bar + 6, BD.H - m - fs + fs * 0.5);
-      }
-      const blob = await canvasToBlob(out);
-      const name = `施工圖_${BD.centerCode}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${withBg ? '' : '_僅筆跡'}.png`;
+      const fs = 12 * f, bar = 10 * v.k / Math.cos(lat * Math.PI / 180), m = fs * 0.8;
+      g.font = `${fs}px monospace`; g.textBaseline = 'bottom'; g.lineJoin = 'round';
+      g.textAlign = 'right'; g.lineWidth = fs * 0.25; g.strokeStyle = '#fff'; g.fillStyle = 'rgba(30,41,59,0.8)';
+      g.strokeText(`${code}  ${stamp}`, v.W - m, v.H - m); g.fillText(`${code}  ${stamp}`, v.W - m, v.H - m);
+      g.strokeStyle = '#111'; g.lineWidth = Math.max(2, f * 1.5); const by = v.H - m - fs;
+      g.beginPath(); g.moveTo(m, by); g.lineTo(m + bar, by); g.moveTo(m, by - 5 * f); g.lineTo(m, by + 5 * f); g.moveTo(m + bar, by - 5 * f); g.lineTo(m + bar, by + 5 * f); g.stroke();
+      g.textAlign = 'left'; g.fillStyle = '#111'; g.strokeStyle = '#fff'; g.lineWidth = fs * 0.25; g.strokeText('10 m', m + bar + 6 * f, by + fs * 0.5); g.fillText('10 m', m + bar + 6 * f, by + fs * 0.5);
+      let blob = null;
+      try { blob = await canvasToBlob(out); } catch (e) { blob = null; }
       out.width = out.height = 0;
-      if (note) { const m0 = document.getElementById('bd-msg'); m0.textContent = note; m0.style.display = 'block'; setTimeout(() => m0.style.display = 'none', 2500); }
+      if (!blob) { say('⚠ 無法產生圖片，請按 📷 隱藏工具列後用手機截圖', 3500); return; }
+      const name = `施工圖_${code}_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.png`;
+      say(note ? note : '', note ? 3500 : 0);
       if (mode === 'share' && navigator.canShare) {
         const file = new File([blob], name, { type: 'image/png' });
         if (navigator.canShare({ files: [file] })) {
@@ -3394,50 +3431,29 @@
       const url = URL.createObjectURL(blob), a = document.createElement('a');
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 8000);
-      const msg = document.getElementById('bd-msg'); msg.textContent = '✓ 已存成圖片（下載 / 相簿）' + note; msg.style.display = 'block'; setTimeout(() => msg.style.display = 'none', 1600);
+      say('✓ 已存成圖片（下載 / 相簿）' + note, 2200);
     };
-    window.openBoard = async () => {
-      if (BD.on) return;
-      BD.on = true;
+    window.openBoard = () => {
+      if (BD.on) { closeBoard(); return; }
+      if (streetviewframe.style.display === 'block') { alert('街景模式下不能畫圖，請先回到地圖'); return; }
       bdEnsureDom();
-      const root = document.getElementById('board'), msg = document.getElementById('bd-msg');
-      root.style.display = 'block'; msg.style.display = 'block'; msg.textContent = '⏳ 擷取目前畫面並讀取圖資…';
-      const b = map.getBounds(), sw = E3857().project(b.getSouthWest()), ne = E3857().project(b.getNorthEast());
-      let minX = sw.x, maxX = ne.x, minY = sw.y, maxY = ne.y;
-      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, mx = (maxX - minX) * 0.04, my = (maxY - minY) * 0.04;
-      let hw = (maxX - minX) / 2 + mx, hh = (maxY - minY) / 2 + my;
-      const MAXW = 260, MAXH = 260;                    // 畫面太大就取中央一塊（現場通常只看幾十公尺）
-      if (hw * 2 > MAXW) { hh *= MAXW / (hw * 2); hw = MAXW / 2; }
-      if (hh * 2 > MAXH) { hw *= MAXH / (hh * 2); hh = MAXH / 2; }
-      BD.minX = cx - hw; BD.maxY = cy + hh;
-      const Wm = hw * 2, Hm = hh * 2;
-      BD.k = Math.min(2000 / Wm, 1400 / Hm, 20);       // 每 Mercator 公尺幾像素（最高約 20+ px/公尺）
-      BD.W = Math.ceil(Wm * BD.k); BD.H = Math.ceil(Hm * BD.k);
-      const cll = E3857().unproject(L.point(cx, cy)); BD.lat = cll.lat;
-      BD.centerCode = coordToPowerCode(cll.lat, cll.lng);
-      BD.ui.width = BD.W; BD.ui.height = BD.H; BD.ink.width = BD.W; BD.ink.height = BD.H; BD.base.width = BD.W; BD.base.height = BD.H;
-      BD.stage.style.width = BD.W + 'px'; BD.stage.style.height = BD.H + 'px';
+      BD.on = true; BD.fx = 1; BD.tool = 'none';
+      try { BD.fingerDraw = !!localStorage.getItem('tpc_finger'); } catch (e) { BD.fingerDraw = false; }
+      document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
+      document.getElementById('board').style.display = 'block'; bdFingerUi();
+      BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
       try { BD.shapes = JSON.parse(localStorage.getItem(bdKey()) || '[]'); } catch (e) { BD.shapes = []; }
-      BD.hist = []; BD.redo = []; BD.cur = null;
-      try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) {}
-      try { await screen.orientation.lock('landscape'); } catch (e) {}
-      bdTool(BD.tool); bdFit();
-      let got = 0;
-      BD.baseOn = true; BD.base.style.display = 'block'; document.getElementById('bd-basebtn').querySelector('small').textContent = '底圖:開';
-      const pBase = bdRenderBase().catch(e => console.warn(e));
-      const pCad = bdRenderBg(bdTilesFor(BD.minX, BD.minX + Wm, BD.maxY - Hm, BD.maxY), (t) => { msg.textContent = t; }).catch(e => { console.warn(e); return 0; });
-      got = await pCad; await pBase;
-      bdFit(); bdRedraw();
-      msg.textContent = got ? '' : '⚠ 這裡找不到圖資 PDF，仍可在空白畫板上畫';
-      if (got) msg.style.display = 'none'; else setTimeout(() => msg.style.display = 'none', 2500);
+      BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
+      bdTool(BD.tool); bdLayout(); bdPenUi();
     };
-    window.closeBoard = async () => {
-      BD.on = false; BD.cur = null;
-      document.getElementById('board').style.display = 'none';
-      BD.ui.width = BD.ui.height = 1; BD.bg.width = BD.bg.height = 1; BD.base.width = BD.base.height = 1;
-      try { screen.orientation.unlock(); } catch (e) {}
-      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
-      setTimeout(() => map.invalidateSize(), 300);
+    window.closeBoard = () => {
+      BD.on = false; BD.cur = null; BD.sel = null; bdDropCache();
+      const r = document.getElementById('board'); r.style.display = 'none'; r.classList.remove('clean', 'act');
+      document.body.classList.remove('bd-on'); document.getElementById('drawModeBtn').classList.remove('tracking-active');
+      bdPenPop(false);
+      map.options.zoomSnap = (BD.zs === undefined ? 1 : BD.zs);
+      map.setZoom(Math.round(map.getZoom()), { animate: false });
+      setTimeout(() => map.invalidateSize(), 100);
     };
     window.toggleMoreTools = () => {
       const el = document.getElementById('more-tools');
@@ -3567,7 +3583,7 @@
         userTooltip.on('click', copyCurrentUserCode);
       }
 
-      if (forceCenter) {
+      if (forceCenter && !(typeof BD !== 'undefined' && BD.on)) {
         map.panTo(userLatLng, { animate: true, duration: 0.4 });
       }
     }
@@ -3586,7 +3602,7 @@
       btn.innerText = '🔴';
       isFirstFixOfSession = true;
 
-      if (userLatLng) {
+      if (userLatLng && !(typeof BD !== 'undefined' && BD.on)) {
         map.panTo(userLatLng, { animate: true, duration: 0.4 });
         isFirstFixOfSession = false;
       }
