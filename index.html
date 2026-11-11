@@ -21,6 +21,8 @@
 
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    .leaflet-tile-container, .leaflet-zoom-animated { will-change: transform; }
+    .leaflet-tile { transition: opacity 0.12s linear; }
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
       background: #0b0f19; color: #f8fafc;
@@ -535,7 +537,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v52</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v53</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -557,7 +559,6 @@
       <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="開關即時定位追蹤（連按兩下：停止並清除車子標記）">🚗</div>
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
-        <div class="float-btn" id="measureBtn" onclick="measureViaBoard()" title="量距離：進入畫圖的「量長度」">📏</div>
         <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
       </div>
       <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
@@ -966,16 +967,16 @@
     };
 
     const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心'
+      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
     });
     const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心'
+      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
     });
     const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3']
+      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
     });
     const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3']
+      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
     });
 
     const map = L.map('leaflet-map', {
@@ -983,6 +984,7 @@
       zoom: 14,
       maxZoom: 21,
       zoomControl: false,
+      wheelDebounceTime: 30, inertiaDeceleration: 3600, bounceAtZoomLimits: false,
       layers: [nlscEMap]
     });
 
@@ -1027,6 +1029,8 @@
         raf = 0;
         if (map.getZoom() < 15) { el.style.display = 'none'; return; }
         const c = map.getCenter(), code = coordToPowerCode(c.lat, c.lng);
+        if (code === upd._last) return;
+        upd._last = code;
         el.innerHTML = `${code.substring(0, 5)}<small>${code.substring(5)}</small>`;
         el.style.display = 'block';
         const lb = document.getElementById('here-cross-label');
@@ -1053,7 +1057,7 @@
           } catch (e) {}
         }
         lbl.textContent = ok ? '✓ 已複製 ' + txt : txt;
-        setTimeout(upd, 900);
+        setTimeout(() => { upd._last = null; upd(); }, 900);
       });
       el.addEventListener('click', () => {
         const on = cross.style.display !== 'block';
@@ -1833,11 +1837,11 @@
       cadSetLowOpacity(0);                                                      // 補丁蓋住整個畫面 → 低解析底圖先藏起來，避免重影
     }
     map.on('move', () => {                // 滑動中：快要滑出補丁範圍才補畫（舊補丁一直留著，不閃）
-      if (!isCadOverlayEnabled) return;
+      if (!isCadOverlayEnabled || !cadVecFailed) return;
       const n = Date.now(); if (n - cadPatch.lastMove < 200) return; cadPatch.lastMove = n;
       if (!cadCovered(0.12)) cadKick();
     });
-    map.on('moveend zoomend', () => { if (isCadOverlayEnabled) cadSchedulePatch(150); });
+    map.on('moveend zoomend', () => { if (isCadOverlayEnabled && cadVecFailed) cadSchedulePatch(150); });
     setTimeout(() => { try { if (!localStorage.getItem('tpc_tiles_cleared')) { idbClear('tiles'); localStorage.setItem('tpc_tiles_cleared', '1'); } } catch (e) {} }, 6000);
 
     // ===== v52 向量引擎：把 PDF 的線條讀成向量，直接用 Canvas 畫在螢幕上（任何縮放都是向量清晰度，滑動時整張畫布由系統搬移，不用重畫） =====
@@ -1976,7 +1980,7 @@
         }
         ctx.restore();
       }
-      cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY };
+      cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY, bnds: L.latLngBounds(map.containerPointToLatLng([-padX, -padY]), map.containerPointToLatLng([sz.x + padX, sz.y + padY])) };
     }
     function cadVecRedraw() { if (!cadVec.raf) cadVec.raf = requestAnimationFrame(cadVecDraw); }
     function cadVecUpdate() {                   // 載入畫面附近（含鄰圖預載）會用到的圖幅
@@ -2004,6 +2008,7 @@
     map.on('move', () => {                      // 滑動中：只要還在已畫好的範圍內就什麼都不做（畫布由系統搬移）
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
       const d = cadVec.drawn;
+      if (d && Math.abs(map.getZoom() - d.z) > 1e-6) return;           // 縮放中由 zoom 事件處理（系統縮放，停手後才重畫）
       if (d && Math.abs(map.getZoom() - d.z) < 1e-6) {
         const pb = map.getPixelBounds().min, sz = map.getSize();
         if (pb.x >= d.ox && pb.y >= d.oy && pb.x + sz.x <= d.ox + d.Wc && pb.y + sz.y <= d.oy + d.Hc) {
@@ -2013,12 +2018,17 @@
       }
       cadVecRedraw();
     });
-    map.on('zoom viewreset resize', () => { if (isCadOverlayEnabled && cadVec.canvas) cadVecRedraw(); });
+    map.on('viewreset resize', () => { if (isCadOverlayEnabled && cadVec.canvas) cadVecRedraw(); });
+    map.on('zoom', () => {                      // 雙指縮放：畫布交給系統縮放（不卡），停手 0.14 秒後才用向量重畫成清晰版
+      if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
+      const d = cadVec.drawn; if (!d) { cadVecRedraw(); return; }
+      try { if (Math.abs(map.getZoom() - d.z) > 1e-6) L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, map.getZoom(), map.getCenter()).min, map.getZoomScale(map.getZoom(), d.z)); } catch (e) { cadVecRedraw(); return; }
+      clearTimeout(cadVec.zt); cadVec.zt = setTimeout(cadVecDraw, 140);
+    });
     map.on('moveend', () => { if (isCadOverlayEnabled) cadVecUpdate(); });
     map.on('zoomanim', (e) => {
       const d = cadVec.drawn; if (!d || !cadVec.canvas || !isCadOverlayEnabled) return;
-      const sz = map.getSize(), bnds = L.latLngBounds(map.containerPointToLatLng([-d.padX, -d.padY]), map.containerPointToLatLng([sz.x + d.padX, sz.y + d.padY]));
-      L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(bnds, e.zoom, e.center).min, map.getZoomScale(e.zoom));
+      try { L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, e.zoom, e.center).min, map.getZoomScale(e.zoom, d.z)); } catch (err) { cadVecRedraw(); }
     });
 
     const _pinIconCache = {};
@@ -3120,7 +3130,7 @@
     }
     window.toggleMeasureMode = () => {
       measureOn = !measureOn;
-      const btn = document.getElementById('measureBtn');
+      const btn = document.getElementById('measureBtn') || document.createElement('div');
       if (measureOn) {
         if (isAddPinMode) toggleAddPinMode();
         btn.classList.add('pin-mode-active');
