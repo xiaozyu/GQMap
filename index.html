@@ -533,9 +533,9 @@
         <div style="display:flex;gap:6px;align-items:center;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
-          <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;">畫質</button>
+          <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v49</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v52</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -601,8 +601,8 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const CAD_Q = (() => { try { return localStorage.getItem('tpc_cad_q') || 'std'; } catch (e) { return 'std'; } })();
-    const PDF_RENDER_SCALE = CAD_Q === 'fluid' ? 2.0 : (CAD_Q === 'high' ? (((navigator.deviceMemory || 4) >= 8) ? 3.5 : 3.0) : 2.5);   // 流暢 2.0／標準 2.5／高畫質 3.0~3.5（單張像素數差約 3 倍）
+    const CAD_Q = (() => { try { return localStorage.getItem('tpc_cad_q') || 'fluid'; } catch (e) { return 'fluid'; } })();
+    const PDF_RENDER_SCALE = CAD_Q === 'fluid' ? 2.0 : (CAD_Q === 'high' ? (((navigator.deviceMemory || 4) >= 8) ? 3.5 : 3.0) : 2.5);   // 底圖畫質（移動地圖時看到的）：流暢 2.0／標準 2.5／高畫質 3.0~3.5。停下來看的地方會另外用 PDF 重畫成螢幕解析度（見 cadRenderPatch）
     // 台電 A1 圖框範本（單位：PDF 點，scale=1）。實測 G3557~G3561 五張框位置完全相同：
     // 圖幅 = 最外圈 100m 格線，剛好 800×500 公尺。
     const CAD_TPL = { pw: 2384, ph: 1684, frame: { x: 243.5, y: 169.1667, w: 1889.6667, h: 1181 } };
@@ -1261,6 +1261,7 @@
           item.overlay.setBounds(computeTileBounds(item.zone, item.x800, item.y500));
         }
       });
+      cadVecRedraw();
     }
 
     // 找內框線「中心」（亞像素）。回傳 {x, y, w, h, t}；t = 框線粗細(px)
@@ -1579,6 +1580,7 @@
     }
     function dropAllCadTiles() {
       for (const k of Array.from(loadedCadTiles.keys())) dropCadTile(k);
+      cadPatchClear(); cadVecOff();
       cadOverlayLayer.clearLayers();
       lastCadSig = '';
     }
@@ -1603,11 +1605,13 @@
     setTimeout(pruneTileCache, 4000);
 
     const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資
+    const CAD_BASE_TILES = false;
     const MAX_CAD_VISIBLE = 4;    // 畫面最多同時用到 4 張（卡在四張交界）
     const MAX_CAD_KEEP = 6;       // 記憶體最多留 6 張
     let cadLoadGen = 0;           // 每次畫面移動就 +1，舊的排程自動作廢
     let cadLoadTimer = null;
     let lastCadSig = '';          // 上次處理的圖幅組合；沒變就不重算
+    const cadPatch = { layer: null, url: null, b: null, z: 0, timer: 0, gen: 0, busy: false, again: false, noUntil: 0, lastMove: 0, docs: new Map() };   // 「停下來看的地方」高清補丁
 
     function loadVisibleCadTiles() {
       clearTimeout(cadLoadTimer);
@@ -1616,6 +1620,7 @@
 
     async function runLoadVisibleCadTiles() {
       if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) return;
+      if (!CAD_BASE_TILES) { cadVecUpdate(); return; }   // v52：不再做點陣圖，改用向量直接畫
       const gen = ++cadLoadGen;
 
       // 畫面範圍外多留 60 公尺，換算成圖幅範圍
@@ -1666,6 +1671,7 @@
         await new Promise(r => setTimeout(r, 30));               // 讓手機喘口氣，地圖保持可拖動
       }
       lastCadSig = sig;
+      cadSchedulePatch();
     }
 
     async function ensureCadTileLoaded(mapId) {
@@ -1693,7 +1699,7 @@
         const y500 = parseInt(mapId.substring(3, 5), 10);
         const bounds = computeTileBounds(zone, x800, y500);
 
-        const overlay = L.imageOverlay(objUrl, bounds, { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
+        const overlay = L.imageOverlay(objUrl, bounds, { opacity: cadPatch.layer ? 0 : 0.9, interactive: false }).addTo(cadOverlayLayer);
 
         while (loadedCadTiles.size >= MAX_CAD_KEEP) dropCadTile(loadedCadTiles.keys().next().value);
 
@@ -1723,12 +1729,296 @@
         btn.classList.remove('cad-mode-active');
         calibBox.style.display = 'none';
         document.getElementById('cad-nudge-pad').style.display = 'none';
+        cadPatchClear();
         dropAllCadTiles();
       }
     };
 
-    map.on('moveend', () => {
-      loadVisibleCadTiles();
+    // ===== 高清補丁：只重畫「目前看到的範圍」，解析度＝螢幕解析度；移動時退回低解析底圖，停下來才換上 =====
+    const CAD_ORG = 20037508.342789244;
+    function cadSetLowOpacity(o) { loadedCadTiles.forEach(t => { if (t.overlay) t.overlay.setOpacity(o); }); }
+    function cadPatchClear() {
+      cadPatch.gen++; clearTimeout(cadPatch.timer); cadPatch.b = null; cadPatch.noUntil = 0;
+      if (cadPatch.layer) { try { cadOverlayLayer.removeLayer(cadPatch.layer); } catch (e) {} cadPatch.layer = null; }
+      if (cadPatch.url) { URL.revokeObjectURL(cadPatch.url); cadPatch.url = null; }
+      cadSetLowOpacity(0.9);
+    }
+    function cadViewMerc() {
+      const z = map.getZoom(), k = 256 * Math.pow(2, z) / (2 * CAD_ORG), pb = map.getPixelBounds();
+      return { z, minX: pb.min.x / k - CAD_ORG, maxX: pb.max.x / k - CAD_ORG, maxY: CAD_ORG - pb.min.y / k, minY: CAD_ORG - pb.max.y / k };
+    }
+    function cadCovered(shrink) {          // 目前畫面（外加一點安全邊）是否完全在補丁範圍內、且縮放一致
+      const p = cadPatch; if (!p.layer || !p.b) return false;
+      if (Math.abs(map.getZoom() - p.z) > 0.05) return false;
+      const v = cadViewMerc(), w = (v.maxX - v.minX) * (shrink || 0), h = (v.maxY - v.minY) * (shrink || 0);
+      return v.minX - w >= p.b.minX && v.maxX + w <= p.b.maxX && v.minY - h >= p.b.minY && v.maxY + h <= p.b.maxY;
+    }
+    function cadSchedulePatch(ms) { clearTimeout(cadPatch.timer); cadPatch.timer = setTimeout(cadKick, ms == null ? 150 : ms); }
+    async function cadKick() {
+      if (!cadVecFailed) return;               // 向量模式正常時不需要點陣補丁
+      const P = cadPatch;
+      if (P.busy) { P.again = true; return; }
+      P.busy = true;
+      try {
+        let guard = 0;
+        do {
+          P.again = false;
+          if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) break;
+          if (Date.now() < P.noUntil) break;
+          if (cadCovered(0.12)) break;
+          const ok = await cadRenderPatchOnce();
+          if (!ok) { P.noUntil = Date.now() + 2500; break; }
+        } while ((P.again || !cadCovered(0)) && ++guard < 6);
+      } finally { P.busy = false; }
+    }
+    async function cadGetPage(mapId) {
+      let it = cadPatch.docs.get(mapId);
+      if (it) { cadPatch.docs.delete(mapId); cadPatch.docs.set(mapId, it); return it; }
+      const buf = await loadPdfBuffer(mapId); if (!buf) return null;
+      const pdf = await pdfjsLib.getDocument(new Uint8Array(buf)).promise, page = await pdf.getPage(1), vp1 = page.getViewport({ scale: 1 });
+      it = { pdf, page, vp1, fr: await pdfFrameOf(page, vp1) };
+      cadPatch.docs.set(mapId, it);
+      while (cadPatch.docs.size > 3) { const k0 = cadPatch.docs.keys().next().value; try { cadPatch.docs.get(k0).pdf.destroy(); } catch (e) {} cadPatch.docs.delete(k0); }
+      return it;
+    }
+    async function cadRenderPatchOnce() {
+      if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) return false;
+      const gen = cadPatch.gen;
+      const z = map.getZoom(), k = 256 * Math.pow(2, z) / (2 * CAD_ORG), sz = map.getSize(), pb = map.getPixelBounds().min;
+      const ex = sz.x * 0.3, ey = sz.y * 0.3;                                   // 四周多畫 30%，小幅度滑動完全不用重畫
+      let dpr = Math.min(3, window.devicePixelRatio || 1);
+      while ((sz.x + 2 * ex) * dpr > 3200 || (sz.y + 2 * ey) * dpr > 3200) dpr *= 0.85;
+      const kc = k * dpr, W = Math.round((sz.x + 2 * ex) * dpr), H = Math.round((sz.y + 2 * ey) * dpr);
+      const minX = (pb.x - ex) / k - CAD_ORG, maxY = CAD_ORG - (pb.y - ey) / k;
+      const maxX = minX + W / kc, minY = maxY - H / kc;
+      const v = { W, H, k: kc, minX, maxY };
+      const out = document.createElement('canvas'); out.width = W; out.height = H;
+      const og = out.getContext('2d');
+      let got = 0;
+      for (const t of bdTilesFor(minX, maxX, minY, maxY)) {
+        if (gen !== cadPatch.gen) return false;
+        let it; try { it = await cadGetPage(t.id); } catch (e) { it = null; }
+        if (!it || gen !== cadPatch.gen) continue;
+        await new Promise(r => setTimeout(r, 0));
+        const c = tileCornersMerc(t.zone, t.x, t.y, true), fr = it.fr;
+        const a = kc * (c.ne.x - c.nw.x) / fr.w, b = -kc * (c.ne.y - c.nw.y) / fr.w;
+        const cc = kc * (c.sw.x - c.nw.x) / fr.h, d = -kc * (c.sw.y - c.nw.y) / fr.h;
+        const e = kc * (c.nw.x - minX) - a * fr.x - cc * fr.y, f = kc * (maxY - c.nw.y) - b * fr.x - d * fr.y;
+        const px = (P) => [kc * (P.x - minX), kc * (maxY - P.y)];
+        const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H;
+        const tc = tmp.getContext('2d', { willReadFrequently: true });
+        tc.fillStyle = '#fff'; tc.fillRect(0, 0, W, H);
+        tc.save(); tc.beginPath();
+        [c.nw, c.ne, c.se, c.sw].forEach((P, i) => { const q = px(P); i ? tc.lineTo(q[0], q[1]) : tc.moveTo(q[0], q[1]); });
+        tc.closePath(); tc.clip();
+        try { await it.page.render({ canvasContext: tc, viewport: it.vp1, transform: [a, b, cc, d, e, f] }).promise; } catch (err) { console.warn('patch render', err); tmp.width = tmp.height = 0; continue; }
+        tc.restore();
+        if (gen !== cadPatch.gen) { tmp.width = tmp.height = 0; return false; }
+        const img = tc.getImageData(0, 0, W, H), dd = img.data;                    // 白底 → 透明，線條 → 黑色（跟底圖同一套處理）
+        for (let i = 0; i < dd.length; i += 4) {
+          const m = Math.min(dd[i], dd[i + 1], dd[i + 2]);
+          dd[i + 3] = m >= 222 ? 0 : (m <= 150 ? 255 : Math.round((222 - m) * 255 / 72)); dd[i] = dd[i + 1] = dd[i + 2] = 0;
+        }
+        tc.putImageData(img, 0, 0); og.drawImage(tmp, 0, 0); tmp.width = tmp.height = 0; got++;
+      }
+      if (gen !== cadPatch.gen || !got) { out.width = out.height = 0; return false; }
+      let blob; try { blob = await canvasToBlob(out); } catch (e) { return false; } finally { out.width = out.height = 0; }
+      if (gen !== cadPatch.gen) return false;
+      const sw = E3857().unproject(L.point(minX, minY)), ne = E3857().unproject(L.point(maxX, maxY));
+      const url = URL.createObjectURL(blob), layer = L.imageOverlay(url, [[sw.lat, sw.lng], [ne.lat, ne.lng]], { opacity: 0.9, interactive: false }).addTo(cadOverlayLayer);
+      const oldL = cadPatch.layer, oldU = cadPatch.url;
+      cadPatch.layer = layer; cadPatch.url = url; cadPatch.b = { minX, maxX, minY, maxY }; cadPatch.z = z;
+      if (oldL) { try { cadOverlayLayer.removeLayer(oldL); } catch (e) {} }
+      if (oldU) URL.revokeObjectURL(oldU);
+      cadSetLowOpacity(0);                                                      // 補丁蓋住整個畫面 → 低解析底圖先藏起來，避免重影
+    }
+    map.on('move', () => {                // 滑動中：快要滑出補丁範圍才補畫（舊補丁一直留著，不閃）
+      if (!isCadOverlayEnabled) return;
+      const n = Date.now(); if (n - cadPatch.lastMove < 200) return; cadPatch.lastMove = n;
+      if (!cadCovered(0.12)) cadKick();
+    });
+    map.on('moveend zoomend', () => { if (isCadOverlayEnabled) cadSchedulePatch(150); });
+    setTimeout(() => { try { if (!localStorage.getItem('tpc_tiles_cleared')) { idbClear('tiles'); localStorage.setItem('tpc_tiles_cleared', '1'); } } catch (e) {} }, 6000);
+
+    // ===== v52 向量引擎：把 PDF 的線條讀成向量，直接用 Canvas 畫在螢幕上（任何縮放都是向量清晰度，滑動時整張畫布由系統搬移，不用重畫） =====
+    let cadVecFailed = false;                 // 向量解析失敗 → 自動退回 v51 的「重畫畫面範圍」模式
+    const cadVec = { canvas: null, ctx: null, tiles: new Map(), loading: new Map(), none: new Map(), drawn: null, raf: 0, lastEnsure: 0 };
+    function cadVecComp(A, B) {               // 先套 B 再套 A
+      return [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3], A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+    }
+    function cadVecBuild(ol, vp1) {           // PDF 繪圖指令 → 以 vp1 座標儲存的 Path2D 群組（同線寬/虛線一組）
+      const OPS = pdfjsLib.OPS, vt = vp1.transform;
+      let ctm = [1, 0, 0, 1, 0, 0], T = cadVecComp(vt, ctm), lw = 1, dash = [], phase = 0, cur = [], n = 0, cpx = 0, cpy = 0;
+      const stack = [], groups = new Map();
+      const X = (x, y) => T[0] * x + T[2] * y + T[4], Y = (x, y) => T[1] * x + T[3] * y + T[5];
+      const mv = (x, y) => { cur.push(0, X(x, y), Y(x, y)); cpx = x; cpy = y; };
+      const ln = (x, y) => { cur.push(1, X(x, y), Y(x, y)); cpx = x; cpy = y; };
+      const cv = (a, b, c, d, e, f) => { cur.push(2, X(a, b), Y(a, b), X(c, d), Y(c, d), X(e, f), Y(e, f)); cpx = e; cpy = f; };
+      const qd = (a, b, c, d) => { cur.push(3, X(a, b), Y(a, b), X(c, d), Y(c, d)); cpx = c; cpy = d; };
+      const cl = () => { cur.push(4); };
+      function group(fill) {
+        const s = Math.hypot(T[0], T[1]) || 1, w = fill ? 0 : Math.round(lw * s * 1000) / 1000, d = dash.map(v => v * s);
+        const key = (fill ? 'f' : 's') + w + '|' + d.join(',') + '|' + phase * s;
+        let g = groups.get(key); if (!g) { g = { fill, lw: w, dash: d, phase: phase * s, path: new Path2D() }; groups.set(key, g); } return g;
+      }
+      function flush(fill, close) {
+        const g = group(fill), p = g.path; let i = 0;
+        while (i < cur.length) {
+          const t = cur[i++];
+          if (t === 0) { p.moveTo(cur[i], cur[i + 1]); i += 2; } else if (t === 1) { p.lineTo(cur[i], cur[i + 1]); i += 2; }
+          else if (t === 2) { p.bezierCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3], cur[i + 4], cur[i + 5]); i += 6; }
+          else if (t === 3) { p.quadraticCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3]); i += 4; } else { p.closePath(); }
+        }
+        if (close) p.closePath(); n++;
+      }
+      function paint(op) {
+        if (op === OPS.stroke) flush(false); else if (op === OPS.closeStroke) flush(false, true);
+        else if (op === OPS.fill || op === OPS.eoFill) flush(true);
+        else if (op === OPS.fillStroke || op === OPS.eoFillStroke) { flush(true); flush(false); }
+        else if (op === OPS.closeFillStroke || op === OPS.closeEOFillStroke) { flush(true); flush(false, true); }
+        cur = [];
+      }
+      for (let i = 0; i < ol.fnArray.length; i++) {
+        const f = ol.fnArray[i], a = ol.argsArray[i];
+        if (f === OPS.save) stack.push([ctm.slice(), lw, dash.slice(), phase]);
+        else if (f === OPS.restore) { const s = stack.pop(); if (s) { ctm = s[0]; lw = s[1]; dash = s[2]; phase = s[3]; T = cadVecComp(vt, ctm); } }
+        else if (f === OPS.transform) { ctm = cadVecComp(ctm, a); T = cadVecComp(vt, ctm); }
+        else if (f === OPS.setLineWidth) lw = a[0];
+        else if (f === OPS.setDash) { dash = (a[0] || []).slice(); phase = a[1] || 0; }
+        else if (f === OPS.constructPath) {
+          if (typeof a[0] === 'number') {                                   // 新版：[收尾指令, [資料], 範圍]
+            const d = a[1][0] || a[1]; let j = 0;
+            while (j < d.length) {
+              const t = d[j++];
+              if (t === 0) { mv(d[j], d[j + 1]); j += 2; } else if (t === 1) { ln(d[j], d[j + 1]); j += 2; }
+              else if (t === 2) { cv(d[j], d[j + 1], d[j + 2], d[j + 3], d[j + 4], d[j + 5]); j += 6; }
+              else if (t === 3) { qd(d[j], d[j + 1], d[j + 2], d[j + 3]); j += 4; } else cl();
+            }
+            paint(a[0]);
+          } else {                                                          // 3.11：[指令陣列, 座標陣列]，收尾指令是獨立的一筆
+            const ops = a[0], c = a[1]; let j = 0;
+            for (const o of ops) {
+              if (o === OPS.moveTo) { mv(c[j], c[j + 1]); j += 2; } else if (o === OPS.lineTo) { ln(c[j], c[j + 1]); j += 2; }
+              else if (o === OPS.curveTo) { cv(c[j], c[j + 1], c[j + 2], c[j + 3], c[j + 4], c[j + 5]); j += 6; }
+              else if (o === OPS.curveTo2) { cv(cpx, cpy, c[j], c[j + 1], c[j + 2], c[j + 3]); j += 4; }
+              else if (o === OPS.curveTo3) { cv(c[j], c[j + 1], c[j + 2], c[j + 3], c[j + 2], c[j + 3]); j += 4; }
+              else if (o === OPS.closePath) cl();
+              else if (o === OPS.rectangle) { const x = c[j], y = c[j + 1], w = c[j + 2], h = c[j + 3]; j += 4; mv(x, y); ln(x + w, y); ln(x + w, y + h); ln(x, y + h); cl(); }
+            }
+          }
+        } else if (f === OPS.stroke || f === OPS.closeStroke || f === OPS.fill || f === OPS.eoFill || f === OPS.fillStroke || f === OPS.eoFillStroke || f === OPS.closeFillStroke || f === OPS.closeEOFillStroke) paint(f);
+        else if (f === OPS.endPath) cur = [];
+      }
+      return { groups: Array.from(groups.values()), n };
+    }
+    async function cadVecLoad(t) {
+      const hit = cadVec.tiles.get(t.id); if (hit) { cadVec.tiles.delete(t.id); cadVec.tiles.set(t.id, hit); return hit; }
+      if (cadVec.loading.has(t.id)) return cadVec.loading.get(t.id);
+      if ((cadVec.none.get(t.id) || 0) > Date.now()) return null;
+      const p = (async () => {
+        const buf = await loadPdfBuffer(t.id);
+        if (!buf) { cadVec.none.set(t.id, Date.now() + 60000); return null; }
+        let pdf;
+        try {
+          pdf = await pdfjsLib.getDocument(new Uint8Array(buf)).promise;
+          const page = await pdf.getPage(1), vp1 = page.getViewport({ scale: 1 });
+          const fr = await pdfFrameOf(page, vp1), v = cadVecBuild(await page.getOperatorList(), vp1);
+          if (!v.n) throw new Error('no vector paths');
+          const it = { id: t.id, zone: t.zone, x: t.x, y: t.y, fr, groups: v.groups, cr: null, crKey: '' };
+          cadVec.tiles.set(t.id, it); return it;
+        } catch (e) { console.warn('cadVec parse', t.id, e); cadVecFailed = true; return null; }
+        finally { try { pdf && pdf.destroy(); } catch (e) {} }
+      })();
+      cadVec.loading.set(t.id, p);
+      try { return await p; } finally { cadVec.loading.delete(t.id); }
+    }
+    function cadVecEnsureCanvas() {
+      if (cadVec.canvas) return cadVec.canvas;
+      const c = document.createElement('canvas');
+      c.className = 'leaflet-zoom-animated'; c.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;';
+      const pane = map.getPane('overlayPane'); pane.insertBefore(c, pane.firstChild);
+      cadVec.canvas = c; cadVec.ctx = c.getContext('2d'); return c;
+    }
+    function cadVecDraw() {
+      cadVec.raf = 0;
+      const c = cadVec.canvas; if (!c) return;
+      const z = map.getZoom();
+      if (!isCadOverlayEnabled || cadVecFailed || z < MIN_CAD_ZOOM) { c.style.display = 'none'; cadVec.drawn = null; return; }
+      c.style.display = '';
+      const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, 2.5), padX = Math.round(sz.x * 0.25), padY = Math.round(sz.y * 0.25);
+      const Wc = sz.x + 2 * padX, Hc = sz.y + 2 * padY, pw = Math.round(Wc * dpr), ph = Math.round(Hc * dpr);
+      if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
+      c.style.width = Wc + 'px'; c.style.height = Hc + 'px';
+      L.DomUtil.setPosition(c, map.containerPointToLayerPoint([-padX, -padY]));
+      const pb = map.getPixelBounds().min, ox = pb.x - padX, oy = pb.y - padY, k = 256 * Math.pow(2, z) / (2 * CAD_ORG);
+      const ctx = cadVec.ctx, okey = cadOffset.dx + ',' + cadOffset.dy;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'butt'; ctx.strokeStyle = '#000'; ctx.fillStyle = '#000'; ctx.globalAlpha = 0.9;
+      for (const it of cadVec.tiles.values()) {
+        if (it.crKey !== okey) { it.cr = tileCornersMerc(it.zone, it.x, it.y, true); it.crKey = okey; }
+        const cr = it.cr, fr = it.fr;
+        const P = (q) => [((q.x + CAD_ORG) * k - ox) * dpr, ((CAD_ORG - q.y) * k - oy) * dpr];
+        const qd = [P(cr.nw), P(cr.ne), P(cr.se), P(cr.sw)];
+        const bx0 = Math.min(qd[0][0], qd[1][0], qd[2][0], qd[3][0]), bx1 = Math.max(qd[0][0], qd[1][0], qd[2][0], qd[3][0]);
+        const by0 = Math.min(qd[0][1], qd[1][1], qd[2][1], qd[3][1]), by1 = Math.max(qd[0][1], qd[1][1], qd[2][1], qd[3][1]);
+        if (bx1 < 0 || by1 < 0 || bx0 > pw || by0 > ph) continue;           // 這張在畫面外 → 不畫
+        const a = k * (cr.ne.x - cr.nw.x) / fr.w * dpr, b = -k * (cr.ne.y - cr.nw.y) / fr.w * dpr;
+        const cc = k * (cr.sw.x - cr.nw.x) / fr.h * dpr, d = -k * (cr.sw.y - cr.nw.y) / fr.h * dpr;
+        const e = qd[0][0] - a * fr.x - cc * fr.y, f = qd[0][1] - b * fr.x - d * fr.y, sc = Math.hypot(a, b) || 1;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath();
+        qd.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.clip();
+        ctx.setTransform(a, b, cc, d, e, f);
+        for (const g of it.groups) {
+          if (g.fill) { ctx.fill(g.path); continue; }
+          ctx.lineWidth = Math.min(2.4 * dpr, Math.max(0.9 * dpr, g.lw * sc)) / sc;   // 遠看至少 0.9px、近看最粗 2.4px
+          ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; ctx.stroke(g.path);
+        }
+        ctx.restore();
+      }
+      cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY };
+    }
+    function cadVecRedraw() { if (!cadVec.raf) cadVec.raf = requestAnimationFrame(cadVecDraw); }
+    function cadVecUpdate() {                   // 載入畫面附近（含鄰圖預載）會用到的圖幅
+      if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) { cadVecRedraw(); return; }
+      if (cadVecFailed) { cadSchedulePatch(60); return; }
+      cadVecEnsureCanvas();
+      const v = cadViewMerc(), w = (v.maxX - v.minX) * 0.5, h = (v.maxY - v.minY) * 0.5;
+      const ts = bdTilesFor(v.minX - w, v.maxX + w, v.minY - h, v.maxY + h);
+      const need = ts.filter(t => !cadVec.tiles.has(t.id));
+      const st = document.getElementById('cad-status-text');
+      if (need.length && st) { st.textContent = '⚡ 圖資解析中…'; st.style.display = 'inline'; }
+      Promise.all(ts.map(cadVecLoad)).then(() => {
+        const ids = new Set(ts.map(t => t.id));
+        for (const k of Array.from(cadVec.tiles.keys())) { if (cadVec.tiles.size <= 8) break; if (!ids.has(k)) cadVec.tiles.delete(k); }
+        if (st && !cadVec.loading.size) st.style.display = 'none';
+        cadVecRedraw();
+        if (cadVecFailed) cadSchedulePatch(60);
+      });
+      cadVecRedraw();
+    }
+    function cadVecOff() {
+      if (cadVec.canvas) { cadVec.canvas.style.display = 'none'; cadVec.drawn = null; }
+      cadVec.tiles.clear();
+    }
+    map.on('move', () => {                      // 滑動中：只要還在已畫好的範圍內就什麼都不做（畫布由系統搬移）
+      if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
+      const d = cadVec.drawn;
+      if (d && Math.abs(map.getZoom() - d.z) < 1e-6) {
+        const pb = map.getPixelBounds().min, sz = map.getSize();
+        if (pb.x >= d.ox && pb.y >= d.oy && pb.x + sz.x <= d.ox + d.Wc && pb.y + sz.y <= d.oy + d.Hc) {
+          const n = Date.now(); if (n - cadVec.lastEnsure > 400) { cadVec.lastEnsure = n; cadVecUpdate(); }
+          return;
+        }
+      }
+      cadVecRedraw();
+    });
+    map.on('zoom viewreset resize', () => { if (isCadOverlayEnabled && cadVec.canvas) cadVecRedraw(); });
+    map.on('moveend', () => { if (isCadOverlayEnabled) cadVecUpdate(); });
+    map.on('zoomanim', (e) => {
+      const d = cadVec.drawn; if (!d || !cadVec.canvas || !isCadOverlayEnabled) return;
+      const sz = map.getSize(), bnds = L.latLngBounds(map.containerPointToLatLng([-d.padX, -d.padY]), map.containerPointToLatLng([sz.x + d.padX, sz.y + d.padY]));
+      L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(bnds, e.zoom, e.center).min, map.getZoomScale(e.zoom));
     });
 
     const _pinIconCache = {};
@@ -2858,7 +3148,12 @@
       if (buf) return buf;
       const zone = mapId[0], sub = `${zone}${mapId.substring(1, 3)}XX`;
       for (const url of [`${PDF_BASE_FOLDER}/${sub}/${mapId}.PDF`, `${PDF_BASE_FOLDER}/${sub}/${mapId}.pdf`, `${PDF_BASE_FOLDER}/${mapId}.PDF`, `${PDF_BASE_FOLDER}/${mapId}.pdf`]) {
-        try { const r = await fetch(url); if (r.ok) return await r.arrayBuffer(); } catch (e) {}
+        try {
+          let cache = null; try { cache = await caches.open('gq-pdf-v' + CAD_CLOUD_VER); } catch (e) {}
+          if (cache) { const hit = await cache.match(url); if (hit) return await hit.arrayBuffer(); }
+          const r = await fetch(url);
+          if (r.ok) { if (cache) { try { await cache.put(url, r.clone()); } catch (e) {} } return await r.arrayBuffer(); }
+        } catch (e) {}
       }
       return null;
     }
