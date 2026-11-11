@@ -534,7 +534,7 @@
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v44</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v45</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3175,7 +3175,10 @@
         #bd-top .bd-vsep { display: none; }
         #bd-status { position: absolute; left: 54px; top: 44px; color: #fde047; font: bold 11px sans-serif; background: rgba(15,23,42,0.85); padding: 3px 8px; border-radius: 6px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
         #bd-panel { position: absolute; left: 54px; top: 70px; z-index: 5; display: none; gap: 7px; padding: 7px; background: rgba(15,23,42,0.88); border: 1px solid #64748b; border-radius: 12px; touch-action: none; }
-        #board.pen #bd-panel { display: flex; }
+        #board.pen.pp #bd-panel { display: flex; }
+        #bd-pbtn { display: none; }
+        #board.pen #bd-pbtn { display: flex; }
+        #bd-pbtn i { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: #dc2626; }
         #bd-ln { display: none; flex-direction: column; gap: 4px; }
         #board.ln #bd-ln { display: flex; }
         #bd-ln button { width: 57px; height: 28px; border-radius: 8px; border: 1px solid #64748b; background: #334155; color: #fff; font-size: 12px; font-weight: bold; padding: 0; }
@@ -3196,7 +3199,7 @@
         <div id="bd-msg"></div>
         <div id="bd-status"></div>
         <button class="bt" id="bd-sdel" onclick="bdSelDel()" title="刪除選取的物件">🗑</button>
-        <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作）">↪</button></div>
+        <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作）">↪</button><button class="bt" id="bd-pbtn" onclick="bdPanelToggle()" title="顏色／粗細／透明度（開始畫就自動收起）"><i></i></button></div>
         <div id="bd-selbar"><span id="bd-seltxt" style="color:#fde047;font:bold 12px sans-serif"></span><span style="flex:1"></span><button id="bd-sedit" onclick="bdSelEdit()">編輯文字</button><button onclick="bdSelNone()">取消</button></div>
         <textarea id="bd-inl" spellcheck="false" placeholder="輸入文字"></textarea>
         <div id="bd-txt"><span style="color:#fde047;font:bold 12px sans-serif">直接打字，Enter＝換行</span><span style="flex:1"></span><button id="bd-txdel" style="background:#7f1d1d">刪除</button><button id="bd-txcan">取消</button><button id="bd-txok" style="background:#f97316">完成</button></div>
@@ -3333,6 +3336,7 @@
       wrap.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         if (BD.edit) { bdTextFinish(document.getElementById('bd-inl').value); return; }
+        document.getElementById('board').classList.remove('pp');          // 開始畫就把設定面板收起來，不擋畫面
         try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
         const isTouch = e.pointerType === 'touch';
         if (isTouch) {                                   // 手指：平移／縮放地圖本身；筆：畫圖
@@ -3532,7 +3536,7 @@
       setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
     }
     window.bdTool = (t) => {
-      BD.tool = t; BD.selObj = null; if (document.getElementById('bd-w') === null) bdPenUi(); document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; document.getElementById('board').classList.toggle('pen', t === 'free' || t === 'text' || t === 'line' || t === 'rect'); document.getElementById('board').classList.toggle('ln', t === 'line'); if (BD.ink && BD.ink.width > 1) bdDrawUi();
+      BD.tool = t; BD.selObj = null; document.getElementById('board').classList.remove('pp'); if (document.getElementById('bd-w') === null) bdPenUi(); document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; document.getElementById('board').classList.toggle('pen', t === 'free' || t === 'text' || t === 'line' || t === 'rect'); document.getElementById('board').classList.toggle('ln', t === 'line'); if (BD.ink && BD.ink.width > 1) bdDrawUi();
       document.querySelectorAll('#bd-rail .bt[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
       bdStatus();
     };
@@ -3541,6 +3545,7 @@
     BD.ln = bdLoad('tpc_ln', { c: '#dc2626', w: 1, a: 1, dash: false });       // 直線自己的顏色／粗細／透明／虛實（和筆分開）
     BD.rc = bdLoad('tpc_rc', { a: 1 });                                        // 白底自己的透明度
     const bdCfg = () => BD.tool === 'line' ? BD.ln : (BD.tool === 'rect' ? BD.rc : BD.pen);
+    window.bdPanelToggle = () => { document.getElementById('board').classList.toggle('pp'); };
     window.bdSetDash = (d) => { BD.ln.dash = !!d; bdPenUi(); };
     function bdPenUi() {
       const C = bdCfg(); if (C.a == null) C.a = 1; if (C.w == null) C.w = 1; if (!C.c) C.c = '#dc2626';
@@ -3551,6 +3556,7 @@
       const af = document.querySelector('#bd-atrk .fil'); if (af) af.style.height = ((C.a - 0.1) / 0.9 * 100) + '%';
       const wv = document.getElementById('bd-wv'); if (wv) wv.textContent = C.w.toFixed(1) + '×';
       const av = document.getElementById('bd-av'); if (av) av.textContent = Math.round(C.a * 100) + '%';
+      const pb = document.querySelector('#bd-pbtn i'); if (pb) pb.style.background = C.c;
       const pd = document.querySelector('#bd-pdot i'); if (pd) { const d = Math.max(3, Math.min(26, 3 + C.w * 2.6)); pd.style.width = pd.style.height = d + 'px'; pd.style.background = C.c; pd.style.opacity = C.a; }
       try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); localStorage.setItem('tpc_ln', JSON.stringify(BD.ln)); localStorage.setItem('tpc_rc', JSON.stringify(BD.rc)); } catch (e) {}
     }
