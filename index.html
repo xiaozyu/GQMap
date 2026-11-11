@@ -537,7 +537,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v53</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v54</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1975,7 +1975,7 @@
         ctx.setTransform(a, b, cc, d, e, f);
         for (const g of it.groups) {
           if (g.fill) { ctx.fill(g.path); continue; }
-          ctx.lineWidth = Math.min(2.4 * dpr, Math.max(0.9 * dpr, g.lw * sc)) / sc;   // 遠看至少 0.9px、近看最粗 2.4px
+          ctx.lineWidth = Math.min(6 * dpr, Math.max(0.9 * dpr, g.lw * sc)) / sc;   // 遠看至少 0.9px；線寬跟著縮放走（和縮放中的系統放大畫面一致，不會停手時突然變細）
           ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; ctx.stroke(g.path);
         }
         ctx.restore();
@@ -2023,7 +2023,7 @@
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
       const d = cadVec.drawn; if (!d) { cadVecRedraw(); return; }
       try { if (Math.abs(map.getZoom() - d.z) > 1e-6) L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, map.getZoom(), map.getCenter()).min, map.getZoomScale(map.getZoom(), d.z)); } catch (e) { cadVecRedraw(); return; }
-      clearTimeout(cadVec.zt); cadVec.zt = setTimeout(cadVecDraw, 140);
+      clearTimeout(cadVec.zt); cadVec.zt = setTimeout(cadVecDraw, 90);
     });
     map.on('moveend', () => { if (isCadOverlayEnabled) cadVecUpdate(); });
     map.on('zoomanim', (e) => {
