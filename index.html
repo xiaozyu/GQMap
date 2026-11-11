@@ -533,8 +533,9 @@
         <div style="display:flex;gap:6px;align-items:center;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
+          <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v45</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v49</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -556,7 +557,7 @@
       <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="開關即時定位追蹤（連按兩下：停止並清除車子標記）">🚗</div>
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
-        <div class="float-btn" id="measureBtn" onclick="toggleMeasureMode()" title="量距離：依序點兩個點（再點一下重新量，按鈕關閉清除）">📏</div>
+        <div class="float-btn" id="measureBtn" onclick="measureViaBoard()" title="量距離：進入畫圖的「量長度」">📏</div>
         <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
       </div>
       <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
@@ -600,7 +601,8 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const PDF_BASE_FOLDER = './115年圖資';
-    const PDF_RENDER_SCALE = ((navigator.deviceMemory || 4) >= 8) ? 3.5 : 3.0;   // 每公尺約 4.7 像素（原本 3.0 的 A1 整頁 7152×5052，手機吃不消）
+    const CAD_Q = (() => { try { return localStorage.getItem('tpc_cad_q') || 'std'; } catch (e) { return 'std'; } })();
+    const PDF_RENDER_SCALE = CAD_Q === 'fluid' ? 2.0 : (CAD_Q === 'high' ? (((navigator.deviceMemory || 4) >= 8) ? 3.5 : 3.0) : 2.5);   // 流暢 2.0／標準 2.5／高畫質 3.0~3.5（單張像素數差約 3 倍）
     // 台電 A1 圖框範本（單位：PDF 點，scale=1）。實測 G3557~G3561 五張框位置完全相同：
     // 圖幅 = 最外圈 100m 格線，剛好 800×500 公尺。
     const CAD_TPL = { pw: 2384, ph: 1684, frame: { x: 243.5, y: 169.1667, w: 1889.6667, h: 1181 } };
@@ -985,16 +987,27 @@
     });
 
     // 完整的 4 種圖資切換控制
-    L.control.layers({
-      "台灣通用電子地圖 (國土測繪)": nlscEMap,
-      "國土測繪正射影像 (航照)": nlscPhoto,
-      "Google 道路": googleRoads,
-      "Google 衛星混合": googleHybrid
-    }, null, { position: 'topright' }).addTo(map);
-    // 圖層切換鈕搬到地圖外層、疊在畫圖層之上，畫圖時也能切換底圖
+    // 底圖切換：自己做的按鈕＋選單（疊在畫圖層之上，畫圖時也能切換）
     (function () {
-      const c = document.querySelector('.leaflet-control-layers'), mc = document.querySelector('.map-container');
-      if (c && mc) { mc.appendChild(c); c.style.cssText += ';position:absolute;top:10px;right:10px;z-index:900;margin:0;float:none;'; }
+      const defs = [['台灣通用電子地圖 (國土測繪)', nlscEMap], ['國土測繪正射影像 (航照)', nlscPhoto], ['Google 道路', googleRoads], ['Google 衛星混合', googleHybrid]];
+      const css = document.createElement('style');
+      css.textContent = `#layer-btn { position: absolute; top: 10px; right: 12px; z-index: 950; width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.96); border: 1px solid #94a3b8; font-size: 22px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+        #layer-pop { position: absolute; top: 60px; right: 12px; z-index: 950; display: none; background: rgba(15,23,42,0.97); border: 1px solid #64748b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+        #layer-pop div { padding: 13px 16px; color: #e2e8f0; font-size: 14px; white-space: nowrap; border-bottom: 1px solid #334155; }
+        #layer-pop div:last-child { border-bottom: 0; } #layer-pop div.on { color: #fde047; font-weight: bold; } #layer-pop div.on::before { content: '✓ '; }`;
+      document.head.appendChild(css);
+      const mc = document.querySelector('.map-container');
+      const btn = document.createElement('div'); btn.id = 'layer-btn'; btn.textContent = '🗺'; btn.title = '切換地圖種類';
+      const pop = document.createElement('div'); pop.id = 'layer-pop';
+      const rows = defs.map(([name, l]) => {
+        const row = document.createElement('div'); row.textContent = name;
+        row.addEventListener('click', (e) => { e.stopPropagation(); defs.forEach(([, x]) => { if (map.hasLayer(x)) map.removeLayer(x); }); l.addTo(map); refresh(); pop.style.display = 'none'; });
+        pop.appendChild(row); return [row, l];
+      });
+      const refresh = () => rows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l)));
+      btn.addEventListener('click', (e) => { e.stopPropagation(); refresh(); pop.style.display = pop.style.display === 'block' ? 'none' : 'block'; });
+      document.addEventListener('pointerdown', (e) => { if (!pop.contains(e.target) && e.target !== btn) pop.style.display = 'none'; }, true);
+      mc.appendChild(btn); mc.appendChild(pop);
     })();
 
     // 點擊地圖空白處時收合微調面板
@@ -1456,6 +1469,14 @@
       }
       document.getElementById('cad-folder-input').click();   // 退而求其次
     };
+    const CAD_Q_NAMES = { fluid: '流暢', std: '標準', high: '高畫質' };
+    { const qb = document.getElementById('cad-q-btn'); if (qb) qb.textContent = '畫質:' + CAD_Q_NAMES[CAD_Q]; }
+    window.cycleCadQuality = () => {
+      const next = { fluid: 'std', std: 'high', high: 'fluid' }[CAD_Q];
+      if (!confirm(`圖資畫質改成「${CAD_Q_NAMES[next]}」？\n畫面會重新載入，圖資需要重新處理一次。\n（流暢＝最不卡、標準＝建議、高畫質＝最清楚但較卡）`)) return;
+      try { localStorage.setItem('tpc_cad_q', next); } catch (e) {}
+      location.reload();
+    };
     window.importCadFiles = () => document.getElementById('cad-files-input').click();
     window.clearCadStore = async () => {
       if (!confirm('確定清除已匯入的本地圖資？')) return;
@@ -1528,11 +1549,14 @@
       cropCanvas.height = H;
       const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
       await page.render({ canvasContext: cropCtx, viewport: vp, transform: [1, 0, 0, 1, -fr.x * S, -fr.y * S] }).promise;
+      await new Promise(r => setTimeout(r, 0));
       cleanCropCanvas(cropCanvas, 1);
+      await new Promise(r => setTimeout(r, 0));
 
       const x800 = parseInt(mapId.substring(1, 3), 10);
       const y500 = parseInt(mapId.substring(3, 5), 10);
       const warped = warpCropToMercator(cropCanvas, zone, x800, y500);
+      await new Promise(r => setTimeout(r, 0));
       const blob = await canvasToBlob(warped);
       warped.width = warped.height = 0; cropCanvas.width = cropCanvas.height = 0;   // 立刻釋放記憶體
       try { await idbPut('tiles', cacheKey, blob); } catch (e) {}
@@ -1598,7 +1622,7 @@
       const b = map.getBounds();
       const sw97 = wgs84ToTWD97(b.getSouth(), b.getWest());
       const ne97 = wgs84ToTWD97(b.getNorth(), b.getEast());
-      const M = 60;
+      const M = 25;
       const sw67 = twd97ToTWD67(sw97.x, sw97.y), ne67 = twd97ToTWD67(ne97.x, ne97.y);
       const minX67 = sw67.x - M, minY67 = sw67.y - M;
       const maxX67 = ne67.x + M, maxY67 = ne67.y + M;
@@ -3019,7 +3043,7 @@
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
       if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
       else { bdDrawAll(ctx, BD.shapes); }
-      bdDrawUi(); bdStatus(); bdSelUi(); if (BD.edit) bdPlaceInl();
+      bdDrawUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
     }
     function bdRedraw() { if (BD.raf) return; BD.raf = requestAnimationFrame(() => { BD.raf = 0; bdRedrawNow(); }); }
     function bdMakeCache(except) {                       // 編輯單一物件時，其餘物件先畫成一張底，之後每一格只畫被動的那個
@@ -3226,7 +3250,7 @@
           <button class="bt" data-tool="rect" onclick="bdToolTap('rect')"><span style="font-size:19px">▭</span><small>白底</small></button>
           <button class="bt" data-tool="erase" onclick="bdToolTap('erase')"><span style="font-size:19px">🧽</span><small>橡皮擦</small></button>
           <button class="bt" data-tool="select" onclick="bdToolTap('select')"><span style="font-size:19px">☝</span><small>選取</small></button>
-          <button class="bt" data-tool="dim" onclick="bdToolTap('dim')"><span style="color:#60a5fa">↔</span><small>量長度</small></button>
+          <button class="bt" data-tool="dim" onclick="bdToolTap('dim')"><span id="bd-dimicon" style="color:#60a5fa;font-size:17px">↔</span><small id="bd-dimlbl">量長度</small></button>
           <button class="bt" data-tool="text" onclick="bdToolTap('text')">🅰<small>文字</small></button>
           <div class="bd-sep"></div>
         </div>`;
@@ -3507,6 +3531,20 @@
       }
       g.restore();
     }
+    function bdSumUi() {                                      // 量長度按鈕本身顯示所有量長度線的米數總和（用畫面上看到的一位小數相加）
+      const ic = document.getElementById('bd-dimicon'), lb = document.getElementById('bd-dimlbl'); if (!ic) return;
+      const segIn = (p, q) => {                                // 線段有沒有進到目前畫面（Liang–Barsky）
+        let t0 = 0, t1 = 1; const dx = q[0] - p[0], dy = q[1] - p[1];
+        for (const [pp, qq] of [[-dx, p[0]], [dx, BD.W - p[0]], [-dy, p[1]], [dy, BD.H - p[1]]]) {
+          if (pp === 0) { if (qq < 0) return false; } else { const r = qq / pp; if (pp < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; } }
+        }
+        return true;
+      };
+      const dims = BD.shapes.filter(x => x.t === 'dim' && segIn(bdPx(x.a), bdPx(x.b)));   // 只算目前畫面看得到的線
+      if (!dims.length) { ic.textContent = '↔'; ic.style.fontSize = '17px'; ic.style.color = '#60a5fa'; lb.textContent = '量長度'; return; }
+      const sum = dims.reduce((t, x) => t + Number(bdGround(x.a, x.b).toFixed(1)), 0), txt = sum.toFixed(1);
+      ic.textContent = txt; ic.style.color = '#fde047'; ic.style.textShadow = '0 0 2px #000'; ic.style.fontSize = (txt.length > 5 ? 11 : 14) + 'px'; lb.textContent = `畫面${dims.length}條`;
+    }
     function bdSelUi() {
       const board = document.getElementById('board'), on = BD.tool === 'select' && !!BD.selObj && !BD.edit;
       board.classList.toggle('sel', on);
@@ -3655,6 +3693,7 @@
       map.setZoom(Math.round(map.getZoom()), { animate: false });
       setTimeout(() => map.invalidateSize(), 100);
     };
+    window.measureViaBoard = () => { if (!BD.on) openBoard(); bdTool('dim'); };
     window.toggleMoreTools = () => {
       const el = document.getElementById('more-tools');
       const open = el.style.display !== 'flex';
