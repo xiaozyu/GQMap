@@ -355,42 +355,42 @@
 
 
     /* ---------- 窄欄（手機、電腦側欄）：工單改兩行，地址不再被截斷 ---------- */
-    @media (max-width: 560px), (min-width: 1000px) and (min-height: 560px) {
+    @media (min-width: 1000px) and (min-height: 560px) {
       .task-row { min-height: 58px; }
       .task-left { flex-wrap: wrap; row-gap: 1px; }
       .task-desc { flex: 1 0 100%; order: 9; padding-left: 30px; font-size: 13px; color: var(--text-2); }
       .task-row.nd-case .task-desc { color: #fff; }
     }
 
-    /* ---------- 手機（直式）：上方操作區壓縮，讓地圖占約 7 成高度 ---------- */
+    /* ---------- 手機（直式）：沿用舊版緊湊比例與字級，只保留新配色 ---------- */
     @media (max-width: 560px) {
-      .top-section { padding: 6px 8px 4px; }
-      .top-toolbar { gap: 6px; margin-bottom: 5px; }
-      .btn-top { height: 36px; font-size: 13px; border-radius: 10px; }
-      .date-bar { min-height: 22px; margin-bottom: 4px; padding: 0 10px; font-size: 11px; }
-      .date-bar #date-bar-text { padding: 2px 0; }
-      .date-bar button { padding: 2px 10px; font-size: 11px; }
-      .manual-input-bar { margin-bottom: 5px; padding: 3px 3px 3px 5px; border-radius: 10px; }
-      .prefix-badge { height: 30px; min-width: 30px; font-size: 15px; }
-      .manual-input { height: 32px; font-size: 15px; }
-      .btn-manual-add { height: 32px; padding: 0 12px; font-size: 13px; }
-      .task-list-section { height: clamp(100px, calc(32svh - 185px), 220px); padding: 4px; border-radius: 10px; }
-      .task-row { min-height: 50px; padding: 3px 5px 3px 7px; margin-bottom: 4px; }
-      .task-desc { font-size: 12.5px; padding-left: 28px; }
-      .row-actions button { min-width: 34px; height: 34px; }
-      .nav-action-bar { padding: 5px 8px 6px; gap: 6px; }
-      .btn-nav-start { height: 40px; font-size: 15px; border-radius: 10px; }
-      .seg { border-radius: 10px; padding: 2px; }
-      .btn-mode-switch { height: 34px; font-size: 13px; border-radius: 8px; }
+      .top-section { padding: 4px 6px 2px; }
+      .top-toolbar { gap: 4px; margin-bottom: 3px; }
+      .btn-top { height: auto; padding: 6px 0; font-size: .85rem; border-radius: 5px; }
+      .date-bar { min-height: 0; margin-bottom: 3px; padding: 3px 8px; font-size: .78rem; border-radius: 5px; }
+      .date-bar #date-bar-text { padding: 0; }
+      .date-bar button { padding: 3px 8px; font-size: .75rem; }
+      .manual-input-bar { margin-bottom: 3px; padding: 2px 4px; gap: 3px; border-radius: 5px; }
+      .prefix-badge { height: auto; min-width: 30px; padding: 1px 6px; font-size: 1rem; border-radius: 3px; }
+      .manual-input { height: auto; font-size: 1rem; }
+      .manual-input::placeholder { font-size: .75rem; }
+      .btn-manual-add { height: auto; padding: 4px 10px; font-size: .78rem; border-radius: 3px; }
+      .task-list-section { height: 142px; padding: 2px 3px; border-radius: 5px; }
+      .task-row { min-height: 30px; padding: 2px 4px; margin-bottom: 2px; gap: 3px; border-radius: 3px; }
+      .task-left { gap: 3px; }
+      .drag-handle { font-size: .75rem; padding: 0; }
+      .task-num-label { min-width: 18px; width: 18px; font-size: .78rem; }
+      .task-time-badge { font-size: .68rem; padding: 1px 2px; width: 44px; border-radius: 2px; }
+      .task-title { font-size: .8rem; }
+      .task-desc { font-size: .8rem; margin-left: 3px; }
+      .row-actions { gap: 2px; }
+      .row-actions button { min-width: 0; height: auto; font-size: .7rem; padding: 1px 4px; border-radius: 3px; }
+      .nav-action-bar { padding: 4px 8px; gap: 6px; }
+      .btn-nav-start { height: auto; padding: 6px 0; font-size: .9rem; border-radius: 5px; }
+      .seg { border-radius: 5px; padding: 0; gap: 0; background: transparent; border: none; }
+      .btn-mode-switch { height: auto; padding: 6px 0; font-size: .85rem; border-radius: 5px; }
     }
-    @media (max-width: 560px) and (max-height: 780px) {
-      .task-list-section { height: 76px; }
-      .top-toolbar { margin-bottom: 4px; }
-      .btn-top { height: 33px; }
-      .date-bar { min-height: 20px; margin-bottom: 3px; }
-      .btn-nav-start { height: 38px; }
-      .btn-mode-switch { height: 32px; }
-    }
+
     /* ---------- 電腦／平板橫放：左側工單欄＋右側整片地圖 ---------- */
     @media (min-width: 1000px) and (min-height: 560px) {
       :root { --pad-x: 14px; }
@@ -474,7 +474,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v77</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v78</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3470,7 +3470,7 @@
         erase: ['🧽 橡皮擦', '拖過筆跡就擦掉（白底只擦邊緣）', 'H 移動地圖'],
         select: ['☝ 選取', '點選物件　再點同處換下一層', '拖曳移動　Delete 刪除', 'Esc 取消選取'],
         dim: cross ? (BD.mvp ? ['📍 搬移端點', '移動地圖對準新位置　點一下放下', 'Esc 取消搬移'] : BD.pend ? ['📍 連續圖釘', '拖曳平移地圖　點一下定下一點', 'Enter 完成　Ctrl+Z 退回上一點　Esc 結束'] : ['📍 連續圖釘', '紅十字對準起點　點一下定 A', '之後每點一下接一段　十字靠近端點可搬移／刪除'])
-                   : ['↔ 拉線', '按住 A 拖到 B 放開', '靠近端點可微調　H 移動地圖'],
+                   : ['↔ 量長度', '按住 A 拖到 B 放開', '點端點附近可微調　H 移動地圖'],
         text: ['🅰 文字', '點空白處新增文字', '點既有文字可修改　Delete 刪除選取', 'H 移動地圖']
       };
       return T[BD.tool] || T.none;
@@ -3485,7 +3485,7 @@
     }
     function bdStatus() {
       const el = document.getElementById('bd-status'); if (!el) return;
-      const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', line: '直線：拉一條直線（右邊可選實線／虛線）', rect: '白底：斜拉出一塊矩形，蓋住下方雜亂圖面（永遠在筆跡下面）',  erase: '橡皮擦：劃過筆跡即擦除（白底只有碰到邊緣才會擦）', select: '選取：點一下選物件（再點同處＝換下一層）｜拖曳移動｜端點圓圈可拉｜文字可縮放旋轉｜左下角可刪除', dim: '量長度：拉線｜點端點附近可微調｜端點靠近別的端點會吸附釘住（拖一個全部一起動，長按＝單獨拿起最後一條）', text: '文字：點空白新增（可換行）｜拖曳移動｜縮放｜旋轉｜再點一下改字' };
+      const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', line: '直線：拉一條直線（右邊可選實線／虛線）', rect: '白底：斜拉出一塊矩形，蓋住下方雜亂圖面（永遠在筆跡下面）',  erase: '橡皮擦：劃過筆跡即擦除（白底只有碰到邊緣才會擦）', select: '選取：點一下選物件（再點同處＝換下一層）｜拖曳移動｜端點圓圈可拉｜文字可縮放旋轉｜左下角可刪除', dim: '量長度：按住 A 拖到 B 放開｜點端點附近可微調', text: '文字：點空白新增（可換行）｜拖曳移動｜縮放｜旋轉｜再點一下改字' };
       let nm = names[BD.tool] || '';
       if (BD.tool === 'dim' && bdOpt.mode === 'cross') nm = BD.mvp ? '搬移中：移動地圖讓十字對準新位置 → 點一下放下（↩ ＝取消）' : BD.pend ? '連續圖釘：移動地圖，十字對準下一點 → 點一下（↩ ＝退回上一點，✔ 完成＝結束）' : '連續圖釘：移動地圖讓十字對準起點 → 點一下定 A，之後每點一下接一段｜十字靠近端點可搬移／刪除';
       el.textContent = (BD.desk && !BD.hintOff) ? `${BD.centerCode}` : `${BD.centerCode}  ｜ ${nm}`;
@@ -3589,8 +3589,8 @@
       bdDropCache(); bdRedrawNow();
     }
     const BD_AIM = 76;                                         // 量長度：準星模式開啟時，實際落點在指尖「上方」這麼多 px（指尖不會蓋住目標）
-    const bdOpt = { aim: 'touch', mode: 'cross' };             // aim：touch=只有手指／all=手指和筆／off=關閉；mode：cross=十字定點（預設）／drag=拖曳畫線
-    try { bdOpt.aim = 'touch'; bdOpt.mode = localStorage.getItem('tpc_dimmode') === 'cross' ? 'cross' : 'drag'; } catch (e) {}   // drag＝拉線（按住 A 拉到 B 放開）／cross＝連續圖釘（十字定點，A、B、B、B…）
+    const bdOpt = { aim: 'off', mode: 'drag' };             // aim：touch=只有手指／all=手指和筆／off=關閉；mode：cross=十字定點（預設）／drag=拖曳畫線
+    /* 量長度固定為：點 A 拉到 B（無準星偏移、無連續圖釘） */   // drag＝拉線（按住 A 拉到 B 放開）／cross＝連續圖釘（十字定點，A、B、B、B…）
     const bdCrossOn = () => BD.on && BD.tool === 'dim' && bdOpt.mode === 'cross';
     function bdAimOn(e) { return BD.tool === 'dim' && bdOpt.aim !== 'off' && (bdOpt.aim === 'all' || e.pointerType === 'touch'); }
     function bdDimOptUi() {
@@ -3755,7 +3755,7 @@
 
         /* 量長度：切換鈕、搬移／刪除、連續圖釘完成列 */
         #bd-dimopt { position: absolute; left: 192px; bottom: 14px; z-index: 6; display: none; gap: 6px; pointer-events: auto; }
-        #board.dim #bd-dimopt { display: flex; }
+        #board.dim #bd-dimopt { display: none !important; }
         #bd-opt-aim { display: none !important; }
         #bd-dimopt button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; height: 40px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
         #bd-dimopt button.on { background: var(--blue-d); border-color: #93c5fd; }
