@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v93</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v94</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3522,13 +3522,17 @@
     }
     function bdRedrawNow() {
       bdSyncView();
+      if (BD.shifted) { BD.shifted = false; BD.ink.style.transform = ''; BD.ui.style.transform = ''; }
+      BD.dz = BD.z; { const mn = map.getPixelBounds().min; BD.dmn = { x: mn.x, y: mn.y }; }
       if (BD.mvp) BD.mvp.sh[BD.mvp.part] = bdMerc(BD.W / 2, BD.H / 2);
       if (BD.pend && BD.cur) BD.cur.b = bdMerc(BD.W / 2, BD.H / 2);          // 十字定點：已定 A 點後，B 端永遠跟著畫面中心的十字
       if (BD.cache && (!BD.mv || BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k)) bdDropCache();   // 快取只在「拖動單一物件」時有效；其他時候一律重畫，避免舊圖殘留（擦不掉）
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
       if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
       else { bdDrawAll(ctx, BD.shapes); }
-      bdDrawUi(); bdPendUi(); bdMagUi(); bdDoneUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
+      bdDrawUi(); bdPendUi();
+      if (BD.moving && !BD.cur && !BD.edit) return;                        // 地圖還在動：小面板（長度合計、狀態列…）等停下來再更新
+      bdMagUi(); bdDoneUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
     }
     function bdPendUi() {                                      // 十字定點：畫出「A 點 → 十字」的即時線與米數
       if (!BD.pend || !BD.cur) return;
@@ -3611,7 +3615,7 @@
       else bdDrawShape(g, BD.cur); } }
     function bdLayout() {                                   // 畫圖層貼齊地圖區塊（直的就直的、橫的就橫的）
       const r = document.getElementById('leaflet-map').getBoundingClientRect(), root = document.getElementById('board');
-      BD.rx = r.left; BD.ry = r.top; BD.W = Math.round(r.width); BD.H = Math.round(r.height); BD.dpr = Math.min(3, window.devicePixelRatio || 1);
+      BD.rx = r.left; BD.ry = r.top; BD.W = Math.round(r.width); BD.H = Math.round(r.height); BD.dpr = Math.min(CAD_DESK ? 3 : 2, window.devicePixelRatio || 1);
       root.style.left = '0px'; root.style.top = '0px'; root.style.width = BD.W + 'px'; root.style.height = BD.H + 'px';
       [BD.ink, BD.ui].forEach(c => { c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr); c.style.width = BD.W + 'px'; c.style.height = BD.H + 'px'; });
       BD.stage.style.width = BD.W + 'px'; BD.stage.style.height = BD.H + 'px';
@@ -4129,7 +4133,15 @@
         e.preventDefault(); map.setZoomAround(mapPt(e.clientX, e.clientY), map.getZoom() + (e.deltaY < 0 ? 0.4 : -0.4), { animate: false });
       }, { passive: false });
       window.addEventListener('resize', () => { if (BD.on) setTimeout(bdLayout, 250); });
-      map.on('move zoom', () => { if (BD.on) bdRedraw(); });
+      // 畫圖時移動地圖：平移＝直接把畫布「搬」過去（零重畫，和底圖同步），停下來才重畫一次；縮放＝逐格重畫但先不更新各種小面板
+      map.on('move zoom', () => {
+        if (!BD.on) return;
+        BD.moving = true;
+        if (BD.edit || BD.mv || BD.cur || BD.pend || BD.mvp || BD.cache || !BD.dmn || BD.dz !== map.getZoom()) { bdRedraw(); return; }
+        const mn = map.getPixelBounds().min, tf = `translate3d(${BD.dmn.x - mn.x}px,${BD.dmn.y - mn.y}px,0)`;
+        BD.ink.style.transform = tf; BD.ui.style.transform = tf; BD.shifted = true;
+      });
+      map.on('moveend zoomend', () => { if (BD.on && BD.moving) { BD.moving = false; bdRedraw(); } });
       try { let rt = 0; new ResizeObserver(() => { if (!BD.on) return; clearTimeout(rt); rt = setTimeout(bdLayout, 120); }).observe(document.getElementById('leaflet-map')); } catch (e) {}
       const colors = document.getElementById('bd-colors');
       BD_COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'bd-sw'; b.dataset.c = c; b.style.background = c; b.onclick = () => bdSetColor(c); colors.appendChild(b); });
