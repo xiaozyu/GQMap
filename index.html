@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v94</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v95</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1822,7 +1822,7 @@
     function cadVecComp(A, B) {               // 先套 B 再套 A
       return [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3], A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
     }
-    function cadVecBuild(ol, vp1) {           // PDF 繪圖指令 → 以 vp1 座標儲存的 Path2D 群組（同線寬/虛線一組）
+    async function cadVecBuild(ol, vp1) {           // PDF 繪圖指令 → 以 vp1 座標儲存的 Path2D 群組（同線寬/虛線一組）
       const OPS = pdfjsLib.OPS, vt = vp1.transform;
       let ctm = [1, 0, 0, 1, 0, 0], T = cadVecComp(vt, ctm), lw = 1, dash = [], phase = 0, cur = [], n = 0, cpx = 0, cpy = 0;
       const stack = [], groups = new Map();
@@ -1854,7 +1854,9 @@
         else if (op === OPS.closeFillStroke || op === OPS.closeEOFillStroke) { flush(true); flush(false, true); }
         cur = [];
       }
+      let yt = performance.now();
       for (let i = 0; i < ol.fnArray.length; i++) {
+        if ((i & 127) === 0 && performance.now() - yt > 10) { await new Promise(r => setTimeout(r, 0)); yt = performance.now(); }   // 解析大圖幅時每 10ms 讓出一次，操作（拖地圖、畫線）不會被卡住
         const f = ol.fnArray[i], a = ol.argsArray[i];
         if (f === OPS.save) stack.push([ctm.slice(), lw, dash.slice(), phase]);
         else if (f === OPS.restore) { const s = stack.pop(); if (s) { ctm = s[0]; lw = s[1]; dash = s[2]; phase = s[3]; T = cadVecComp(vt, ctm); } }
@@ -1898,7 +1900,7 @@
         try {
           pdf = await pdfjsLib.getDocument(new Uint8Array(buf)).promise;
           const page = await pdf.getPage(1), vp1 = page.getViewport({ scale: 1 });
-          const fr = await pdfFrameOf(page, vp1), v = cadVecBuild(await page.getOperatorList(), vp1);
+          const fr = await pdfFrameOf(page, vp1), v = await cadVecBuild(await page.getOperatorList(), vp1);
           if (!v.n) throw new Error('no vector paths');
           const it = { id: t.id, zone: t.zone, x: t.x, y: t.y, fr, groups: v.groups, cr: null, crKey: '' };
           cadVec.tiles.set(t.id, it); cadOv.known.add(t.id); cadOvSaveSoon(); if (!CAD_DESK) cadOvFree(it); return it;
