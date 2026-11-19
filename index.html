@@ -192,7 +192,7 @@
     .floating-controls { position: absolute; bottom: 18px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 900; }
     .float-btn {
       background: var(--glass); color: var(--text); border: 1px solid rgba(255,255,255,.16);
-      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+
       border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
       font-size: 20px; font-weight: 700; box-shadow: var(--sh-1); cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s;
     }
@@ -210,7 +210,7 @@
     #cad-calib-box { position: absolute; bottom: 18px; left: 10px; z-index: 900; display: none; flex-direction: column; gap: 8px; }
     #cad-status-pill {
       background: var(--glass); border: 1px solid rgba(250,204,21,.55); color: var(--yellow);
-      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+
       font-size: 12px; font-weight: 700; font-family: var(--mono); padding: 6px 8px 6px 12px; border-radius: var(--r-pill);
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 78vw; box-shadow: var(--sh-1);
     }
@@ -221,7 +221,7 @@
     body, .leaflet-container, #cad-nudge-pad, #cad-nudge-pad * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
     input, textarea { -webkit-user-select: text; user-select: text; }
     #cad-nudge-pad {
-      background: var(--glass); border: 1px solid var(--line-2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      background: var(--glass); border: 1px solid var(--line-2);
       border-radius: var(--r-lg); padding: 10px; display: none; flex-direction: column; align-items: center; gap: 6px; box-shadow: var(--sh-2);
     }
     .nudge-row { display: flex; gap: 6px; align-items: center; }
@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v91</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v93</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -919,16 +919,16 @@
     };
 
     const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
+      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
+      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
+      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 3, updateInterval: 90
+      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
 
     const map = L.map('leaflet-map', {
@@ -940,16 +940,15 @@
       layers: [nlscEMap]
     });
 
-    // 底圖淡化：白色薄紗疊在任何底圖上，拉桿控制透明度（0＝原底圖，100＝純白只剩台電線）
-    const cadOnlyLayer = L.gridLayer({ tileSize: 256, keepBuffer: 1, updateWhenIdle: false, updateWhenZooming: false, maxZoom: 21, zIndex: 3 });   
-    cadOnlyLayer.createTile = () => { const d = document.createElement('div'); d.style.background = '#fff'; return d; };
+    // 底圖淡化：地圖容器墊白底，直接調底圖本身的透明度（不再另疊一整層白色圖磚＝少一堆 DOM／少一層繪製）
+    window.cadVeilN = 100;
 
     // 完整的 5 種圖資切換控制
     // 底圖切換：自己做的按鈕＋選單（疊在畫圖層之上，畫圖時也能切換）
     (function () {
       const defs = [['台灣通用電子地圖 (國土測繪)', nlscEMap], ['國土測繪正射影像 (航照)', nlscPhoto], ['Google 道路', googleRoads], ['Google 衛星混合', googleHybrid]];
       const css = document.createElement('style');
-      css.textContent = `#layer-btn { position: absolute; top: 8px; right: 10px; z-index: 950; width: 44px; height: 44px; border-radius: 12px; background: var(--glass); border: 1px solid rgba(255,255,255,.16); color: #e2e8f0; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh-1); cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); transition: transform .08s; }
+      css.textContent = `#layer-btn { position: absolute; top: 8px; right: 10px; z-index: 950; width: 44px; height: 44px; border-radius: 12px; background: var(--glass); border: 1px solid rgba(255,255,255,.16); color: #e2e8f0; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh-1); cursor: pointer; transition: transform .08s; }
         #layer-btn:active { transform: scale(.94); }
         #layer-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
         #layer-pop { position: absolute; top: 60px; right: 10px; z-index: 950; display: none; background: rgba(15,23,42,.97); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; box-shadow: var(--sh-2); min-width: 230px; }
@@ -964,10 +963,11 @@
       const pop = document.createElement('div'); pop.id = 'layer-pop';
       const rows = defs.map(([name, l]) => {
         const row = document.createElement('div'); row.textContent = name;
-        row.addEventListener('click', (e) => { e.stopPropagation(); defs.forEach(([, x]) => { if (map.hasLayer(x)) map.removeLayer(x); }); l.addTo(map); refresh(); pop.style.display = 'none'; });
+        row.addEventListener('click', (e) => { e.stopPropagation(); defs.forEach(([, x]) => { if (map.hasLayer(x)) map.removeLayer(x); }); l.addTo(map); applyVeil(); refresh(); pop.style.display = 'none'; });
         pop.appendChild(row); return [row, l];
       });
       const refresh = () => rows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l)));
+      const applyVeil = () => { const n = window.cadVeilN; defs.forEach(([, x]) => { try { x.setOpacity(map.hasLayer(x) ? n / 100 : 1); } catch (e) {} }); document.getElementById('leaflet-map').style.background = n < 100 ? '#fff' : ''; };
       btn.addEventListener('click', (e) => { e.stopPropagation(); refresh(); pop.style.display = pop.style.display === 'block' ? 'none' : 'block'; });
       document.addEventListener('pointerdown', (e) => { if (!pop.contains(e.target) && e.target !== btn) pop.style.display = 'none'; }, true);
       // 底圖淡化拉桿：0＝正常底圖，往右越淡，100＝純白只剩台電線（任何底圖都能用）
@@ -975,10 +975,8 @@
       vr.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px">⚡ 底圖濃度 <b id="veil-v" style="color:#fde047">100%</b></div><input id="veil-r" type="range" min="0" max="100" step="1" value="100"><div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:2px"><span>淺（只看台電線）</span><span>深（原底圖）</span></div>';
       pop.appendChild(vr);
       const vin = vr.querySelector('input'), vv = vr.querySelector('#veil-v');
-      window.cadSetBase = (n) => {                              // n＝底圖濃度 0~100；100＝原底圖，0＝純白只剩台電線
-        n = Math.max(0, Math.min(100, Math.round(n))); vin.value = n; vv.textContent = n + '%';
-        if (n < 100) { if (!map.hasLayer(cadOnlyLayer)) cadOnlyLayer.addTo(map); cadOnlyLayer.setOpacity(1 - n / 100); if (!isCadOverlayEnabled && window.toggleCadOverlayMode) window.toggleCadOverlayMode(); }
-        else if (map.hasLayer(cadOnlyLayer)) map.removeLayer(cadOnlyLayer);
+      window.cadSetBase = (n) => {                              // n＝底圖濃度 0~100；100＝原底圖，0＝純白只剩台電線（不會自動開圖資）
+        n = Math.max(0, Math.min(100, Math.round(n))); vin.value = n; vv.textContent = n + '%'; window.cadVeilN = n; applyVeil();
       };
       vin.addEventListener('input', () => window.cadSetBase(+vin.value));
       mc.appendChild(btn); mc.appendChild(pop);
@@ -1008,7 +1006,7 @@
         const lb = document.getElementById('here-cross-label');
         if (lb) lb.textContent = code;
       }
-      const kick = () => { if (!raf) raf = requestAnimationFrame(upd); };
+      const kick = () => { if (!raf) raf = setTimeout(upd, 120); };       // 滑動中不必每幀換算圖號
       map.on('move zoomend', kick);
       const tEl = document.getElementById('here-time');
       const pad = (n) => String(n).padStart(2, '0');
@@ -1916,7 +1914,7 @@
     const cadOv = { items: new Map(), known: new Set(), gen: 0, px: 0, indexed: false, timer: 0, saveT: 0, cache: null, pumping: false };
     // 電腦（滑鼠＋記憶體 ≥8GB 或未回報）：總覽不限範圍，匯入過的全部圖幅都貼縮圖；手機維持「只畫畫面附近」省記憶體與電量
     const CAD_DESK = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches && (navigator.deviceMemory || 8) >= 8; } catch (e) { return false; } })();
-    const CAD_OV_TW = 512, CAD_OV_PX = CAD_DESK ? 96e6 : 28e6, CAD_OV_SHOW = CAD_DESK ? 600 : 170, CAD_OV_MAKE = CAD_DESK ? 40 : 24;
+    const CAD_OV_TW = 512, CAD_OV_PX = CAD_DESK ? 96e6 : 16e6, CAD_OV_SHOW = CAD_DESK ? 600 : 170, CAD_OV_MAKE = CAD_DESK ? 40 : 24;
     function cadOvSaveSoon() { clearTimeout(cadOv.saveT); cadOv.saveT = setTimeout(() => { try { localStorage.setItem('tpc_cad_known', JSON.stringify(Array.from(cadOv.known))); } catch (e) {} }, 1500); }
     async function cadOvLoadIndex() {
       if (cadOv.indexed) return; cadOv.indexed = true;
@@ -2085,7 +2083,7 @@
       if (!isCadOverlayEnabled || cadVecFailed || (ovMode && (z < OV_MIN || !cadOv.items.size))) { c.style.display = 'none'; cadVec.drawn = null; return; }
       c.style.display = '';
       { const ce = map.getContainer(); if (ce.clientWidth && (ce.clientWidth !== map.getSize().x || ce.clientHeight !== map.getSize().y)) map.invalidateSize({ animate: false }); }   // 尺寸過期保險
-      const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, 2.5), padX = Math.round(sz.x * 0.25), padY = Math.round(sz.y * 0.25);
+      const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, CAD_DESK ? 2.5 : 2), padX = Math.round(sz.x * 0.25), padY = Math.round(sz.y * 0.25);
       const Wc = sz.x + 2 * padX, Hc = sz.y + 2 * padY, pw = Math.round(Wc * dpr), ph = Math.round(Hc * dpr);
       if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
       c.style.width = Wc + 'px'; c.style.height = Hc + 'px';
@@ -3387,7 +3385,7 @@
         }));
       }
       await Promise.all(jobs);
-      if (map.hasLayer(cadOnlyLayer)) { g.save(); g.globalAlpha = cadOnlyLayer.options.opacity == null ? 1 : cadOnlyLayer.options.opacity; g.fillStyle = '#fff'; g.fillRect(0, 0, v.W, v.H); g.restore(); res.count = Math.max(res.count, 1); }   // 底圖淡化（和畫面一致）
+      if (window.cadVeilN < 100) { g.save(); g.globalAlpha = 1 - window.cadVeilN / 100; g.fillStyle = '#fff'; g.fillRect(0, 0, v.W, v.H); g.restore(); res.count = Math.max(res.count, 1); }   // 底圖淡化（和畫面一致）
       return res;
     }
 
@@ -3752,14 +3750,14 @@
         #bd-stage canvas { position: absolute; left: 0; top: 0; display: block; }
 
         /* 共用按鈕：玻璃質感、圓角一致、按下有回饋 */
-        .bt { background: var(--glass); color: #fff; border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-radius: 12px; width: 48px; height: 46px; flex: 0 0 auto; font-size: 18px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s; }
+        .bt { background: var(--glass); color: #fff; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; width: 48px; height: 46px; flex: 0 0 auto; font-size: 18px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s; }
         .bt:active { transform: scale(.94); }
         .bt small { font-size: 10px; font-weight: 600; color: var(--text-2); margin-top: 1px; }
         .bt.on { background: var(--blue-d); border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,.35); } .bt.on small { color: #fff; }
         @media (hover: hover) and (pointer: fine) { .bt:hover:not(.on) { background: rgba(30,41,69,.96); border-color: rgba(255,255,255,.32); } }
 
         /* 左側工具列 */
-        #bd-rail { position: absolute; left: 6px; top: 50px; max-height: calc(100% - 124px); width: var(--rail); display: flex; flex-direction: column; gap: 6px; z-index: 2; overflow-y: auto; scrollbar-width: none; padding: 5px; background: rgba(10,16,30,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        #bd-rail { position: absolute; left: 6px; top: 50px; max-height: calc(100% - 124px); width: var(--rail); display: flex; flex-direction: column; gap: 6px; z-index: 2; overflow-y: auto; scrollbar-width: none; padding: 5px; background: rgba(10,16,30,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; }
         #bd-rail::-webkit-scrollbar { display: none; }
         #bd-rail .bt { width: 100%; }
         .bd-sep { height: 1px; background: rgba(255,255,255,.14); margin: 1px 6px; flex: 0 0 auto; }
@@ -3788,7 +3786,7 @@
         #bd-dimopt { position: absolute; left: 192px; bottom: 14px; z-index: 6; display: none; gap: 6px; pointer-events: auto; }
         #board.dim #bd-dimopt { display: none !important; }
         #bd-opt-aim { display: none !important; }
-        #bd-dimopt button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; height: 40px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+        #bd-dimopt button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; height: 40px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; }
         #bd-dimopt button.on { background: var(--blue-d); border-color: #93c5fd; }
         #bd-mg { position: absolute; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); z-index: 6; display: none; gap: 8px; pointer-events: auto; }
         #bd-mg button { color: #fff; background: var(--glass); border: 2px solid var(--amber); border-radius: 14px; height: 46px; padding: 0 18px; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-2); }
@@ -3809,12 +3807,10 @@
         #board.kb .bt.on[data-k]::after { color: #fde047; border-color: #fde047; }
         .bd-lenbtn.on { background: var(--blue-d) !important; border-color: #93c5fd !important; color: #fff !important; }
         #bd-ln2 button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; height: 34px; padding: 0 10px; font-size: 13px; font-weight: 800; cursor: pointer; width: 100%; }
-        #bd-colsum { position: absolute; left: 86px; top: 96px; z-index: 3; display: none; pointer-events: none; padding: 8px 10px; border-radius: 12px; background: var(--glass); border: 1px solid rgba(255,255,255,.14); color: #f1f5f9; font: 700 13px/1.5 var(--font); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-        #bd-colsum small { display: block; color: #94a3b8; font-weight: 600; font-size: 11px; margin-bottom: 2px; }
-        #bd-colsum .r { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-        #bd-colsum i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; flex: none; box-sizing: border-box; }
-        #bd-colsum .m { margin-left: auto; font-family: var(--mono); color: #fde047; padding-left: 10px; }
-        #bd-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 3; display: none; pointer-events: none; max-width: calc(100% - 600px); padding: 8px 16px; border-radius: 999px; background: rgba(10,16,30,.7); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.95); font: 13px/1.3 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        #bd-colsum { position: absolute; left: 8px; bottom: 72px; z-index: 3; display: none; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 100px); pointer-events: none; }
+        #bd-colsum .r { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; background: rgba(10,16,30,.78); border: 1px solid rgba(255,255,255,.16); color: #fff; font: 800 13px/1.2 var(--mono); white-space: nowrap; }
+        #bd-colsum i { width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; flex: none; box-sizing: border-box; }
+        #bd-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 3; display: none; pointer-events: none; max-width: calc(100% - 600px); padding: 8px 16px; border-radius: 999px; background: rgba(10,16,30,.7); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.95); font: 13px/1.3 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 760px) { #bd-hint { display: none !important; } }
         #bd-hint b { color: #fde047; margin-right: 6px; }
         #bd-hint .k { color: #cbd5e1; }
@@ -3828,7 +3824,7 @@
         #bd-inl { position: absolute; z-index: 7; display: none; pointer-events: auto; box-sizing: border-box; resize: none; overflow: hidden; text-align: center; font-weight: bold; font-family: sans-serif; outline: none; border: 2px dashed #2563eb; background: rgba(255,255,255,.82); white-space: pre; margin: 0; transform-origin: 50% 50%; border-radius: 6px; }
 
         /* 調色盤面板 */
-        #bd-panel { position: absolute; left: calc(var(--rail) + 14px); top: 82px; z-index: 5; display: none; gap: 10px; padding: 10px; background: rgba(10,16,30,.92); border: 1px solid var(--line-2); border-radius: 16px; touch-action: none; box-shadow: var(--sh-2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+        #bd-panel { position: absolute; left: calc(var(--rail) + 14px); top: 82px; z-index: 5; display: none; gap: 10px; padding: 10px; background: rgba(10,16,30,.92); border: 1px solid var(--line-2); border-radius: 16px; touch-action: none; box-shadow: var(--sh-2); }
         #board.pen.pp #bd-panel { display: flex; }
         #bd-pbtn { display: none; }
         #board.pen #bd-pbtn { display: flex; }
@@ -4219,8 +4215,8 @@
       const el = document.getElementById('bd-colsum'); if (!el) return;
       if (!dims.length) { el.style.display = 'none'; return; }
       const g = new Map(); dims.forEach(x => { const c = x.c || def, o = g.get(c) || { n: 0, m: 0 }; o.n++; o.m += Number(bdGround(x.a, x.b).toFixed(1)); g.set(c, o); });
-      el.innerHTML = '<small>' + nm + '・畫面內 各顏色合計</small>' + [...g].sort((a, b) => b[1].m - a[1].m).map(([c, o]) => `<div class="r"><i style="background:${c}"></i>${o.n} 條<span class="m">${o.m.toFixed(1)} m</span></div>`).join('');
-      el.style.display = 'block';
+      el.innerHTML = [...g].sort((a, b) => b[1].m - a[1].m).map(([c, o]) => `<div class="r" title="${nm}：${o.n} 條"><i style="background:${c}"></i>${o.m.toFixed(1)}m</div>`).join('');
+      el.style.display = 'flex';
     }
     function bdSelUi() {
       const board = document.getElementById('board'), on = BD.tool === 'select' && !!BD.selObj && !BD.edit;
@@ -4616,7 +4612,7 @@
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'manual-paste-modal';
-        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;`;
         modal.innerHTML = `
           <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:480px;padding:14px;display:flex;flex-direction:column;gap:10px;">
             <div style="font-weight:bold;color:#38bdf8;font-size:1rem;">📋 貼上派工單文字 (支援多行)</div>
