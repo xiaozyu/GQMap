@@ -361,6 +361,36 @@
       .task-desc { flex: 1 0 100%; order: 9; padding-left: 30px; font-size: 13px; color: var(--text-2); }
       .task-row.nd-case .task-desc { color: #fff; }
     }
+
+    /* ---------- 手機（直式）：上方操作區壓縮，讓地圖占約 7 成高度 ---------- */
+    @media (max-width: 560px) {
+      .top-section { padding: 6px 8px 4px; }
+      .top-toolbar { gap: 6px; margin-bottom: 5px; }
+      .btn-top { height: 36px; font-size: 13px; border-radius: 10px; }
+      .date-bar { min-height: 22px; margin-bottom: 4px; padding: 0 10px; font-size: 11px; }
+      .date-bar #date-bar-text { padding: 2px 0; }
+      .date-bar button { padding: 2px 10px; font-size: 11px; }
+      .manual-input-bar { margin-bottom: 5px; padding: 3px 3px 3px 5px; border-radius: 10px; }
+      .prefix-badge { height: 30px; min-width: 30px; font-size: 15px; }
+      .manual-input { height: 32px; font-size: 15px; }
+      .btn-manual-add { height: 32px; padding: 0 12px; font-size: 13px; }
+      .task-list-section { height: clamp(100px, calc(32svh - 185px), 220px); padding: 4px; border-radius: 10px; }
+      .task-row { min-height: 50px; padding: 3px 5px 3px 7px; margin-bottom: 4px; }
+      .task-desc { font-size: 12.5px; padding-left: 28px; }
+      .row-actions button { min-width: 34px; height: 34px; }
+      .nav-action-bar { padding: 5px 8px 6px; gap: 6px; }
+      .btn-nav-start { height: 40px; font-size: 15px; border-radius: 10px; }
+      .seg { border-radius: 10px; padding: 2px; }
+      .btn-mode-switch { height: 34px; font-size: 13px; border-radius: 8px; }
+    }
+    @media (max-width: 560px) and (max-height: 780px) {
+      .task-list-section { height: 76px; }
+      .top-toolbar { margin-bottom: 4px; }
+      .btn-top { height: 33px; }
+      .date-bar { min-height: 20px; margin-bottom: 3px; }
+      .btn-nav-start { height: 38px; }
+      .btn-mode-switch { height: 32px; }
+    }
     /* ---------- 電腦／平板橫放：左側工單欄＋右側整片地圖 ---------- */
     @media (min-width: 1000px) and (min-height: 560px) {
       :root { --pad-x: 14px; }
@@ -444,7 +474,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v76</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v77</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
