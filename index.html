@@ -20,462 +20,367 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
+    /* =====================================================================
+       ⚡ 巨擎導航 — 設計系統 v75
+       一套語言：深色專業＋高對比（戶外陽光下仍清楚）。所有元件共用下面的色彩／圓角／間距／陰影。
+       ===================================================================== */
+    :root {
+      --bg: #0b1020;        --surface: #121a2e;   --surface-2: #19243d;  --surface-3: #22304d;
+      --line: #2a3a5a;      --line-2: #3e5380;
+      --text: #f1f5f9;      --text-2: #c0cbe0;    --text-3: #8391ad;
+      --blue: #3b82f6;      --blue-d: #2563eb;    --cyan: #38bdf8;       --yellow: #facc15;
+      --green: #22c55e;     --green-d: #16a34a;   --red: #ef4444;        --red-d: #dc2626;
+      --orange: #f97316;    --purple: #a855f7;    --amber: #f59e0b;
+      --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-pill: 999px;
+      --sh-1: 0 2px 8px rgba(0,0,0,.38);  --sh-2: 0 10px 30px rgba(0,0,0,.55);
+      --glass: rgba(14, 21, 38, .86);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --pad-x: max(10px, calc((100% - 1040px) / 2));      /* 大螢幕：上方操作區置中、不拉得太長 */
+    }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     .leaflet-tile-container, .leaflet-zoom-animated { will-change: transform; }
     .leaflet-tile { transition: opacity 0.12s linear; }
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
-      background: #0b0f19; color: #f8fafc;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font); font-size: 15px;
       overflow: hidden; display: flex; flex-direction: column;
-      transition: all 0.2s ease;
     }
+    button { font-family: inherit; }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
+    /* ---------- 頂部操作區 ---------- */
     .top-section {
-      padding: 4px 6px 2px 6px;
-      flex-shrink: 0;
-      background: #0b0f19;
-      z-index: 20;
+      padding: 8px var(--pad-x) 6px; flex-shrink: 0; background: var(--bg); z-index: 20;
       transition: transform 0.25s ease, opacity 0.2s ease;
     }
-
-    .top-toolbar {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 3px;
-    }
+    .top-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
     .btn-top {
-      padding: 6px 0;
-      border: 1px solid #334155;
-      color: #f8fafc;
-      border-radius: 5px;
-      font-size: 0.85rem;
-      font-weight: bold;
-      cursor: pointer;
-      text-align: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      height: 42px; padding: 0 12px; border: 1px solid var(--line-2); color: var(--text);
+      border-radius: var(--r-md); font-size: 14px; font-weight: 700; cursor: pointer; text-align: center;
+      display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: var(--sh-1);
+      transition: transform .08s, filter .15s;
     }
-    .btn-import { background: #2563eb; border-color: #3b82f6; flex: 1.5; }
-    .btn-clear { background: #dc2626; border-color: #ef4444; flex: 1; }
-    .btn-month { background: #0284c7; border-color: #38bdf8; flex: 1.2; }
-    .btn-install { background: #9333ea; border-color: #a855f7; flex: 1.2; display: none; }
+    .btn-top:active { transform: scale(.97); }
+    .btn-import { background: linear-gradient(180deg, #3b82f6, #2563eb); border-color: #60a5fa; flex: 1.5; }
+    .btn-month  { background: var(--surface-3); border-color: var(--line-2); color: #bae6fd; flex: 1.2; }
+    .btn-clear  { background: transparent; border-color: rgba(239,68,68,.55); color: #fca5a5; flex: .7; box-shadow: none; }
+    .btn-install { background: linear-gradient(180deg, #a855f7, #7e22ce); border-color: #c084fc; flex: 1.2; display: none; }
 
-    /* ★ 日期狀態列：永遠看得出現在是「今日」還是「檢視過去紀錄」 */
+    /* 日期狀態列：永遠看得出現在是「今日」還是「檢視過去紀錄」 */
     .date-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 6px; padding: 3px 8px; margin-bottom: 3px;
-      border-radius: 5px; font-size: 0.78rem; font-weight: bold;
-      background: #064e3b; border: 1px solid #10b981; color: #a7f3d0;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 0 12px; min-height: 34px; margin-bottom: 8px; border-radius: var(--r-pill);
+      font-size: 13px; font-weight: 700; background: rgba(16,185,129,.14); border: 1px solid rgba(16,185,129,.55); color: #a7f3d0;
     }
-    .date-bar.past {
-      background: #78350f; border-color: #f59e0b; color: #fde68a;
-    }
+    .date-bar.past { background: rgba(245,158,11,.16); border-color: rgba(245,158,11,.7); color: #fde68a; }
     .date-bar button {
-      background: #f59e0b; color: #000; border: none; border-radius: 4px;
-      padding: 3px 8px; font-size: 0.75rem; font-weight: bold; cursor: pointer;
-      white-space: nowrap; display: none;
+      background: var(--amber); color: #1a1200; border: none; border-radius: var(--r-pill);
+      padding: 5px 12px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; display: none;
     }
     .date-bar.past button { display: inline-block; }
-    .date-bar #date-bar-text { flex: 1; cursor: pointer; }
+    .date-bar #date-bar-text { flex: 1; cursor: pointer; padding: 6px 0; }
 
     #toast {
-      position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.97); border: 1px solid #38bdf8; color: #f8fafc;
-      padding: 10px 14px; border-radius: 10px; z-index: 5000; display: none;
-      align-items: center; gap: 12px; font-size: 0.85rem; font-weight: bold;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.7); max-width: 92vw;
+      position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%);
+      background: rgba(15, 23, 42, .97); border: 1px solid var(--line-2); color: var(--text);
+      padding: 10px 12px 10px 16px; border-radius: var(--r-pill); z-index: 5000; display: none;
+      align-items: center; gap: 12px; font-size: 14px; font-weight: 700; box-shadow: var(--sh-2); max-width: 92vw;
     }
     #toast button {
-      background: #facc15; color: #000; border: none; border-radius: 5px;
-      padding: 5px 12px; font-weight: bold; cursor: pointer; white-space: nowrap;
+      background: var(--yellow); color: #1a1500; border: none; border-radius: var(--r-pill);
+      padding: 7px 14px; font-weight: 800; cursor: pointer; white-space: nowrap;
     }
 
+    /* ---------- 輸入列 ---------- */
     .manual-input-bar {
-      display: flex; align-items: center;
-      background: #131d31; border: 1px solid #334155;
-      border-radius: 5px; padding: 2px 4px; margin-bottom: 3px; gap: 3px;
+      display: flex; align-items: center; background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--r-md); padding: 4px 4px 4px 6px; margin-bottom: 8px; gap: 6px; transition: border-color .15s, box-shadow .15s;
     }
+    .manual-input-bar:focus-within { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(56,189,248,.22); }
     .prefix-badge {
-      background: #3b82f6; color: #fff; font-weight: bold;
-      font-size: 1rem; font-family: monospace;
-      padding: 1px 6px; border-radius: 3px;
-      user-select: none; min-width: 30px; text-align: center;
+      background: var(--blue-d); color: #fff; font-weight: 800; font-size: 16px; font-family: var(--mono);
+      height: 34px; min-width: 34px; padding: 0 8px; border-radius: var(--r-sm);
+      display: flex; align-items: center; justify-content: center; user-select: none;
     }
     .manual-input {
-      flex: 1; background: transparent; border: none;
-      color: #facc15; font-size: 1rem; font-family: monospace;
-      font-weight: bold; outline: none; text-transform: uppercase;
-      min-width: 0;
+      flex: 1; background: transparent; border: none; color: var(--yellow); font-size: 16px; font-family: var(--mono);
+      font-weight: 700; outline: none; text-transform: uppercase; min-width: 0; height: 36px;
     }
-    .manual-input::placeholder {
-      font-size: 0.75rem; color: #64748b; font-family: -apple-system, sans-serif;
-    }
+    .manual-input::placeholder { font-size: 13px; color: var(--text-3); font-family: var(--font); font-weight: 500; text-transform: none; }
     .btn-manual-add {
-      background: #16a34a; color: #fff; border: none;
-      padding: 4px 10px; border-radius: 3px;
-      font-size: 0.78rem; font-weight: bold; cursor: pointer; white-space: nowrap;
+      background: var(--green-d); color: #fff; border: none; height: 36px; padding: 0 16px;
+      border-radius: var(--r-sm); font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap;
     }
+    .btn-manual-add:active { filter: brightness(.9); }
 
+    /* ---------- 工單列表 ---------- */
     .task-list-section {
-      background: #131d31; border-radius: 5px; border: 1px solid #1e293b;
-      padding: 2px 3px; height: 142px; overflow-y: auto; touch-action: pan-y;
+      background: var(--surface); border-radius: var(--r-md); border: 1px solid var(--line);
+      padding: 6px; height: clamp(172px, 27vh, 320px); overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain;
     }
-
     .task-row {
       display: flex; align-items: center; justify-content: space-between;
-      min-height: 30px; padding: 2px 4px; margin-bottom: 2px;
-      background: #1e293b; border-radius: 3px; border-left: 3px solid #38bdf8;
-      cursor: pointer; user-select: none; gap: 3px;
+      min-height: 46px; padding: 4px 6px 4px 8px; margin-bottom: 6px;
+      background: var(--surface-2); border-radius: 10px; border-left: 4px solid var(--cyan);
+      cursor: pointer; user-select: none; gap: 8px; transition: background .12s;
     }
-    .task-row.active {
-      background: #1e3a5f; border-left-color: #facc15;
-    }
-
+    .task-row:last-child { margin-bottom: 0; }
+    .task-row.active { background: #1f3358; border-left-color: var(--yellow); box-shadow: inset 0 0 0 1px rgba(250,204,21,.35); }
     .task-row.nd-case {
-      background: #dc2626 !important;
-      border-left: 4px solid #fef08a !important;
-      border-top: 1px solid #f87171 !important;
-      border-right: 1px solid #f87171 !important;
-      border-bottom: 1px solid #f87171 !important;
-      box-shadow: 0 0 8px rgba(220, 38, 38, 0.5) !important;
+      background: #b91c1c !important; border-left: 4px solid #fef08a !important;
+      box-shadow: 0 0 0 1px rgba(252,165,165,.55), 0 2px 10px rgba(220,38,38,.35) !important;
     }
-    .task-row.nd-case.active {
-      background: #b91c1c !important;
-      border-color: #ffffff !important;
-    }
-
-    .sortable-chosen {
-      background: #1d4ed8 !important; border-left-color: #facc15 !important;
-      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.7) !important;
-      transform: scale(1.01) !important; z-index: 999 !important;
-    }
-    .sortable-ghost {
-      opacity: 0.25 !important; background: #38bdf8 !important; border: 1px dashed #facc15 !important;
-    }
-
-    .task-left {
-      display: flex; align-items: center; flex: 1; min-width: 0; gap: 3px;
-    }
-    .drag-handle {
-      color: #64748b; font-size: 0.75rem; cursor: grab; flex-shrink: 0;
-    }
+    .task-row.nd-case.active { background: #991b1b !important; box-shadow: 0 0 0 2px #fff !important; }
+    .sortable-chosen { background: #1d4ed8 !important; border-left-color: var(--yellow) !important; box-shadow: var(--sh-2) !important; transform: scale(1.01) !important; z-index: 999 !important; }
+    .sortable-ghost { opacity: .3 !important; background: var(--cyan) !important; border: 1px dashed var(--yellow) !important; }
+    .task-left { display: flex; align-items: center; flex: 1; min-width: 0; gap: 8px; }
+    .drag-handle { color: var(--text-3); font-size: 14px; cursor: grab; flex-shrink: 0; padding: 4px 2px; }
     .task-row.nd-case .drag-handle { color: #fecaca; }
-
-    .task-num-label {
-      color: #38bdf8; font-weight: bold; flex-shrink: 0; width: 18px; font-size: 0.78rem; text-align: center;
-    }
-    .task-row.nd-case .task-num-label { color: #ffffff; }
-
+    .task-num-label { color: var(--cyan); font-weight: 800; flex-shrink: 0; min-width: 24px; font-size: 13px; text-align: center; font-family: var(--mono); }
+    .task-row.nd-case .task-num-label { color: #fff; }
     .task-time-badge {
-      background: #0284c7; color: #fff; font-size: 0.68rem; font-weight: bold;
-      padding: 1px 2px; border-radius: 2px; flex-shrink: 0;
-      width: 44px; text-align: center; font-family: monospace;
+      background: #0369a1; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 7px;
+      border-radius: var(--r-pill); flex-shrink: 0; text-align: center; font-family: var(--mono);
     }
-    .task-row.nd-case .task-time-badge {
-      background: #7f1d1d; color: #fef08a; border: 1px solid #fca5a5;
-    }
-
-    .task-title {
-      font-family: monospace; font-weight: bold; font-size: 0.8rem;
-      color: #facc15; flex-shrink: 0; white-space: nowrap;
-    }
+    .task-row.nd-case .task-time-badge { background: #7f1d1d; color: #fef08a; border: 1px solid #fca5a5; }
+    .task-title { font-family: var(--mono); font-weight: 800; font-size: 14px; color: var(--yellow); flex-shrink: 0; white-space: nowrap; }
     .task-row.nd-case .task-title { color: #fef08a; }
-
-    .task-desc {
-      font-size: 0.8rem; color: #e2e8f0; flex: 1;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
-      margin-left: 3px;
-    }
-    .task-row.nd-case .task-desc { color: #ffffff; font-weight: 800; }
-
-    .row-actions { flex-shrink: 0; display: flex; gap: 2px; }
+    .task-desc { font-size: 14px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .task-row.nd-case .task-desc { color: #fff; font-weight: 800; }
+    .row-actions { flex-shrink: 0; display: flex; gap: 6px; }
     .row-actions button {
-      background: none; border: 1px solid #64748b; color: #ef4444;
-      border-radius: 3px; font-size: 0.7rem; padding: 1px 4px; cursor: pointer;
+      background: rgba(255,255,255,.04); border: 1px solid var(--line-2); color: #fca5a5;
+      border-radius: var(--r-sm); font-size: 14px; min-width: 36px; height: 36px; padding: 0 8px; cursor: pointer;
     }
-    .btn-edit-row { color: #38bdf8 !important; border-color: #38bdf8 !important; }
-    .task-row.nd-case .row-actions button {
-      border-color: #fecaca; color: #ffffff; background: rgba(127, 29, 29, 0.6);
-    }
+    .row-actions button:active { filter: brightness(1.4); }
+    .btn-edit-row { color: var(--cyan) !important; border-color: rgba(56,189,248,.55) !important; }
+    .btn-pick-row { color: #fbbf24 !important; border-color: rgba(251,191,36,.6) !important; }
+    .task-row.nd-case .row-actions button { border-color: #fecaca; color: #fff; background: rgba(127,29,29,.6); }
     .task-row.nd-case .btn-edit-row { color: #fef08a !important; border-color: #fef08a !important; }
-
-    .btn-pick-row { color: #fbbf24 !important; border-color: #fbbf24 !important; }
     .task-row.nd-case .btn-pick-row { color: #fef08a !important; border-color: #fef08a !important; }
+    .task-empty { color: var(--text-3); font-size: 13px; padding: 10px 6px; }
 
+    /* ---------- 導航列 ---------- */
     .nav-action-bar {
-      display: flex; gap: 6px; padding: 4px 8px;
-      background: #0f172a; flex-shrink: 0; border-top: 1px solid #1e293b;
+      display: flex; gap: 8px; padding: 8px var(--pad-x); background: var(--bg); flex-shrink: 0;
       transition: transform 0.25s ease, opacity 0.2s ease;
     }
     .btn-nav-start {
-      flex: 2; background: #16a34a; color: #fff; border: 1px solid #4ade80;
-      text-decoration: none; font-weight: bold; font-size: 0.9rem;
-      border-radius: 5px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3); padding: 6px 0; cursor: pointer;
+      flex: 2; background: linear-gradient(180deg, #22c55e, #16a34a); color: #fff; border: 1px solid #86efac;
+      text-decoration: none; font-weight: 800; font-size: 16px; border-radius: var(--r-md);
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      box-shadow: var(--sh-1); height: 46px; cursor: pointer; transition: transform .08s;
     }
+    .btn-nav-start:active { transform: scale(.98); }
+    .seg { flex: 1.6; display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 3px; gap: 3px; }
     .btn-mode-switch {
-      flex: 1; background: #1e293b; color: #94a3b8; border: 1px solid #475569;
-      padding: 6px 0; border-radius: 5px; font-weight: bold; font-size: 0.85rem;
-      cursor: pointer; transition: all 0.15s;
+      flex: 1; background: transparent; color: var(--text-3); border: none; height: 38px;
+      border-radius: 9px; font-weight: 800; font-size: 14px; cursor: pointer; transition: background .15s, color .15s;
     }
-    .btn-mode-switch.active {
-      background: #0284c7; color: #ffffff; border-color: #38bdf8;
-      box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
-    }
+    .btn-mode-switch.active { background: var(--blue-d); color: #fff; box-shadow: 0 1px 6px rgba(37,99,235,.5); }
 
-    .map-container {
-      position: relative; flex: 1; width: 100%; height: 100%;
-      background: #000; border-top: 2px solid #38bdf8; overflow: hidden;
-    }
+    /* ---------- 地圖區 ---------- */
+    .map-container { position: relative; flex: 1; width: 100%; height: 100%; background: #000; border-top: 1px solid var(--line-2); overflow: hidden; }
     #leaflet-map { width: 100%; height: 100%; z-index: 1; }
     iframe#streetview-frame { width: 100%; height: 100%; border: none; display: none; }
+    .hide-all-case-labels .case-label-large { display: none !important; }
+    .hide-all-markers .leaflet-marker-pane { display: none !important; }
 
-    .hide-all-case-labels .case-label-large {
-      display: none !important;
-    }
-    .hide-all-markers .leaflet-marker-pane {
-      display: none !important;
-    }
-
-    .floating-controls {
-      position: absolute; bottom: 16px; right: 12px;
-      display: flex; flex-direction: column; gap: 8px; z-index: 900;
-    }
+    .floating-controls { position: absolute; bottom: 18px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 900; }
     .float-btn {
-      background: rgba(15, 23, 42, 0.9); color: #f8fafc; border: 1px solid #475569;
-      border-radius: 50%; width: 44px; height: 44px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; font-weight: bold; box-shadow: 0 3px 10px rgba(0,0,0,0.5); cursor: pointer;
+      background: var(--glass); color: var(--text); border: 1px solid rgba(255,255,255,.16);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 700; box-shadow: var(--sh-1); cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s;
     }
-    .float-btn.tracking-active { background: #22c55e; color: #fff; border-color: #fff; box-shadow: 0 0 12px #22c55e; }
-    .float-btn.pin-mode-active { background: #a855f7; color: #fff; border-color: #fff; box-shadow: 0 0 12px #a855f7; }
-    .float-btn.sort-mode-active { background: #dc2626; color: #fff; border-color: #fff; box-shadow: 0 0 12px #dc2626; }
-    .float-btn.cad-mode-active { background: #eab308; color: #000; border-color: #fff; box-shadow: 0 0 12px #eab308; }
+    .float-btn:active { transform: scale(.93); }
+    .float-btn.tracking-active { background: var(--green-d); color: #fff; border-color: #bbf7d0; box-shadow: 0 0 0 4px rgba(34,197,94,.3), var(--sh-1); }
+    .float-btn.pin-mode-active { background: #9333ea; color: #fff; border-color: #e9d5ff; box-shadow: 0 0 0 4px rgba(168,85,247,.3), var(--sh-1); }
+    .float-btn.sort-mode-active { background: var(--red-d); color: #fff; border-color: #fecaca; box-shadow: 0 0 0 4px rgba(239,68,68,.3), var(--sh-1); }
+    .float-btn.cad-mode-active { background: #eab308; color: #1a1200; border-color: #fef9c3; box-shadow: 0 0 0 4px rgba(234,179,8,.3), var(--sh-1); }
+    .float-btn.disp-mode-1 { background: var(--amber); color: #1a1200; border-color: #fff7e0; box-shadow: 0 0 0 4px rgba(245,158,11,.28), var(--sh-1); }
+    .float-btn.disp-mode-2 { background: #0284c7; color: #fff; border-color: #e0f2fe; box-shadow: 0 0 0 4px rgba(2,132,199,.3), var(--sh-1); }
+    .float-btn.disp-mode-3 { background: #059669; color: #fff; border-color: #d1fae5; box-shadow: 0 0 0 4px rgba(16,185,129,.3), var(--sh-1); }
+    .float-btn.disp-mode-4 { background: #64748b; color: #fff; border-color: #f1f5f9; box-shadow: 0 0 0 4px rgba(100,116,139,.3), var(--sh-1); }
 
-    .float-btn.disp-mode-1 { background: #f59e0b; color: #000; border-color: #fff; box-shadow: 0 0 10px #f59e0b; }
-    .float-btn.disp-mode-2 { background: #0284c7; color: #fff; border-color: #fff; box-shadow: 0 0 10px #0284c7; }
-    .float-btn.disp-mode-3 { background: #10b981; color: #fff; border-color: #fff; box-shadow: 0 0 10px #10b981; }
-    .float-btn.disp-mode-4 { background: #64748b; color: #fff; border-color: #fff; box-shadow: 0 0 10px #64748b; }
-
-    #cad-calib-box {
-      position: absolute; bottom: 16px; left: 10px; z-index: 900;
-      display: none; flex-direction: column; gap: 6px;
-    }
+    /* ---------- 圖資校準 ---------- */
+    #cad-calib-box { position: absolute; bottom: 18px; left: 10px; z-index: 900; display: none; flex-direction: column; gap: 8px; }
     #cad-status-pill {
-      background: rgba(15, 23, 42, 0.95); border: 1px solid #eab308;
-      color: #facc15; font-size: 11px; font-weight: bold; font-family: monospace;
-      padding: 6px 10px; border-radius: 8px; display: flex; align-items: center; gap: 6px;
-      flex-wrap: wrap; max-width: 78vw;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+      background: var(--glass); border: 1px solid rgba(250,204,21,.55); color: var(--yellow);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      font-size: 12px; font-weight: 700; font-family: var(--mono); padding: 6px 8px 6px 12px; border-radius: var(--r-pill);
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 78vw; box-shadow: var(--sh-1);
     }
     .cad-mini-btn {
-      background: #334155; border: 1px solid #64748b; color: #fff; border-radius: 4px;
-      padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: bold;
+      background: var(--surface-3); border: 1px solid var(--line-2); color: #fff; border-radius: var(--r-pill);
+      padding: 0 12px; height: 30px; font-size: 12px; cursor: pointer; font-weight: 700;
     }
     body, .leaflet-container, #cad-nudge-pad, #cad-nudge-pad * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
     input, textarea { -webkit-user-select: text; user-select: text; }
     #cad-nudge-pad {
-      background: rgba(15, 23, 42, 0.95); border: 1px solid #475569;
-      border-radius: 10px; padding: 6px 8px; display: none; flex-direction: column;
-      align-items: center; gap: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+      background: var(--glass); border: 1px solid var(--line-2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      border-radius: var(--r-lg); padding: 10px; display: none; flex-direction: column; align-items: center; gap: 6px; box-shadow: var(--sh-2);
     }
     .nudge-row { display: flex; gap: 6px; align-items: center; }
     .nudge-btn {
-      background: #1e293b; color: #fff; border: 1px solid #64748b;
-      border-radius: 6px; width: 38px; height: 34px; font-size: 14px;
-      font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      background: var(--surface-3); color: #fff; border: 1px solid var(--line-2); border-radius: 10px;
+      width: 42px; height: 38px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    .nudge-btn:active { background: #3b82f6; transform: scale(0.95); }
+    .nudge-btn:active { background: var(--blue-d); transform: scale(.95); }
 
-    #here-wrap { position: absolute; top: 8px; left: 8px; z-index: 800; display: flex; align-items: center; gap: 6px; pointer-events: none; }
-    #here-time { font: 10px monospace; color: rgba(30,41,59,0.62); text-shadow: 0 0 2px rgba(255,255,255,0.95), 0 0 3px rgba(255,255,255,0.8);
-      white-space: nowrap; letter-spacing: 0.3px; }
+    /* ---------- 地圖上的文字標籤 ---------- */
+    #here-wrap { position: absolute; top: 10px; left: 10px; z-index: 800; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+    #here-time { font: 11px var(--mono); color: rgba(30,41,59,.7); text-shadow: 0 0 2px rgba(255,255,255,.95), 0 0 3px rgba(255,255,255,.8); white-space: nowrap; letter-spacing: .3px; }
     #here-code {
-      position: static; z-index: 800; cursor: pointer; pointer-events: auto;
-      background: rgba(15,23,42,0.82); color: #fde047; border: 1px solid #475569;
-      border-radius: 8px; padding: 3px 8px; font-family: monospace; font-weight: bold;
-      font-size: 13px; line-height: 1.25; display: none;
+      position: static; z-index: 800; cursor: pointer; pointer-events: auto; background: var(--glass); color: #fde047;
+      border: 1px solid var(--line-2); border-radius: 10px; padding: 4px 10px; font-family: var(--mono); font-weight: 800;
+      font-size: 13px; line-height: 1.25; display: none; box-shadow: var(--sh-1);
     }
-    #here-code small { display: block; font-size: 10px; color: #94a3b8; font-weight: normal; }
-    #here-cross { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px;
-      z-index: 790; pointer-events: none; display: none; }
-    #here-cross::before, #here-cross::after { content: ''; position: absolute; background: #ef4444;
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.9); }
+    #here-code small { display: block; font-size: 10px; color: var(--text-3); font-weight: 400; }
+    #here-cross { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; z-index: 790; pointer-events: none; display: none; }
+    #here-cross::before, #here-cross::after { content: ''; position: absolute; background: var(--red); box-shadow: 0 0 0 1px rgba(255,255,255,.9); }
     #here-cross::before { left: 13px; top: 0; width: 2px; height: 28px; }
     #here-cross::after { top: 13px; left: 0; height: 2px; width: 28px; }
-    #here-cross-label { position: absolute; left: 32px; top: 2px; white-space: nowrap; font: bold 14px monospace;
-      color: #fde047; background: rgba(15,23,42,0.88); border: 1px solid #ef4444; border-radius: 6px; padding: 2px 6px; pointer-events: auto; cursor: pointer; }
-    .meas-dot { width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #f97316;
-      border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.7); box-sizing: border-box; }
-    .meas-label { background: rgba(15,23,42,0.92) !important; color: #fde047 !important; border: 1px solid #f97316 !important;
-      font: bold 14px monospace !important; padding: 2px 8px !important; border-radius: 6px !important; box-shadow: none !important; }
+    #here-cross-label {
+      position: absolute; left: 34px; top: 2px; white-space: nowrap; font: 800 14px var(--mono); color: #fde047;
+      background: var(--glass); border: 1px solid var(--red); border-radius: 8px; padding: 3px 8px; pointer-events: auto; cursor: pointer;
+    }
+    .meas-dot { width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--orange); border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,.7); box-sizing: border-box; }
+    .meas-label { background: var(--glass) !important; color: #fde047 !important; border: 1px solid var(--orange) !important; font: 800 14px var(--mono) !important; padding: 3px 9px !important; border-radius: 8px !important; box-shadow: none !important; }
     .meas-label::before { display: none !important; }
-    #more-tools { display: none; flex-direction: column; align-items: center; gap: 8px; }
-    #drawbar { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2500; width: min(96vw, 560px);
-      background: rgba(15,23,42,0.94); border: 1px solid #475569; border-radius: 12px; padding: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.7); }
-    #draw-status { font-size: 12px; color: #fde047; text-align: center; padding: 0 4px 5px; font-weight: bold; min-height: 16px; }
-    #draw-tools { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; }
-    .dt { background: #1e293b; color: #fff; border: 1px solid #64748b; border-radius: 8px; min-width: 52px; height: 42px;
-      font-size: 17px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; cursor: pointer; }
-    .dt small { font-size: 10px; font-weight: normal; color: #cbd5e1; }
-    .dt.on { background: #f97316; border-color: #fff; }
+    #more-tools { display: none; flex-direction: column; align-items: center; gap: 10px; }
+    #drawbar { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2500; width: min(96vw, 560px); background: var(--glass); border: 1px solid var(--line-2); border-radius: var(--r-lg); padding: 8px; box-shadow: var(--sh-2); }
+    #draw-status { font-size: 12px; color: #fde047; text-align: center; padding: 0 4px 6px; font-weight: 700; min-height: 16px; }
+    #draw-tools { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+    .dt { background: var(--surface-3); color: #fff; border: 1px solid var(--line-2); border-radius: 10px; min-width: 52px; height: 44px; font-size: 17px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; cursor: pointer; }
+    .dt small { font-size: 10px; font-weight: 400; color: var(--text-2); }
+    .dt.on { background: var(--orange); border-color: #fff; }
     .dt.on small { color: #fff; }
-    .draw-len { background: transparent !important; border: none !important; box-shadow: none !important; color: #1d4ed8 !important;
-      font: bold 12px monospace !important; padding: 0 !important; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
+    .draw-len { background: transparent !important; border: none !important; box-shadow: none !important; color: #1d4ed8 !important; font: 700 12px var(--mono) !important; padding: 0 !important; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
     .draw-len::before { display: none !important; }
     .draw-tot { color: #b91c1c !important; font-size: 13px !important; }
-    .draw-text { font: bold 14px sans-serif; color: #dc2626; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; transform: translate(-50%, -50%); }
-    .draw-vtx { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; border: 2px solid #dc2626; box-sizing: border-box; }
+    .draw-text { font: 700 14px var(--font); color: var(--red-d); white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; transform: translate(-50%, -50%); }
+    .draw-vtx { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff; border: 2px solid var(--red-d); box-sizing: border-box; }
     #mapBanner {
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      background: rgba(126, 34, 206, 0.95); border: 2px solid #ffffff;
-      border-radius: 8px; padding: 6px 12px; color: white; z-index: 900;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none;
-      align-items: center; gap: 8px; font-size: 12px; font-weight: bold; white-space: nowrap;
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(126,34,206,.96); border: 1px solid #e9d5ff;
+      border-radius: var(--r-pill); padding: 8px 16px; color: #fff; z-index: 900; box-shadow: var(--sh-2);
+      display: none; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; white-space: nowrap;
     }
-
-    .google-blue-dot-wrapper {
-      transition: transform 0.35s linear;
-      cursor: pointer !important;
-    }
-    .google-blue-dot {
-      width: 16px; height: 16px;
-      background: #2563eb;
-      border: 2.5px solid #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 0 8px rgba(37, 99, 235, 0.9);
-    }
+    .google-blue-dot-wrapper { transition: transform .35s linear; cursor: pointer !important; }
+    .google-blue-dot { width: 16px; height: 16px; background: var(--blue-d); border: 2.5px solid #fff; border-radius: 50%; box-shadow: 0 0 8px rgba(37,99,235,.9); }
     .user-loc-label {
-      background: rgba(15, 23, 42, 0.92) !important;
-      border: 1.5px solid #38bdf8 !important;
-      color: #facc15 !important;
-      font-size: 11px !important;
-      font-weight: 800 !important;
-      font-family: monospace !important;
-      padding: 2px 6px !important;
-      border-radius: 4px !important;
-      white-space: nowrap !important;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important;
-      cursor: pointer !important;
-      pointer-events: auto !important;
+      background: var(--glass) !important; border: 1px solid var(--cyan) !important; color: var(--yellow) !important;
+      font-size: 12px !important; font-weight: 800 !important; font-family: var(--mono) !important; padding: 3px 8px !important;
+      border-radius: 8px !important; white-space: nowrap !important; box-shadow: var(--sh-1) !important; cursor: pointer !important; pointer-events: auto !important;
     }
-    .user-loc-label:active {
-      background: #0284c7 !important;
-      color: #ffffff !important;
-    }
-
+    .user-loc-label:active { background: #0284c7 !important; color: #fff !important; }
     .case-label-large {
-      background: rgba(0, 0, 0, 0.88) !important;
-      border: 1.5px solid #2563eb !important;
-      color: #ffffff !important;
-      font-size: 11px !important;
-      font-weight: 700 !important;
-      padding: 3px 6px !important;
-      border-radius: 4px !important;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important;
-      white-space: nowrap !important;
-      cursor: pointer !important;
-      pointer-events: auto !important;
+      background: rgba(8,13,26,.92) !important; border: 1.5px solid var(--blue-d) !important; color: #fff !important;
+      font-size: 12px !important; font-weight: 700 !important; padding: 3px 8px !important; border-radius: 8px !important;
+      box-shadow: var(--sh-1) !important; white-space: nowrap !important; cursor: pointer !important; pointer-events: auto !important;
     }
-    .case-label-large.nd-pin {
-      background: #dc2626 !important;
-      border: 2px solid #fef08a !important;
-      color: #ffffff !important;
-      box-shadow: 0 3px 10px rgba(220, 38, 38, 0.85) !important;
-    }
-    .case-label-large.selected-case {
-      border: 2px solid #facc15 !important;
-      z-index: 9999 !important;
-    }
-
-    .case-label-large b { color: #38bdf8; }
+    .case-label-large.nd-pin { background: var(--red-d) !important; border: 2px solid #fef08a !important; color: #fff !important; box-shadow: 0 3px 12px rgba(220,38,38,.8) !important; }
+    .case-label-large.selected-case { border: 2px solid var(--yellow) !important; z-index: 9999 !important; }
+    .case-label-large b { color: var(--cyan); }
     .case-label-large.nd-pin b { color: #fef08a; }
-    .case-road-text { color: #facc15; font-weight: bold; font-size: 10px; margin-left: 3px; }
-    .case-label-large.nd-pin .case-road-text { color: #ffffff; font-weight: 800; }
+    .case-road-text { color: var(--yellow); font-weight: 700; font-size: 11px; margin-left: 4px; }
+    .case-label-large.nd-pin .case-road-text { color: #fff; font-weight: 800; }
+    .base-label { background: var(--glass); border: 1px solid var(--line-2); color: #f1f5f9; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 8px; white-space: nowrap; cursor: pointer !important; pointer-events: auto !important; }
+    .inspect-label { background: rgba(126,34,206,.96); border: 1px solid #e9d5ff; color: #fff; font-size: 12px; font-weight: 800; padding: 4px 9px; border-radius: 8px; white-space: nowrap; }
+    .icon-taipower, .icon-rest, .icon-food, .icon-custom { border: 2px solid #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+    .icon-taipower { background: linear-gradient(135deg, #eab308, #ca8a04); width: 30px; height: 30px; font-size: 16px; }
+    .icon-rest { background: linear-gradient(135deg, #38bdf8, #0284c7); width: 26px; height: 26px; font-size: 10px; font-weight: 900; color: #fff; }
+    .icon-food { background: linear-gradient(135deg, #f97316, #ea580c); width: 26px; height: 26px; font-size: 13px; }
+    .icon-custom { background: linear-gradient(135deg, #a855f7, #7e22ce); width: 26px; height: 26px; font-size: 12px; }
 
-    .base-label {
-      background: rgba(15, 23, 42, 0.9); border: 1px solid #475569; color: #f1f5f9;
-      font-size: 10px; font-weight: bold; padding: 2px 5px; border-radius: 4px; white-space: nowrap;
-      cursor: pointer !important; pointer-events: auto !important;
-    }
-    .inspect-label {
-      background: rgba(126, 34, 206, 0.95); border: 2px solid #ffffff; color: #ffffff;
-      font-size: 11px; font-weight: 800; padding: 3px 7px; border-radius: 6px; white-space: nowrap;
-    }
-    .icon-taipower {
-      background: linear-gradient(135deg, #eab308, #ca8a04); border: 2px solid #ffffff;
-      border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-      font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-    .icon-rest {
-      background: linear-gradient(135deg, #38bdf8, #0284c7); border: 2px solid #ffffff;
-      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 900; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-    .icon-food {
-      background: linear-gradient(135deg, #f97316, #ea580c); border: 2px solid #ffffff;
-      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-      font-size: 13px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-    .icon-custom {
-      background: linear-gradient(135deg, #a855f7, #7e22ce); border: 2px solid #ffffff;
-      border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-      font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
+    /* ---------- 地圖上的彈出卡片（Leaflet popup）---------- */
+    .leaflet-popup-content-wrapper { border-radius: var(--r-lg) !important; box-shadow: var(--sh-2) !important; padding: 2px !important; }
+    .leaflet-popup-content { margin: 12px 14px !important; font-size: 13px; line-height: 1.5; color: #1e293b; min-width: 190px; font-family: var(--font); }
+    .pop-title { font-size: 15px; font-weight: 800; color: #1d4ed8; margin-bottom: 2px; }
+    .pop-title.nd { color: #dc2626; }
+    .pop-sub { color: #475569; margin-top: 2px; }
+    .pop-warn { color: #b45309; font-size: 12px; margin-top: 4px; }
+    .pop-hint { color: #64748b; font-size: 11px; margin-top: 4px; }
+    .pop-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+    .pop-btn { display: block; width: 100%; height: 38px; border: none; border-radius: 10px; color: #fff; font-weight: 800; font-size: 13px; cursor: pointer; }
+    .pop-btn:active { filter: brightness(.88); }
+    .pop-btn.route { background: #0891b2; } .pop-btn.nav { background: var(--green-d); } .pop-btn.google { background: var(--blue-d); }
+    .pop-btn.share { background: #9333ea; } .pop-btn.danger { background: var(--red-d); height: 34px; font-size: 12px; }
 
-    #calendar-modal {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      z-index: 2000; display: none; padding: 14px; backdrop-filter: blur(4px);
-    }
-    .modal-content {
-      background: #1e293b; border-radius: 12px; display: flex; flex-direction: column;
-      padding: 14px; border: 1px solid #475569; max-height: 94vh; overflow-y: auto;
-    }
-    .modal-header {
-      display: flex; justify-content: space-between; align-items: center;
-      font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-bottom: 10px;
-    }
-    .cal-controls {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
-    }
-    .cal-controls button {
-      background: #334155; color: #fff; border: 1px solid #64748b;
-      border-radius: 4px; padding: 5px 12px; cursor: pointer; font-weight: bold;
-    }
-    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-    .cal-weekday { font-size: 0.8rem; color: #94a3b8; padding-bottom: 4px; font-weight: bold; }
-    .cal-day {
-      background: #0f172a; border: 1px solid #334155; border-radius: 6px; height: 48px;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      font-size: 0.85rem; cursor: pointer;
-    }
-    .cal-day.today { border-color: #38bdf8; font-weight: bold; }
-    .cal-day.selected { border-color: #facc15; box-shadow: 0 0 8px rgba(250, 204, 21, 0.6); }
-    .cal-day.has-data { border-color: #10b981; background: #064e3b; }
-    .cal-day.viewing { outline: 2px dashed #f59e0b; outline-offset: -3px; }
-    .badge-count { font-size: 0.65rem; color: #34d399; margin-top: 1px; }
+    /* ---------- 月曆 ---------- */
+    #calendar-modal { position: fixed; inset: 0; background: rgba(4,8,18,.82); z-index: 2000; display: none; padding: 14px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); overflow-y: auto; }
+    .modal-content { background: var(--surface); border-radius: var(--r-lg); display: flex; flex-direction: column; padding: 16px; border: 1px solid var(--line-2); max-height: 94vh; overflow-y: auto; max-width: 540px; margin: 0 auto; box-shadow: var(--sh-2); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; font-size: 17px; font-weight: 800; color: var(--cyan); margin-bottom: 12px; }
+    .cal-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .cal-controls button { background: var(--surface-3); color: #fff; border: 1px solid var(--line-2); border-radius: var(--r-sm); height: 38px; padding: 0 14px; cursor: pointer; font-weight: 700; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+    .cal-weekday { font-size: 12px; color: var(--text-3); padding-bottom: 4px; font-weight: 700; }
+    .cal-day { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; transition: transform .08s; }
+    .cal-day:active { transform: scale(.95); }
+    .cal-day.today { border-color: var(--cyan); font-weight: 800; }
+    .cal-day.selected { border-color: var(--yellow); box-shadow: 0 0 0 3px rgba(250,204,21,.25); }
+    .cal-day.has-data { border-color: rgba(16,185,129,.7); background: rgba(16,185,129,.16); }
+    .cal-day.viewing { outline: 2px dashed var(--amber); outline-offset: -3px; }
+    .badge-count { font-size: 10px; color: #34d399; margin-top: 1px; font-weight: 700; }
+    #day-action-sheet { margin-top: 14px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 12px; display: none; }
+    .sheet-title { font-size: 15px; font-weight: 800; color: var(--yellow); margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .sheet-desc { font-size: 13px; color: var(--text-2); margin-bottom: 10px; max-height: 96px; overflow-y: auto; line-height: 1.45; }
+    .sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .sheet-btn { min-height: 42px; padding: 6px 8px; border: none; border-radius: 10px; font-size: 13px; font-weight: 800; cursor: pointer; text-align: center; }
+    .sheet-btn:active { filter: brightness(.9); }
+    .btn-sheet-load { background: var(--green-d); color: #fff; } .btn-sheet-copy { background: #0284c7; color: #fff; }
+    .btn-sheet-save { background: #eab308; color: #1a1200; } .btn-sheet-del { background: var(--red-d); color: #fff; }
 
-    #day-action-sheet {
-      margin-top: 12px; background: #0f172a; border: 1px solid #475569;
-      border-radius: 8px; padding: 10px; display: none;
+    /* ---------- 共用對話框（取代瀏覽器內建的 alert／confirm／prompt）---------- */
+    .gq-overlay { position: fixed; inset: 0; background: rgba(4,8,18,.78); z-index: 6000; display: flex; align-items: center; justify-content: center; padding: 16px; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); animation: gqFade .12s ease-out; }
+    .gq-sheet { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-lg); width: 100%; max-width: 420px; padding: 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--sh-2); animation: gqPop .14s ease-out; }
+    .gq-title { display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: var(--cyan); font-size: 16px; }
+    .gq-x { background: none; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; width: 36px; height: 36px; border-radius: 50%; }
+    .gq-msg { color: var(--text); font-size: 15px; line-height: 1.55; white-space: pre-line; word-break: break-word; }
+    .gq-label { font-size: 12px; color: var(--text-3); font-weight: 700; }
+    .gq-field { display: flex; flex-direction: column; gap: 6px; }
+    .gq-input { height: 44px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--text); font-size: 16px; padding: 0 12px; outline: none; font-family: var(--font); }
+    .gq-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(56,189,248,.22); }
+    .gq-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .gq-btn { min-width: 92px; height: 44px; padding: 0 18px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--surface-3); color: #fff; font-weight: 800; font-size: 15px; cursor: pointer; }
+    .gq-btn.primary { background: linear-gradient(180deg, #3b82f6, #2563eb); border-color: #60a5fa; }
+    .gq-btn.ok { background: linear-gradient(180deg, #22c55e, #16a34a); border-color: #86efac; }
+    .gq-btn.danger { background: linear-gradient(180deg, #ef4444, #dc2626); border-color: #fca5a5; }
+    .gq-btn:active { filter: brightness(.9); transform: scale(.98); }
+    @keyframes gqFade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes gqPop { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+
+
+    /* ---------- 窄欄（手機、電腦側欄）：工單改兩行，地址不再被截斷 ---------- */
+    @media (max-width: 560px), (min-width: 1000px) and (min-height: 560px) {
+      .task-row { min-height: 58px; }
+      .task-left { flex-wrap: wrap; row-gap: 1px; }
+      .task-desc { flex: 1 0 100%; order: 9; padding-left: 30px; font-size: 13px; color: var(--text-2); }
+      .task-row.nd-case .task-desc { color: #fff; }
     }
-    .sheet-title {
-      font-size: 0.95rem; font-weight: bold; color: #facc15;
-      margin-bottom: 6px; display: flex; justify-content: space-between;
+    /* ---------- 電腦／平板橫放：左側工單欄＋右側整片地圖 ---------- */
+    @media (min-width: 1000px) and (min-height: 560px) {
+      :root { --pad-x: 14px; }
+      body { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+      .top-section { grid-column: 1; grid-row: 1; width: 410px; padding: 14px 14px 8px; overflow-y: auto; border-right: 1px solid var(--line); }
+      .task-list-section { height: clamp(200px, calc(100vh - 300px), 900px); }
+      .nav-action-bar { grid-column: 1; grid-row: 2; width: 410px; padding: 10px 14px 14px; flex-wrap: wrap; border-right: 1px solid var(--line); }
+      .btn-nav-start { flex: 1 1 100%; }
+      .seg { flex: 1 1 100%; }
+      .map-container { grid-column: 2; grid-row: 1 / span 2; height: auto; border-top: none; }
     }
-    .sheet-desc {
-      font-size: 0.8rem; color: #94a3b8; margin-bottom: 8px;
-      max-height: 90px; overflow-y: auto; line-height: 1.3;
+    /* ---------- 大螢幕（電腦）：滑鼠停留回饋 ---------- */
+    @media (hover: hover) and (pointer: fine) {
+      .btn-top:hover, .btn-nav-start:hover, .btn-manual-add:hover, .sheet-btn:hover, .gq-btn:hover, .pop-btn:hover { filter: brightness(1.12); }
+      .btn-mode-switch:not(.active):hover { color: var(--text); background: var(--surface-2); }
+      .float-btn:hover { background: rgba(30,41,69,.95); border-color: rgba(255,255,255,.3); }
+      .task-row:hover { background: #1c2b49; }
+      .row-actions button:hover { filter: brightness(1.4); }
+      .cal-day:hover { border-color: var(--line-2); }
     }
-    .sheet-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .sheet-btn {
-      padding: 8px 0; border: none; border-radius: 6px;
-      font-size: 0.85rem; font-weight: bold; cursor: pointer; text-align: center;
-    }
-    .btn-sheet-load { background: #16a34a; color: #fff; }
-    .btn-sheet-copy { background: #0284c7; color: #fff; }
-    .btn-sheet-save { background: #eab308; color: #000; }
-    .btn-sheet-del { background: #dc2626; color: #fff; }
   </style>
 </head>
 <body>
@@ -506,8 +411,10 @@
 
   <div id="nav-action-bar" class="nav-action-bar">
     <a id="btn-start-nav" class="btn-nav-start" target="_blank">🚗 開始導航</a>
-    <button id="btn-mode-map" class="btn-mode-switch active">🗺️ 地圖</button>
-    <button id="btn-mode-sv" class="btn-mode-switch">📷 街景</button>
+    <div class="seg">
+      <button id="btn-mode-map" class="btn-mode-switch active">🗺️ 地圖</button>
+      <button id="btn-mode-sv" class="btn-mode-switch">📷 街景</button>
+    </div>
   </div>
 
   <div class="map-container">
@@ -537,7 +444,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v55</div>
+        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v76</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -600,6 +507,40 @@
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+
+    // ===== 共用對話框：取代瀏覽器內建的 alert／confirm／prompt（樣式統一、手機上不會跳出陌生的系統視窗）=====
+    (function () {
+      let open = null;
+      function show(o) {
+        return new Promise((resolve) => {
+          const ov = document.createElement('div'); ov.className = 'gq-overlay';
+          const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+          ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true">' +
+            (o.title ? '<div class="gq-title"><span>' + esc(o.title) + '</span></div>' : '') +
+            (o.msg ? '<div class="gq-msg">' + esc(o.msg) + '</div>' : '') +
+            (o.input ? '<div class="gq-field"><input class="gq-input" type="text" autocomplete="off" spellcheck="false"></div>' : '') +
+            '<div class="gq-actions">' + (o.cancel ? '<button class="gq-btn" data-k="no">' + esc(o.cancelText || '取消') + '</button>' : '') +
+            '<button class="gq-btn ' + (o.danger ? 'danger' : 'primary') + '" data-k="ok">' + esc(o.okText || '確定') + '</button></div></div>';
+          const inp = ov.querySelector('input'); if (inp) inp.value = o.value || '';
+          const done = (v) => { document.removeEventListener('keydown', onKey, true); ov.remove(); open = null; resolve(v); };
+          const val = (ok) => ok ? (o.input ? (inp ? inp.value : '') : true) : (o.input ? null : false);
+          const onKey = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(val(false)); }
+            else if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); done(val(true)); }
+            else if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') e.stopImmediatePropagation();   // 對話框開著時，不讓畫板的快捷鍵搶走按鍵
+          };
+          document.addEventListener('keydown', onKey, true);
+          ov.addEventListener('click', (e) => { if (e.target === ov) done(val(false)); const k = e.target.dataset && e.target.dataset.k; if (k) done(val(k === 'ok')); });
+          document.body.appendChild(ov); open = ov;
+          setTimeout(() => { (inp || ov.querySelector('[data-k=ok]')).focus(); if (inp) inp.select(); }, 30);
+        });
+      }
+      window.gqConfirm = (msg, o) => show(Object.assign({ msg, cancel: true }, o || {}));
+      window.gqAlert = (msg, o) => show(Object.assign({ msg, cancel: false }, o || {})).then(() => {});
+      window.gqPrompt = (msg, value, o) => show(Object.assign({ msg, input: true, value: value || '', cancel: true }, o || {}));
+      window.alert = (m) => { window.gqAlert(m); };           // 需要等待答案的 confirm／prompt 已逐一改成 await gqConfirm／gqPrompt
+    })();
 
     const PDF_BASE_FOLDER = './115年圖資';
     const CAD_Q = (() => { try { return localStorage.getItem('tpc_cad_q') || 'fluid'; } catch (e) { return 'fluid'; } })();
@@ -988,18 +929,27 @@
       layers: [nlscEMap]
     });
 
-    // 完整的 4 種圖資切換控制
+    // 底圖淡化：白色薄紗疊在任何底圖上，拉桿控制透明度（0＝原底圖，100＝純白只剩台電線）
+    const cadOnlyLayer = L.gridLayer({ tileSize: 256, keepBuffer: 1, updateWhenIdle: false, updateWhenZooming: false, maxZoom: 21, zIndex: 3 });   
+    cadOnlyLayer.createTile = () => { const d = document.createElement('div'); d.style.background = '#fff'; return d; };
+
+    // 完整的 5 種圖資切換控制
     // 底圖切換：自己做的按鈕＋選單（疊在畫圖層之上，畫圖時也能切換）
     (function () {
       const defs = [['台灣通用電子地圖 (國土測繪)', nlscEMap], ['國土測繪正射影像 (航照)', nlscPhoto], ['Google 道路', googleRoads], ['Google 衛星混合', googleHybrid]];
       const css = document.createElement('style');
-      css.textContent = `#layer-btn { position: absolute; top: 10px; right: 12px; z-index: 950; width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.96); border: 1px solid #94a3b8; font-size: 22px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
-        #layer-pop { position: absolute; top: 60px; right: 12px; z-index: 950; display: none; background: rgba(15,23,42,0.97); border: 1px solid #64748b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
-        #layer-pop div { padding: 13px 16px; color: #e2e8f0; font-size: 14px; white-space: nowrap; border-bottom: 1px solid #334155; }
-        #layer-pop div:last-child { border-bottom: 0; } #layer-pop div.on { color: #fde047; font-weight: bold; } #layer-pop div.on::before { content: '✓ '; }`;
+      css.textContent = `#layer-btn { position: absolute; top: 8px; right: 10px; z-index: 950; width: 44px; height: 44px; border-radius: 12px; background: var(--glass); border: 1px solid rgba(255,255,255,.16); color: #e2e8f0; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh-1); cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); transition: transform .08s; }
+        #layer-btn:active { transform: scale(.94); }
+        #layer-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        #layer-pop { position: absolute; top: 60px; right: 10px; z-index: 950; display: none; background: rgba(15,23,42,.97); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; box-shadow: var(--sh-2); min-width: 230px; }
+        #layer-pop > div { padding: 13px 16px; color: #e2e8f0; font-size: 14px; white-space: nowrap; border-bottom: 1px solid var(--line); cursor: pointer; }
+        #layer-pop > div:hover { background: var(--surface-2); }
+        #layer-pop > div:last-child { border-bottom: 0; cursor: default; } #layer-pop > div:last-child:hover { background: transparent; }
+        #layer-pop > div.on { color: #fde047; font-weight: 800; } #layer-pop > div.on::before { content: '✓ '; }
+        #veil-row { padding: 12px 16px 14px; } #veil-row input { width: 100%; min-width: 200px; height: 28px; accent-color: var(--amber); }`;
       document.head.appendChild(css);
       const mc = document.querySelector('.map-container');
-      const btn = document.createElement('div'); btn.id = 'layer-btn'; btn.textContent = '🗺'; btn.title = '切換地圖種類';
+      const btn = document.createElement('div'); btn.id = 'layer-btn'; btn.setAttribute('role', 'button'); btn.setAttribute('aria-label', '切換地圖種類'); btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 16.5 9 5 9-5" opacity=".55"/></svg>'; btn.title = '切換地圖種類';
       const pop = document.createElement('div'); pop.id = 'layer-pop';
       const rows = defs.map(([name, l]) => {
         const row = document.createElement('div'); row.textContent = name;
@@ -1009,6 +959,17 @@
       const refresh = () => rows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l)));
       btn.addEventListener('click', (e) => { e.stopPropagation(); refresh(); pop.style.display = pop.style.display === 'block' ? 'none' : 'block'; });
       document.addEventListener('pointerdown', (e) => { if (!pop.contains(e.target) && e.target !== btn) pop.style.display = 'none'; }, true);
+      // 底圖淡化拉桿：0＝正常底圖，往右越淡，100＝純白只剩台電線（任何底圖都能用）
+      const vr = document.createElement('div'); vr.id = 'veil-row';
+      vr.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px">⚡ 底圖濃度 <b id="veil-v" style="color:#fde047">100%</b></div><input id="veil-r" type="range" min="0" max="100" step="1" value="100"><div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:2px"><span>淺（只看台電線）</span><span>深（原底圖）</span></div>';
+      pop.appendChild(vr);
+      const vin = vr.querySelector('input'), vv = vr.querySelector('#veil-v');
+      window.cadSetBase = (n) => {                              // n＝底圖濃度 0~100；100＝原底圖，0＝純白只剩台電線
+        n = Math.max(0, Math.min(100, Math.round(n))); vin.value = n; vv.textContent = n + '%';
+        if (n < 100) { if (!map.hasLayer(cadOnlyLayer)) cadOnlyLayer.addTo(map); cadOnlyLayer.setOpacity(1 - n / 100); if (!isCadOverlayEnabled && window.toggleCadOverlayMode) window.toggleCadOverlayMode(); }
+        else if (map.hasLayer(cadOnlyLayer)) map.removeLayer(cadOnlyLayer);
+      };
+      vin.addEventListener('input', () => window.cadSetBase(+vin.value));
       mc.appendChild(btn); mc.appendChild(pop);
     })();
 
@@ -1476,15 +1437,15 @@
     };
     const CAD_Q_NAMES = { fluid: '流暢', std: '標準', high: '高畫質' };
     { const qb = document.getElementById('cad-q-btn'); if (qb) qb.textContent = '畫質:' + CAD_Q_NAMES[CAD_Q]; }
-    window.cycleCadQuality = () => {
+    window.cycleCadQuality = async () => {
       const next = { fluid: 'std', std: 'high', high: 'fluid' }[CAD_Q];
-      if (!confirm(`圖資畫質改成「${CAD_Q_NAMES[next]}」？\n畫面會重新載入，圖資需要重新處理一次。\n（流暢＝最不卡、標準＝建議、高畫質＝最清楚但較卡）`)) return;
+      if (!(await gqConfirm(`圖資畫質改成「${CAD_Q_NAMES[next]}」？\n畫面會重新載入，圖資需要重新處理一次。\n（流暢＝最不卡、標準＝建議、高畫質＝最清楚但較卡）`, { okText: '改變並重新載入' }))) return;
       try { localStorage.setItem('tpc_cad_q', next); } catch (e) {}
       location.reload();
     };
     window.importCadFiles = () => document.getElementById('cad-files-input').click();
     window.clearCadStore = async () => {
-      if (!confirm('確定清除已匯入的本地圖資？')) return;
+      if (!(await gqConfirm('確定清除已匯入的本地圖資？', { danger: true, okText: '清除' }))) return;
       await idbClear('pdfs'); await idbClear('meta'); await idbClear('tiles');
       dropAllCadTiles();
       await refreshCadStatus();
@@ -1608,7 +1569,8 @@
     }
     setTimeout(pruneTileCache, 4000);
 
-    const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資
+    const MIN_CAD_ZOOM = 17;      // 只在放大到細部時才載圖資（向量）
+    const OV_MIN = 13;            // 縮小到這個等級以上，改用「總覽縮圖」代替向量
     const CAD_BASE_TILES = false;
     const MAX_CAD_VISIBLE = 4;    // 畫面最多同時用到 4 張（卡在四張交界）
     const MAX_CAD_KEEP = 6;       // 記憶體最多留 6 張
@@ -1623,7 +1585,8 @@
     }
 
     async function runLoadVisibleCadTiles() {
-      if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) return;
+      if (!isCadOverlayEnabled) return;
+      if (map.getZoom() < MIN_CAD_ZOOM) { cadVecUpdate(); return; }
       if (!CAD_BASE_TILES) { cadVecUpdate(); return; }   // v52：不再做點陣圖，改用向量直接畫
       const gen = ++cadLoadGen;
 
@@ -1727,10 +1690,10 @@
       if (isCadOverlayEnabled) {
         btn.classList.add('cad-mode-active');
         calibBox.style.display = 'flex';
-        if (map.getZoom() < MIN_CAD_ZOOM) map.setZoom(18);
-        loadVisibleCadTiles();
+        if (map.getZoom() < OV_MIN) map.setZoom(18);
+        loadVisibleCadTiles(); cadVecUpdate();
       } else {
-        btn.classList.remove('cad-mode-active');
+        btn.classList.remove('cad-mode-active'); if (window.cadSetBase) window.cadSetBase(100);
         calibBox.style.display = 'none';
         document.getElementById('cad-nudge-pad').style.display = 'none';
         cadPatchClear();
@@ -1929,12 +1892,109 @@
           const fr = await pdfFrameOf(page, vp1), v = cadVecBuild(await page.getOperatorList(), vp1);
           if (!v.n) throw new Error('no vector paths');
           const it = { id: t.id, zone: t.zone, x: t.x, y: t.y, fr, groups: v.groups, cr: null, crKey: '' };
-          cadVec.tiles.set(t.id, it); return it;
+          cadVec.tiles.set(t.id, it); cadOv.known.add(t.id); cadOvSaveSoon(); return it;
         } catch (e) { console.warn('cadVec parse', t.id, e); cadVecFailed = true; return null; }
         finally { try { pdf && pdf.destroy(); } catch (e) {} }
       })();
       cadVec.loading.set(t.id, p);
       try { return await p; } finally { cadVec.loading.delete(t.id); }
+    }
+
+    // ===== 總覽層（縮小看大範圍）：每張圖幅存一張縮圖，縮小時直接貼縮圖，不解析向量 =====
+    // 縮圖第一次由 PDF 產生，之後存在 Cache API（可離線），所以逛過的範圍會越來越完整。
+    const cadOv = { items: new Map(), known: new Set(), gen: 0, px: 0, indexed: false, timer: 0, saveT: 0, cache: null, pumping: false };
+    const CAD_OV_TW = 512, CAD_OV_PX = 28e6, CAD_OV_SHOW = 170, CAD_OV_MAKE = 24;
+    function cadOvSaveSoon() { clearTimeout(cadOv.saveT); cadOv.saveT = setTimeout(() => { try { localStorage.setItem('tpc_cad_known', JSON.stringify(Array.from(cadOv.known))); } catch (e) {} }, 1500); }
+    async function cadOvLoadIndex() {
+      if (cadOv.indexed) return; cadOv.indexed = true;
+      try { JSON.parse(localStorage.getItem('tpc_cad_known') || '[]').forEach(i => cadOv.known.add(i)); } catch (e) {}
+      try {                                                  // 匯入到手機/電腦裡的圖資
+        const db = await cadDb();
+        const ks = await new Promise((r) => { const q = db.transaction('pdfs').objectStore('pdfs').getAllKeys(); q.onsuccess = () => r(q.result || []); q.onerror = () => r([]); });
+        ks.forEach(k => cadOv.known.add(String(k).toUpperCase()));
+      } catch (e) {}
+      const tk = 'tpc_cad_tree_v' + CAD_CLOUD_VER; let done = false;
+      try { done = localStorage.getItem(tk) === '1'; } catch (e) {}
+      if (!done) {                                           // 雲端資料夾裡有哪些圖號：向 GitHub 要一次檔案清單（成功後記起來，不再重問）
+        try {
+          const r = await fetch('https://api.github.com/repos/xiaozyu/GQMap/git/trees/HEAD?recursive=1');
+          if (r.ok) { const j = await r.json(); (j.tree || []).forEach(f => { const m = /(?:^|\/)([A-Za-z]\d{4})\.pdf$/i.exec(f.path || ''); if (m) cadOv.known.add(m[1].toUpperCase()); }); try { localStorage.setItem(tk, '1'); } catch (e) {} }
+        } catch (e) {}
+      }
+      cadOvSaveSoon();
+    }
+    async function cadOvCache() { if (cadOv.cache) return cadOv.cache; try { cadOv.cache = await caches.open('gq-thumb-v1-c' + CAD_CLOUD_VER); } catch (e) { cadOv.cache = null; } return cadOv.cache; }
+    const cadOvUrl = (id) => 'https://thumb.local/' + id + '.png';
+    function cadOvAdd(id, img) {
+      const old = cadOv.items.get(id); if (old) { cadOv.px -= old.img.width * old.img.height; try { old.img.close && old.img.close(); } catch (e) {} cadOv.items.delete(id); }
+      cadOv.items.set(id, { id, zone: id[0], x: parseInt(id.slice(1, 3), 10), y: parseInt(id.slice(3, 5), 10), img, cr: null, crKey: '' });
+      cadOv.px += img.width * img.height;
+      while (cadOv.px > CAD_OV_PX && cadOv.items.size > 1) {   // 超過記憶體預算 → 丟最舊的
+        const k = cadOv.items.keys().next().value, it = cadOv.items.get(k); cadOv.px -= it.img.width * it.img.height;
+        try { it.img.close && it.img.close(); } catch (e) {} cadOv.items.delete(k);
+      }
+    }
+    async function cadOvFromCache(id) {
+      const c = await cadOvCache(); if (!c) return null;
+      try { const r = await c.match(cadOvUrl(id)); if (!r) return null; return await createImageBitmap(await r.blob()); } catch (e) { return null; }
+    }
+    async function cadOvMake(id) {
+      const t = { id, zone: id[0], x: parseInt(id.slice(1, 3), 10), y: parseInt(id.slice(3, 5), 10) };
+      const it = await cadVecLoad(t); if (!it) return null;
+      const s = CAD_OV_TW / it.fr.w, TW = CAD_OV_TW, TH = Math.max(8, Math.round(it.fr.h * s));
+      const cv = document.createElement('canvas'); cv.width = TW; cv.height = TH; const g = cv.getContext('2d');
+      g.setTransform(s, 0, 0, s, -it.fr.x * s, -it.fr.y * s); g.beginPath(); g.rect(it.fr.x, it.fr.y, it.fr.w, it.fr.h); g.clip();
+      g.lineJoin = 'round'; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.globalAlpha = 0.9;
+      for (const gr of it.groups) { if (gr.fill) { g.fill(gr.path); continue; } g.lineWidth = Math.max(gr.lw, 1 / s); g.stroke(gr.path); }
+      cadVec.tiles.delete(id);                                // 縮圖做完就放掉向量，省記憶體（要放大時再解析）
+      const c = await cadOvCache();
+      if (c) cv.toBlob((b) => { try { b && c.put(cadOvUrl(id), new Response(b, { headers: { 'content-type': 'image/png' } })); } catch (e) {} }, 'image/png');
+      return cv;
+    }
+    function cadOvSchedule() { clearTimeout(cadOv.timer); cadOv.timer = setTimeout(cadOvUpdate, 140); }
+    async function cadOvUpdate() {
+      if (!isCadOverlayEnabled || cadVecFailed || map.getZoom() >= MIN_CAD_ZOOM || map.getZoom() < OV_MIN) return;
+      const gen = ++cadOv.gen; cadVecEnsureCanvas();
+      await cadOvLoadIndex(); if (gen !== cadOv.gen) return;
+      const v = cadViewMerc(), w = (v.maxX - v.minX) * 0.15, h = (v.maxY - v.minY) * 0.15;
+      const corners = [[v.minX - w, v.minY - h], [v.maxX + w, v.minY - h], [v.minX - w, v.maxY + h], [v.maxX + w, v.maxY + h]].map(([X, Y]) => { const ll = E3857().unproject(L.point(X, Y)), p = wgs84ToTWD97(ll.lat, ll.lng); return twd97ToTWD67(p.x, p.y); });
+      const x0 = Math.min(...corners.map(p => p.x)), x1 = Math.max(...corners.map(p => p.x)), y0 = Math.min(...corners.map(p => p.y)), y1 = Math.max(...corners.map(p => p.y));
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, sel = [];
+      cadOv.known.forEach((id) => {
+        const b = BASE_COORDS[id[0]]; if (!b) return;
+        const tx = b[0] + parseInt(id.slice(1, 3), 10) * 800, ty = b[1] + parseInt(id.slice(3, 5), 10) * 500;
+        if (tx + 800 < x0 || tx > x1 || ty + 500 < y0 || ty > y1) return;
+        sel.push({ id, d: Math.hypot(tx + 400 - cx, ty + 250 - cy) });
+      });
+      sel.sort((a, b) => a.d - b.d); const ids = sel.slice(0, CAD_OV_SHOW).map(o => o.id);
+      const missing = [];
+      for (const id of ids) {
+        if (cadOv.items.has(id)) { const it = cadOv.items.get(id); cadOv.items.delete(id); cadOv.items.set(id, it); continue; }   // 刷新「最近使用」
+        const img = await cadOvFromCache(id); if (gen !== cadOv.gen) return;
+        if (img) cadOvAdd(id, img); else missing.push(id);
+      }
+      cadVecRedraw();
+      if (!missing.length || cadOv.pumping) return;
+      cadOv.pumping = true; const st = document.getElementById('cad-status-text'); const todo = missing.slice(0, CAD_OV_MAKE); let n = 0;
+      try {
+        for (const id of todo) {
+          if (!isCadOverlayEnabled || cadVecFailed || map.getZoom() >= MIN_CAD_ZOOM || map.getZoom() < OV_MIN) break;
+          if (st) { st.textContent = '⚡ 建立總覽 ' + (++n) + '/' + todo.length; st.style.display = 'inline'; }
+          const cv = await cadOvMake(id); if (cv) { cadOvAdd(id, cv); cadVecRedraw(); }
+        }
+      } finally { cadOv.pumping = false; if (st && !cadVec.loading.size) st.style.display = 'none'; }
+      if (isCadOverlayEnabled && map.getZoom() < MIN_CAD_ZOOM && map.getZoom() >= OV_MIN && missing.length > todo.length) cadOvSchedule();   // 還有沒做完的 → 繼續下一批
+    }
+    function cadOvPaint(ctx, it, P, cw, ch, okey) {
+      if (it.crKey !== okey) { it.cr = tileCornersMerc(it.zone, it.x, it.y, true); it.crKey = okey; }
+      const cr = it.cr, qd = [P(cr.nw), P(cr.ne), P(cr.se), P(cr.sw)];
+      const bx0 = Math.min(qd[0][0], qd[1][0], qd[2][0], qd[3][0]), bx1 = Math.max(qd[0][0], qd[1][0], qd[2][0], qd[3][0]);
+      const by0 = Math.min(qd[0][1], qd[1][1], qd[2][1], qd[3][1]), by1 = Math.max(qd[0][1], qd[1][1], qd[2][1], qd[3][1]);
+      if (bx1 < 0 || by1 < 0 || bx0 > cw || by0 > ch) return;
+      const tw = it.img.width, th = it.img.height;
+      ctx.setTransform((qd[1][0] - qd[0][0]) / tw, (qd[1][1] - qd[0][1]) / tw, (qd[3][0] - qd[0][0]) / th, (qd[3][1] - qd[0][1]) / th, qd[0][0], qd[0][1]);
+      ctx.drawImage(it.img, 0, 0);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     function cadVecEnsureCanvas() {
       if (cadVec.canvas) return cadVec.canvas;
@@ -1943,11 +2003,44 @@
       const pane = map.getPane('overlayPane'); pane.insertBefore(c, pane.firstChild);
       cadVec.canvas = c; cadVec.ctx = c.getContext('2d'); return c;
     }
+    // 把一張圖幅的向量畫到 ctx：P = (墨卡托公尺點) → [畫布像素x,y]；lwMin/lwMax = 線寬下限/上限（畫布像素）。畫面與匯出共用。
+    function cadVecPaintTile(ctx, it, P, cw, ch, lwMin, lwMax) {
+      const cr = it.cr, fr = it.fr, qd = [P(cr.nw), P(cr.ne), P(cr.se), P(cr.sw)];
+      const bx0 = Math.min(qd[0][0], qd[1][0], qd[2][0], qd[3][0]), bx1 = Math.max(qd[0][0], qd[1][0], qd[2][0], qd[3][0]);
+      const by0 = Math.min(qd[0][1], qd[1][1], qd[2][1], qd[3][1]), by1 = Math.max(qd[0][1], qd[1][1], qd[2][1], qd[3][1]);
+      if (bx1 < 0 || by1 < 0 || bx0 > cw || by0 > ch) return false;           // 這張在畫面外 → 不畫
+      const a = (qd[1][0] - qd[0][0]) / fr.w, b = (qd[1][1] - qd[0][1]) / fr.w, cc = (qd[3][0] - qd[0][0]) / fr.h, d = (qd[3][1] - qd[0][1]) / fr.h;
+      const e = qd[0][0] - a * fr.x - cc * fr.y, f = qd[0][1] - b * fr.x - d * fr.y, sc = Math.hypot(a, b) || 1;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath();
+      qd.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.clip();
+      ctx.setTransform(a, b, cc, d, e, f);
+      for (const g of it.groups) {
+        if (g.fill) { ctx.fill(g.path); continue; }
+        ctx.lineWidth = Math.min(lwMax, Math.max(lwMin, g.lw * sc)) / sc;
+        ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; ctx.stroke(g.path);
+      }
+      ctx.restore(); return true;
+    }
+    // 匯出用：以輸出解析度把向量直接畫到 g（不經過點陣，所以和 PDF 一樣清楚）。v = {W,H,k,minX,maxY}，f = 輸出倍率
+    async function cadVecOnto(g, tiles, v, f, onMsg) {
+      let got = 0;
+      for (const t of tiles) {
+        if (onMsg) onMsg(`⏳ 讀取圖資 ${t.id}…`);
+        const it = await cadVecLoad(t); if (!it) continue;
+        it.cr = tileCornersMerc(it.zone, it.x, it.y, true); it.crKey = cadOffset.dx + ',' + cadOffset.dy;
+        g.save(); g.lineJoin = 'round'; g.lineCap = 'butt'; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.globalAlpha = 0.92;
+        if (cadVecPaintTile(g, it, (q) => [v.k * (q.x - v.minX), v.k * (v.maxY - q.y)], v.W, v.H, 0.6 * f, 6 * f)) got++;
+        g.restore();
+      }
+      return got;
+    }
     function cadVecDraw() {
       cadVec.raf = 0;
       const c = cadVec.canvas; if (!c) return;
       const z = map.getZoom();
-      if (!isCadOverlayEnabled || cadVecFailed || z < MIN_CAD_ZOOM) { c.style.display = 'none'; cadVec.drawn = null; return; }
+      const ovMode = z < MIN_CAD_ZOOM;
+      if (!isCadOverlayEnabled || cadVecFailed || (ovMode && (z < OV_MIN || !cadOv.items.size))) { c.style.display = 'none'; cadVec.drawn = null; return; }
       c.style.display = '';
       const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, 2.5), padX = Math.round(sz.x * 0.25), padY = Math.round(sz.y * 0.25);
       const Wc = sz.x + 2 * padX, Hc = sz.y + 2 * padY, pw = Math.round(Wc * dpr), ph = Math.round(Hc * dpr);
@@ -1958,34 +2051,19 @@
       const ctx = cadVec.ctx, okey = cadOffset.dx + ',' + cadOffset.dy;
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
       ctx.lineJoin = 'round'; ctx.lineCap = 'butt'; ctx.strokeStyle = '#000'; ctx.fillStyle = '#000'; ctx.globalAlpha = 0.9;
-      for (const it of cadVec.tiles.values()) {
+      const P = (q) => [((q.x + CAD_ORG) * k - ox) * dpr, ((CAD_ORG - q.y) * k - oy) * dpr];
+      if (ovMode) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; for (const it of cadOv.items.values()) cadOvPaint(ctx, it, P, pw, ph, okey); }
+      else for (const it of cadVec.tiles.values()) {
         if (it.crKey !== okey) { it.cr = tileCornersMerc(it.zone, it.x, it.y, true); it.crKey = okey; }
-        const cr = it.cr, fr = it.fr;
-        const P = (q) => [((q.x + CAD_ORG) * k - ox) * dpr, ((CAD_ORG - q.y) * k - oy) * dpr];
-        const qd = [P(cr.nw), P(cr.ne), P(cr.se), P(cr.sw)];
-        const bx0 = Math.min(qd[0][0], qd[1][0], qd[2][0], qd[3][0]), bx1 = Math.max(qd[0][0], qd[1][0], qd[2][0], qd[3][0]);
-        const by0 = Math.min(qd[0][1], qd[1][1], qd[2][1], qd[3][1]), by1 = Math.max(qd[0][1], qd[1][1], qd[2][1], qd[3][1]);
-        if (bx1 < 0 || by1 < 0 || bx0 > pw || by0 > ph) continue;           // 這張在畫面外 → 不畫
-        const a = k * (cr.ne.x - cr.nw.x) / fr.w * dpr, b = -k * (cr.ne.y - cr.nw.y) / fr.w * dpr;
-        const cc = k * (cr.sw.x - cr.nw.x) / fr.h * dpr, d = -k * (cr.sw.y - cr.nw.y) / fr.h * dpr;
-        const e = qd[0][0] - a * fr.x - cc * fr.y, f = qd[0][1] - b * fr.x - d * fr.y, sc = Math.hypot(a, b) || 1;
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath();
-        qd.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.clip();
-        ctx.setTransform(a, b, cc, d, e, f);
-        for (const g of it.groups) {
-          if (g.fill) { ctx.fill(g.path); continue; }
-          ctx.lineWidth = Math.min(6 * dpr, Math.max(0.9 * dpr, g.lw * sc)) / sc;   // 遠看至少 0.9px；線寬跟著縮放走（和縮放中的系統放大畫面一致，不會停手時突然變細）
-          ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; ctx.stroke(g.path);
-        }
-        ctx.restore();
+        cadVecPaintTile(ctx, it, P, pw, ph, 0.9 * dpr, 6 * dpr);
       }
       cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY, bnds: L.latLngBounds(map.containerPointToLatLng([-padX, -padY]), map.containerPointToLatLng([sz.x + padX, sz.y + padY])) };
     }
     function cadVecRedraw() { if (!cadVec.raf) cadVec.raf = requestAnimationFrame(cadVecDraw); }
     function cadVecNow() { if (cadVec.raf) { cancelAnimationFrame(cadVec.raf); cadVec.raf = 0; } cadVecDraw(); }
     function cadVecUpdate() {                   // 載入畫面附近（含鄰圖預載）會用到的圖幅
-      if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) { cadVecRedraw(); return; }
+      if (!isCadOverlayEnabled) { cadVecRedraw(); return; }
+      if (map.getZoom() < MIN_CAD_ZOOM) { if (map.getZoom() >= OV_MIN && !cadVecFailed) { cadVecEnsureCanvas(); cadOvSchedule(); } cadVecRedraw(); return; }
       if (cadVecFailed) { cadSchedulePatch(60); return; }
       cadVecEnsureCanvas();
       const v = cadViewMerc(), w = (v.maxX - v.minX) * 0.5, h = (v.maxY - v.minY) * 0.5;
@@ -2004,7 +2082,7 @@
     }
     function cadVecOff() {
       if (cadVec.canvas) { cadVec.canvas.style.display = 'none'; cadVec.drawn = null; }
-      cadVec.tiles.clear();
+      cadVec.tiles.clear(); cadOv.items.forEach(it => { try { it.img.close && it.img.close(); } catch (e) {} }); cadOv.items.clear(); cadOv.px = 0; cadOv.gen++;
     }
     map.on('move', () => {                      // 滑動中：只要還在已畫好的範圍內就什麼都不做（畫布由系統搬移）
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
@@ -2058,14 +2136,16 @@
         let deleteBtnHtml = '';
         if (!loc.permanent) {
           const customIdx = idx - defaultBases.length;
-          deleteBtnHtml = `<button onclick="deleteCustomLocation(${customIdx})" style="background:#dc2626;padding:6px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:11px;margin-top:4px;">🗑️ 刪除此自訂地標</button>`;
+          deleteBtnHtml = `<button class="pop-btn danger" onclick="deleteCustomLocation(${customIdx})">🗑️ 刪除此自訂地標</button>`;
         }
 
         marker.bindPopup(`
-          <b style="font-size:14px;color:#1e293b;">【${loc.desc}】${loc.name}</b><br><br>
-          <button onclick="triggerRouteAndLocate(${loc.lat}, ${loc.lng})" style="background:#0891b2;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:6px;">🗺️ 預覽路線</button>
-          <button onclick="openGoogleMaps(${loc.lat}, ${loc.lng})" style="background:#2563eb;padding:8px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">🧭 Google 導航</button>
-          ${deleteBtnHtml}
+          <div class="pop-title" style="color:#1e293b">【${loc.desc}】${loc.name}</div>
+          <div class="pop-actions">
+            <button class="pop-btn route" onclick="triggerRouteAndLocate(${loc.lat}, ${loc.lng})">🗺️ 預覽路線</button>
+            <button class="pop-btn google" onclick="openGoogleMaps(${loc.lat}, ${loc.lng})">🧭 Google 導航</button>
+            ${deleteBtnHtml}
+          </div>
         `);
 
         tooltip.on('click', (e) => {
@@ -2083,10 +2163,10 @@
       reloadBaseMarkers();
     };
 
-    window.promptAddCustomBase = (lat, lng, defaultName) => {
-      const name = prompt("請輸入自訂地標名稱:", defaultName || "");
+    window.promptAddCustomBase = async (lat, lng, defaultName) => {
+      const name = await gqPrompt("自訂地標名稱", defaultName || "", { title: '📍 新增自訂地標', okText: '下一步' });
       if (!name || !name.trim()) return;
-      const desc = prompt("請輸入標籤分類:", "常用據點");
+      const desc = await gqPrompt("標籤分類", "常用據點", { title: '🏷️ 標籤分類', okText: '新增' });
       customLocations.push({ name: name.trim(), lat, lng, desc: desc ? desc.trim() : "常用據點", type: "custom", permanent: false });
       localStorage.setItem('tpc_custom_locations', JSON.stringify(customLocations));
       reloadBaseMarkers();
@@ -2232,6 +2312,7 @@
       if (tasks.length > 0) selectTask(0, false, false);
       else streetviewframe.src = 'about:blank';
       updateDateBar();
+      if (typeof window.bdOnDateChange === 'function') window.bdOnDateChange();
     }
 
     // App 開著跨過午夜 / 從背景回來時，自動換到新的一天
@@ -2356,19 +2437,21 @@
         const safeTimeParam = (t.time || '').replace(/'/g, "\\'");
         const addrHint = isAddrTask
           ? (t.approx !== false && !t.manual
-              ? '<div style="color:#b45309;font-size:12px;margin-top:3px;">⚠ 約略位置，導航會用地址文字；可拖曳圖釘校正</div>'
-              : '<div style="color:#64748b;font-size:11px;margin-top:3px;">位置不準可拖曳圖釘校正</div>')
+              ? '<div class="pop-warn">⚠ 約略位置，導航會用地址文字；可拖曳圖釘校正</div>'
+              : '<div class="pop-hint">位置不準可拖曳圖釘校正</div>')
           : '';
         const navLat = taskNavByCoords(t) ? lat : 'null';
         const navLng = taskNavByCoords(t) ? lng : 'null';
 
         marker.bindPopup(`
-          <b style="font-size:15px;color:${isND ? '#ef4444' : '#2563eb'};">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</b><br>
-          ${cleanNote ? `<b>地址/備註: ${cleanNote}</b><br>` : ''}
-          ${t.code === '📍地址導航' ? '類型: <b>地址導航</b>' : `圖號: <b>${t.code}</b>`}${addrHint}<br><br>
-          <button onclick="triggerRouteAndLocate(${lat}, ${lng})" style="background:#0891b2;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🗺️ 預覽路線</button>
-          <button onclick="openGoogleMaps(${navLat}, ${navLng}, '${safeNoteParam}')" style="background:#16a34a;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;margin-bottom:4px;">🚗 Google 導航</button>
-          <button onclick="shareTaskInfo('${safeCodeParam}', '${safeNoteParam}', '${safeTimeParam}')" style="background:#9333ea;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;font-size:12px;">📤 分享工單資訊</button>
+          <div class="pop-title ${isND ? 'nd' : ''}">${isND ? '★ [ND案件] ' : ''}案件 #${idx + 1} ${t.time ? '('+t.time+')' : ''}</div>
+          ${cleanNote ? `<div class="pop-sub"><b>地址/備註：${cleanNote}</b></div>` : ''}
+          <div class="pop-sub">${t.code === '📍地址導航' ? '類型：<b>地址導航</b>' : `圖號：<b>${t.code}</b>`}</div>${addrHint}
+          <div class="pop-actions">
+            <button class="pop-btn route" onclick="triggerRouteAndLocate(${lat}, ${lng})">🗺️ 預覽路線</button>
+            <button class="pop-btn nav" onclick="openGoogleMaps(${navLat}, ${navLng}, '${safeNoteParam}')">🚗 Google 導航</button>
+            <button class="pop-btn share" onclick="shareTaskInfo('${safeCodeParam}', '${safeNoteParam}', '${safeTimeParam}')">📤 分享工單資訊</button>
+          </div>
         `);
 
         marker.on('click', (e) => {
@@ -2770,25 +2853,20 @@
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'task-edit-modal';
-        modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:3000;display:none;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);`;
+        modal.className = 'gq-overlay'; modal.style.display = 'none'; modal.style.zIndex = '3000';
         modal.innerHTML = `
-          <div style="background:#1e293b;border:1px solid #475569;border-radius:12px;width:100%;max-width:440px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,0.6);">
-            <div style="display:flex;justify-content:space-between;align-items:center;font-weight:bold;color:#38bdf8;font-size:1.05rem;border-bottom:1px solid #334155;padding-bottom:8px;">
-              <span>✏️ 快速修改工單</span>
-              <button id="modal-close-x" style="background:none;border:none;color:#cbd5e1;font-size:1.3rem;cursor:pointer;">✕</button>
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:6px;">
-              <label style="font-size:0.8rem;color:#94a3b8;font-weight:bold;">支援圖號或中文地址修改：</label>
-              <div class="manual-input-bar" style="padding:6px 8px;background:#0f172a;border:1px solid #38bdf8;">
+          <div class="gq-sheet">
+            <div class="gq-title"><span>✏️ 快速修改工單</span><button id="modal-close-x" class="gq-x" aria-label="關閉">✕</button></div>
+            <div class="gq-field">
+              <label class="gq-label">支援圖號或中文地址修改</label>
+              <div class="manual-input-bar" style="margin:0">
                 <span id="edit-prefix-badge" class="prefix-badge">G</span>
-                <input type="text" id="edit-modal-line-input" class="manual-input" style="font-size:1.05rem;" placeholder="如: 3850HE23 或 永寧路185巷11號" autocomplete="off" autocorrect="off" spellcheck="false">
+                <input type="text" id="edit-modal-line-input" class="manual-input" placeholder="如: 3850HE23 或 永寧路185巷11號" autocomplete="off" autocorrect="off" spellcheck="false">
               </div>
             </div>
-
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
-              <button id="modal-btn-cancel" style="background:#475569;border:none;color:#fff;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;">取消</button>
-              <button id="modal-btn-save" style="background:#16a34a;border:none;color:#fff;padding:8px 20px;border-radius:6px;font-weight:bold;cursor:pointer;">儲存修改</button>
+            <div class="gq-actions">
+              <button id="modal-btn-cancel" class="gq-btn">取消</button>
+              <button id="modal-btn-save" class="gq-btn ok">儲存修改</button>
             </div>
           </div>
         `;
@@ -2879,7 +2957,7 @@
       taskList.innerHTML = '';
       updateDateBar();
       if (tasks.length === 0) {
-        taskList.innerHTML = `<div style="color:#64748b;font-size:0.8rem;padding:4px;">${activeDate === todayKey ? '今天還沒有案件' : activeDate + ' 沒有案件'}，可輸入圖號、中文地址或按「📋 匯入」。</div>`;
+        taskList.innerHTML = `<div class="task-empty">${activeDate === todayKey ? '今天還沒有案件' : activeDate + ' 沒有案件'}，可輸入圖號、中文地址或按「📋 匯入」。</div>`;
         markersLayer.clearLayers();
         routeLayer.clearLayers();
         return;
@@ -3235,12 +3313,13 @@
     async function bdRenderBase(v) {
       const cv = document.createElement('canvas'); cv.width = v.W; cv.height = v.H;
       const g = cv.getContext('2d'), res = { cv, tainted: false, count: 0 };
-      const layer = bdBaseLayer(), tpl = layer._url, subs = layer.options.subdomains;
+      const layer = bdBaseLayer();
+      const tpl = layer._url, subs = layer.options.subdomains;
       const maxZ = layer.options.maxNativeZoom || 19, ORG = 20037508.342789244, FULL = ORG * 2, k = v.k;
       const Wm = v.W / k, Hm = v.H / k, maxX = v.minX + Wm, minY = v.maxY - Hm;
       let z = Math.min(maxZ, Math.ceil(Math.log2(FULL * k / 256)));
       const cnt = (zz) => { const sz = FULL / Math.pow(2, zz); return (Math.floor((maxX + ORG) / sz) - Math.floor((v.minX + ORG) / sz) + 1) * (Math.floor((ORG - minY) / sz) - Math.floor((ORG - v.maxY) / sz) + 1); };
-      while (z > 12 && cnt(z) > 40) z--;
+      while (z > 12 && cnt(z) > 90) z--;
       const sz = FULL / Math.pow(2, z);
       const tx0 = Math.floor((v.minX + ORG) / sz), tx1 = Math.floor((maxX + ORG) / sz);
       const ty0 = Math.floor((ORG - v.maxY) / sz), ty1 = Math.floor((ORG - minY) / sz);
@@ -3259,6 +3338,7 @@
         }));
       }
       await Promise.all(jobs);
+      if (map.hasLayer(cadOnlyLayer)) { g.save(); g.globalAlpha = cadOnlyLayer.options.opacity == null ? 1 : cadOnlyLayer.options.opacity; g.fillStyle = '#fff'; g.fillRect(0, 0, v.W, v.H); g.restore(); res.count = Math.max(res.count, 1); }   // 底圖淡化（和畫面一致）
       return res;
     }
 
@@ -3277,8 +3357,17 @@
     const bdGround = (a, b) => map.distance(E3857().unproject(L.point(a[0], a[1])), E3857().unproject(L.point(b[0], b[1])));
     const bdFmt = (m) => m.toFixed(1) + 'M';
     function bdSave() {
-      try { localStorage.setItem(bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}
+      try { localStorage.setItem(BD.key || bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}      // 永遠寫回「載入時的那一天」，不會因為換日期而寫進別天
     }
+    window.bdOnDateChange = () => {                            // 換日期：先存好舊的那天，再載入新那天的畫紙（每天一張白紙）
+      if (!BD.on) return;
+      bdSave();
+      BD.key = bdKey();
+      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
+      BD.hist = []; BD.redo = []; BD.cur = null; BD.pend = false; BD.mvp = null; BD.mag = null; BD.sel = null; BD.selObj = null; BD.mv = null; BD.cache = null;
+      try { bdDropCache(); } catch (e) {}
+      bdRedrawNow();
+    };
     function bdPush() { BD.hist.push(BD.shapes.slice()); if (BD.hist.length > 80) BD.hist.shift(); BD.redo = []; }
     function bdLabel(ctx, p1, p2, text, color, off) {
       const fs = 14 * BD.fx, lw = bdLw();
@@ -3327,25 +3416,122 @@
         if (sh.t === 'new') { ctx.strokeStyle = '#dc2626'; ctx.lineWidth = lw; ctx.setLineDash([]); ctx.stroke(); bdLabel(ctx, p1, p2, bdFmt(len), '#1d4ed8'); }
         else if (sh.t === 'old') { ctx.strokeStyle = '#111827'; ctx.lineWidth = lw; ctx.setLineDash([lw * 3.5, lw * 2.2]); ctx.stroke(); ctx.setLineDash([]); bdLabel(ctx, p1, p2, bdFmt(len), '#1d4ed8'); }
         else {   // dim：量距（藍色細線＋端點短線）
-          ctx.strokeStyle = '#2563eb'; ctx.lineWidth = Math.max(1.5, lw * 0.6); ctx.setLineDash([]); ctx.stroke();
+          const dc = sh.c || '#2563eb'; ctx.globalAlpha = sh.al == null ? 1 : sh.al;
+          ctx.strokeStyle = dc; ctx.lineWidth = Math.max(1.5, lw * 0.6) * (sh.w || 1); ctx.setLineDash([]); ctx.stroke();
           const ang = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]), tk = lw * 3;
           [p1, p2].forEach(p => { ctx.beginPath(); ctx.moveTo(p[0] - Math.sin(ang) * tk, p[1] + Math.cos(ang) * tk); ctx.lineTo(p[0] + Math.sin(ang) * tk, p[1] - Math.cos(ang) * tk); ctx.stroke(); });
-          bdLabel(ctx, p1, p2, bdFmt(len), '#1d4ed8');
+          bdLabel(ctx, p1, p2, bdFmt(len), sh.c || '#1d4ed8'); ctx.globalAlpha = 1;
         }
       }
+    }
+
+    // ===== 電腦操作提示：偵測到用滑鼠才顯示，依目前工具換內容；按 ? 可隱藏／顯示 =====
+    BD.desk = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } })();
+    BD.hintOff = (() => { try { return localStorage.getItem('tpc_hint') === '0'; } catch (e) { return false; } })();
+    document.addEventListener('pointerdown', (e) => { const d = e.pointerType === 'mouse'; if (d !== BD.desk) { BD.desk = d; try { bdStatus(); } catch (_) {} } }, true);
+    function bdHintText() {
+      if (BD.edit) return ['🅰 輸入文字', 'Enter 換行', 'Ctrl+Enter 完成', 'Esc 取消'];
+      const cross = bdOpt.mode === 'cross';
+      const T = {
+        none: ['🖐 移動地圖', '拖曳平移　滾輪縮放', '選工具：V 選取　P 筆　L 直線　R 白底　E 橡皮擦　M 量長度　T 文字'],
+        free: ['✍ 筆', '拖曳畫線', 'H 移動地圖　E 橡皮擦'],
+        line: ['╱ 直線', '拖曳拉直線', 'H 移動地圖'],
+        rect: ['▭ 白底', '拖曳拉出矩形蓋住雜亂圖面', 'H 移動地圖'],
+        erase: ['🧽 橡皮擦', '拖過筆跡就擦掉（白底只擦邊緣）', 'H 移動地圖'],
+        select: ['☝ 選取', '點選物件　再點同處換下一層', '拖曳移動　Delete 刪除', 'Esc 取消選取'],
+        dim: cross ? (BD.mvp ? ['📍 搬移端點', '移動地圖對準新位置　點一下放下', 'Esc 取消搬移'] : BD.pend ? ['📍 連續圖釘', '拖曳平移地圖　點一下定下一點', 'Enter 完成　Ctrl+Z 退回上一點　Esc 結束'] : ['📍 連續圖釘', '紅十字對準起點　點一下定 A', '之後每點一下接一段　十字靠近端點可搬移／刪除'])
+                   : ['↔ 拉線', '按住 A 拖到 B 放開', '靠近端點可微調　H 移動地圖'],
+        text: ['🅰 文字', '點空白處新增文字', '點既有文字可修改　Delete 刪除選取', 'H 移動地圖']
+      };
+      return T[BD.tool] || T.none;
+    }
+    function bdHintUi() {
+      let el = document.getElementById('bd-hint'); const bd = document.getElementById('board'); if (!bd) return;
+      if (!el) { el = document.createElement('div'); el.id = 'bd-hint'; bd.appendChild(el); }
+      if (!BD.desk || BD.hintOff) { el.style.display = 'none'; return; }
+      const L2 = bdHintText(), html = '<b>' + L2[0] + '</b>' + L2.slice(1).join('　│　') + '　│　<span class="k">Ctrl+Z 復原　Ctrl+Y 重作　? 隱藏</span>';
+      if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+      el.style.display = 'block';
     }
     function bdStatus() {
       const el = document.getElementById('bd-status'); if (!el) return;
       const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', line: '直線：拉一條直線（右邊可選實線／虛線）', rect: '白底：斜拉出一塊矩形，蓋住下方雜亂圖面（永遠在筆跡下面）',  erase: '橡皮擦：劃過筆跡即擦除（白底只有碰到邊緣才會擦）', select: '選取：點一下選物件（再點同處＝換下一層）｜拖曳移動｜端點圓圈可拉｜文字可縮放旋轉｜左下角可刪除', dim: '量長度：拉線｜點端點附近可微調｜端點靠近別的端點會吸附釘住（拖一個全部一起動，長按＝單獨拿起最後一條）', text: '文字：點空白新增（可換行）｜拖曳移動｜縮放｜旋轉｜再點一下改字' };
-      el.textContent = `${BD.centerCode}  ｜ ${names[BD.tool] || ''}`;
+      let nm = names[BD.tool] || '';
+      if (BD.tool === 'dim' && bdOpt.mode === 'cross') nm = BD.mvp ? '搬移中：移動地圖讓十字對準新位置 → 點一下放下（↩ ＝取消）' : BD.pend ? '連續圖釘：移動地圖，十字對準下一點 → 點一下（↩ ＝退回上一點，✔ 完成＝結束）' : '連續圖釘：移動地圖讓十字對準起點 → 點一下定 A，之後每點一下接一段｜十字靠近端點可搬移／刪除';
+      el.textContent = (BD.desk && !BD.hintOff) ? `${BD.centerCode}` : `${BD.centerCode}  ｜ ${nm}`;
+      bdHintUi();
     }
     function bdRedrawNow() {
       bdSyncView();
-      if (BD.cache && BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k) bdDropCache();
+      if (BD.mvp) BD.mvp.sh[BD.mvp.part] = bdMerc(BD.W / 2, BD.H / 2);
+      if (BD.pend && BD.cur) BD.cur.b = bdMerc(BD.W / 2, BD.H / 2);          // 十字定點：已定 A 點後，B 端永遠跟著畫面中心的十字
+      if (BD.cache && (!BD.mv || BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k)) bdDropCache();   // 快取只在「拖動單一物件」時有效；其他時候一律重畫，避免舊圖殘留（擦不掉）
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
       if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
       else { bdDrawAll(ctx, BD.shapes); }
-      bdDrawUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
+      bdDrawUi(); bdPendUi(); bdMagUi(); bdDoneUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
+    }
+    function bdPendUi() {                                      // 十字定點：畫出「A 點 → 十字」的即時線與米數
+      if (!BD.pend || !BD.cur) return;
+      const g = bdCtx(BD.ui); bdDrawShape(g, BD.cur);
+      const p = bdPx(BD.cur.a); g.lineWidth = 2; g.strokeStyle = '#2563eb'; g.fillStyle = 'rgba(255,255,255,0.35)';
+      g.beginPath(); g.arc(p[0], p[1], 11, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
+
+    function bdDoneUi() { const b = document.getElementById('bd-done'); if (b) { b.style.display = BD.pend ? 'flex' : 'none'; document.getElementById('bd-done-t').textContent = '累計 ' + bdChainLen().toFixed(1) + ' m'; } }
+    window.bdChainDone = () => { BD.cur = null; BD.pend = false; BD.chainN = 0; bdRedrawNow(); };
+    function bdChainLen() {                                    // 本次連續圖釘的累計長度（公尺）
+      if (!BD.pend) return 0; let t = 0;
+      const seg = (sh) => { t += bdGround(sh.a, sh.b); };
+      BD.shapes.slice(Math.max(0, BD.shapes.length - (BD.chainN || 0))).forEach(seg); if (BD.cur) seg(BD.cur); return t;
+    }
+    function bdMagnet() {                                      // 十字靠近哪個端點（約 18px 內）
+      if (BD.pend || BD.mvp || !BD.on || BD.tool !== 'dim' || bdOpt.mode !== 'cross') return null;
+      const pp = bdPx(bdMerc(BD.W / 2, BD.H / 2)); let bd = 18, hit = null;
+      if (BD.magSkip) { const k = bdPx(BD.magSkip); if (Math.hypot(k[0] - pp[0], k[1] - pp[1]) < 8) return null; BD.magSkip = null; }   // 剛放下的點，十字還沒離開前不彈按鈕
+      BD.shapes.forEach(sh => { if (sh.t === 'dim') ['a', 'b'].forEach(part => { const q = bdPx(sh[part]), d = Math.hypot(q[0] - pp[0], q[1] - pp[1]); if (d <= bd) { bd = d; hit = { sh, part }; } }); });
+      return hit;
+    }
+    function bdMagUi() {
+      const bar = document.getElementById('bd-mg'); if (!bar) return;
+      const m = bdMagnet(); BD.mag = m;
+      if (!m) { bar.style.display = 'none'; return; }
+      const q = bdPx(m.sh[m.part]), g = bdCtx(BD.ui);
+      g.lineWidth = 3; g.strokeStyle = '#f59e0b'; g.fillStyle = 'rgba(245,158,11,0.18)';
+      g.beginPath(); g.arc(q[0], q[1], 15, 0, Math.PI * 2); g.fill(); g.stroke();
+      bar.style.display = 'flex';
+    }
+    window.bdMgMove = () => {
+      const m = BD.mag; if (!m) return;
+      bdPush(); const i = BD.shapes.indexOf(m.sh), cl = JSON.parse(JSON.stringify(m.sh)); BD.shapes[i] = cl;
+      BD.mvp = { sh: cl, part: m.part, orig: cl[m.part].slice() }; BD.mag = null;
+      try { navigator.vibrate && navigator.vibrate(20); } catch (_) {}
+      bdRedrawNow();
+    };
+    window.bdMgDel = () => {
+      const m = BD.mag; if (!m) return;
+      bdPush(); BD.shapes = BD.shapes.filter(x => x !== m.sh); BD.mag = null; bdSave(); bdRedrawNow();
+    };
+    function bdCrossTap() {                                    // 點一下：第一下＝定 A 點，第二下＝定 B 點（都落在畫面中心的十字）
+      bdSyncView();
+      const C = bdMerc(BD.W / 2, BD.H / 2);
+      const snapEnd = (P, ex) => {                                 // 十字靠近既有端點 → 吸附（多條線共用一點）
+        const pp = bdPx(P); let bd = 14, hit = null;
+        BD.shapes.forEach(sh => { if (sh.t === 'dim' && sh !== ex) [sh.a, sh.b].forEach(q => { const px = bdPx(q), d = Math.hypot(px[0] - pp[0], px[1] - pp[1]); if (d < bd) { bd = d; hit = q; } }); });
+        return hit ? hit.slice() : P;
+      };
+      try { navigator.vibrate && navigator.vibrate(15); } catch (_) {}
+      if (BD.mvp) {
+        const mv = BD.mvp; BD.mvp = null; mv.sh[mv.part] = snapEnd(C, mv.sh); BD.magSkip = C; bdSave(); bdRedrawNow(); return;
+      }
+      if (!BD.pend) { BD.cur = bdNewDim(snapEnd(C), C); BD.pend = true; BD.chainN = 0; bdRedrawNow(); return; }
+      const c = BD.cur; c.b = snapEnd(C);
+      const a = bdPx(c.a), b = bdPx(c.b);
+      if (Math.hypot(a[0] - b[0], a[1] - b[1]) * BD.s <= 6) { bdRedrawNow(); return; }   // 離上一點太近＝忽略
+      bdPush(); BD.shapes.push(c); bdSave(); BD.chainN = (BD.chainN || 0) + 1;
+      BD.cur = bdNewDim(c.b.slice(), C); BD.pend = true;                         // B 變成下一段的起點
+      BD.magSkip = C;
+      bdRedrawNow();
     }
     function bdRedraw() { if (BD.raf) return; BD.raf = requestAnimationFrame(() => { BD.raf = 0; bdRedrawNow(); }); }
     function bdMakeCache(except) {                       // 編輯單一物件時，其餘物件先畫成一張底，之後每一格只畫被動的那個
@@ -3372,7 +3558,35 @@
       BD.stage.style.width = BD.W + 'px'; BD.stage.style.height = BD.H + 'px';
       bdDropCache(); bdRedrawNow();
     }
-    function bdPtOf(e) { bdSyncView(); return bdMerc(e.clientX - BD.rx, e.clientY - BD.ry); }
+    const BD_AIM = 76;                                         // 量長度：準星模式開啟時，實際落點在指尖「上方」這麼多 px（指尖不會蓋住目標）
+    const bdOpt = { aim: 'touch', mode: 'cross' };             // aim：touch=只有手指／all=手指和筆／off=關閉；mode：cross=十字定點（預設）／drag=拖曳畫線
+    try { bdOpt.aim = 'touch'; bdOpt.mode = localStorage.getItem('tpc_dimmode') === 'cross' ? 'cross' : 'drag'; } catch (e) {}   // drag＝拉線（按住 A 拉到 B 放開）／cross＝連續圖釘（十字定點，A、B、B、B…）
+    const bdCrossOn = () => BD.on && BD.tool === 'dim' && bdOpt.mode === 'cross';
+    function bdAimOn(e) { return BD.tool === 'dim' && bdOpt.aim !== 'off' && (bdOpt.aim === 'all' || e.pointerType === 'touch'); }
+    function bdDimOptUi() {
+      const a = document.getElementById('bd-opt-aim'), md = document.getElementById('bd-opt-mode'); if (!a) return;
+      if (md) { md.textContent = bdOpt.mode === 'cross' ? '📍 連續圖釘' : '↔ 拉線'; md.classList.add('on'); }
+      document.getElementById('board').classList.toggle('xh', bdCrossOn());
+      a.textContent = '🎯 準星：' + ({ touch: '手指', all: '手指＋筆', off: '關' })[bdOpt.aim]; a.classList.toggle('on', bdOpt.aim !== 'off');
+    }
+    window.bdOptMode = () => { bdOpt.mode = bdOpt.mode === 'cross' ? 'drag' : 'cross'; try { localStorage.setItem('tpc_dimmode', bdOpt.mode); } catch (e) {} if (BD.pend) { BD.cur = null; BD.pend = false; } BD.chainN = 0; bdDimOptUi(); bdRedrawNow(); };
+    window.bdOptAim = () => { bdOpt.aim = ({ touch: 'all', all: 'off', off: 'touch' })[bdOpt.aim]; try { localStorage.setItem('tpc_aim', bdOpt.aim); } catch (e) {} bdDimOptUi(); };
+
+    function bdPtOf(e) { bdSyncView(); return bdMerc(e.clientX - BD.rx, e.clientY - BD.ry - (bdAimOn(e) ? BD_AIM : 0)); }
+    function bdAim(e) {                                        // 準星：顯示在實際落點，並用虛線連到手指
+      let a = document.getElementById('bd-aim');
+      if (!e) { if (a) a.style.display = 'none'; return; }
+      if (!a) {
+        a = document.createElement('div'); a.id = 'bd-aim';
+        a.style.cssText = 'position:fixed;z-index:960;pointer-events:none;width:0;height:0;display:none;';
+        a.innerHTML = '<div style="position:absolute;left:-17px;top:-17px;width:34px;height:34px;border:2px solid #ef4444;border-radius:50%;background:rgba(255,255,255,.18);box-shadow:0 0 0 1px #fff"></div>' +
+          '<div style="position:absolute;left:-1px;top:-25px;width:2px;height:50px;background:linear-gradient(#ef4444 0 14px,transparent 14px 36px,#ef4444 36px);"></div>' +
+          '<div style="position:absolute;left:-25px;top:-1px;width:50px;height:2px;background:linear-gradient(90deg,#ef4444 0 14px,transparent 14px 36px,#ef4444 36px);"></div>' +
+          '<div style="position:absolute;left:-1px;top:17px;height:' + (BD_AIM - 17 - 8) + 'px;border-left:2px dashed rgba(239,68,68,.7)"></div>';
+        document.body.appendChild(a);
+      }
+      a.style.display = 'block'; a.style.left = e.clientX + 'px'; a.style.top = (e.clientY - BD_AIM) + 'px';
+    }
     function bdDistSeg(p, a, b) {
       const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
       let t = l2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
@@ -3390,7 +3604,7 @@
         if (s.t === 'text') { const l = bdToLocal(s, pt), bx = bdTextBox(s); return !(Math.abs(l[0]) <= bx.w / 2 + 6 && Math.abs(l[1]) <= bx.h / 2 + 6); }
         return bdDistSeg(pt, s.a, s.b) > r;
       });
-      if (keep.length !== BD.shapes.length) { if (!BD.erasing) { bdPush(); BD.erasing = true; } BD.shapes = keep; bdRedraw(); }
+      if (keep.length !== BD.shapes.length) { if (!BD.erasing) { bdPush(); BD.erasing = true; } BD.shapes = keep; bdDropCache(); bdRedraw(); }
     }
     function bdHit(pt) {
       const r = 16 / BD.s / BD.k;
@@ -3469,66 +3683,113 @@
       const css = document.createElement('style');
       css.textContent = `
         body.bd-on #here-wrap, body.bd-on #here-cross { display: none !important; }
-        #board { position: absolute; left: 0; top: 0; width: 100px; height: 100px; z-index: 850; display: none; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+        #board { --rail: 58px; position: absolute; left: 0; top: 0; width: 100px; height: 100px; z-index: 850; display: none; pointer-events: none; touch-action: none; -webkit-user-select: none; user-select: none; font-family: var(--font); }
         #bd-wrap { position: absolute; inset: 0; overflow: hidden; touch-action: none; pointer-events: none; }
         #board.act #bd-wrap { pointer-events: auto; }
         #bd-rail, #bd-panel, #bd-msg { pointer-events: auto; }
-        #bd-sdel { position: absolute; left: 8px; bottom: 64px; z-index: 6; display: none; width: 48px; height: 48px; border-radius: 50%; font-size: 22px; background: #b91c1c; border-color: #fecaca; pointer-events: auto; }
-        #board.sel #bd-sdel { display: flex; }
-        #board.sel #bd-rail { bottom: 116px; }
-        #bd-ur { position: absolute; left: 8px; bottom: 8px; z-index: 6; display: flex; gap: 8px; pointer-events: auto; }
-        #bd-ur .bt { width: 48px; height: 48px; border-radius: 50%; font-size: 22px; }
-        body.bd-on #cad-calib-box { display: none !important; }
-        #board.editing #bd-status, #board.sel #bd-status { display: none; }
-        #bd-selbar { position: absolute; left: 54px; right: 8px; top: 40px; z-index: 8; display: none; align-items: center; gap: 6px; background: rgba(15,23,42,0.92); border-radius: 10px; padding: 5px 8px; pointer-events: auto; }
-        #board.sel #bd-selbar { display: flex; }
-        #bd-selbar button { color: #fff; background: #475569; border: 0; border-radius: 8px; padding: 7px 11px; font-size: 13px; font-weight: bold; }
-        #bd-txt { position: absolute; left: 54px; right: 8px; top: 40px; z-index: 8; display: none; align-items: center; gap: 6px; background: rgba(15,23,42,0.92); border-radius: 10px; padding: 5px 8px; pointer-events: auto; }
-        #bd-txt button { color: #fff; background: #475569; border: 0; border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: bold; }
-        #bd-inl { position: absolute; z-index: 7; display: none; pointer-events: auto; box-sizing: border-box; resize: none; overflow: hidden; text-align: center; font-weight: bold; font-family: sans-serif; outline: none; border: 2px dashed #2563eb; background: rgba(255,255,255,0.78); white-space: pre; margin: 0; transform-origin: 50% 50%; }
         #bd-stage { position: absolute; left: 0; top: 0; pointer-events: none; }
         #bd-stage canvas { position: absolute; left: 0; top: 0; display: block; }
-        #bd-rail { position: absolute; left: 4px; top: 44px; bottom: 62px; width: 46px; display: flex; flex-direction: column; gap: 5px; z-index: 2; overflow-y: auto; }
-        #bd-top { position: absolute; left: 4px; right: 54px; top: 4px; height: 38px; display: flex; align-items: center; gap: 3px; z-index: 2; pointer-events: none; }
+
+        /* 共用按鈕：玻璃質感、圓角一致、按下有回饋 */
+        .bt { background: var(--glass); color: #fff; border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-radius: 12px; width: 48px; height: 46px; flex: 0 0 auto; font-size: 18px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s; }
+        .bt:active { transform: scale(.94); }
+        .bt small { font-size: 10px; font-weight: 600; color: var(--text-2); margin-top: 1px; }
+        .bt.on { background: var(--blue-d); border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,.35); } .bt.on small { color: #fff; }
+        @media (hover: hover) and (pointer: fine) { .bt:hover:not(.on) { background: rgba(30,41,69,.96); border-color: rgba(255,255,255,.32); } }
+
+        /* 左側工具列 */
+        #bd-rail { position: absolute; left: 6px; top: 50px; max-height: calc(100% - 124px); width: var(--rail); display: flex; flex-direction: column; gap: 6px; z-index: 2; overflow-y: auto; scrollbar-width: none; padding: 5px; background: rgba(10,16,30,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        #bd-rail::-webkit-scrollbar { display: none; }
+        #bd-rail .bt { width: 100%; }
+        .bd-sep { height: 1px; background: rgba(255,255,255,.14); margin: 1px 6px; flex: 0 0 auto; }
+        #board.sel #bd-rail { max-height: calc(100% - 180px); }
+
+        /* 頂部：關閉、提示、匯出 */
+        #bd-top { position: absolute; left: 6px; right: 58px; top: 6px; height: 40px; display: flex; align-items: center; gap: 6px; z-index: 2; pointer-events: none; }
         #bd-top > * { pointer-events: auto; }
         #bd-top .sp { flex: 1; pointer-events: none; }
-        .bt { background: rgba(30,41,59,0.96); color: #fff; border: 1px solid #475569; border-radius: 10px; width: 46px; height: 36px; flex: 0 0 auto; font-size: 17px; font-weight: bold; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; padding: 0; }
-        #bd-top .bt { width: 32px; height: 34px; border-radius: 8px; font-size: 15px; }
+        #bd-top .bt { width: 40px; height: 40px; border-radius: 12px; font-size: 17px; }
         #bd-top .bt small { display: none; }
-        .bt small { font-size: 9px; font-weight: normal; color: #cbd5e1; }
-        .bt.on { background: #f97316; border-color: #fff; } .bt.on small { color: #fff; }
-        .bd-sep { height: 1px; background: #475569; margin: 2px 6px; flex: 0 0 auto; }
+        #bd-top .bt.close { background: rgba(153,27,27,.92); border-color: #fca5a5; }
         #bd-top .bd-vsep { display: none; }
-        #bd-status { position: absolute; left: 54px; top: 44px; color: #fde047; font: bold 11px sans-serif; background: rgba(15,23,42,0.85); padding: 3px 8px; border-radius: 6px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-        #bd-panel { position: absolute; left: 54px; top: 70px; z-index: 5; display: none; gap: 7px; padding: 7px; background: rgba(15,23,42,0.88); border: 1px solid #64748b; border-radius: 12px; touch-action: none; }
+        #bd-status { position: absolute; left: calc(var(--rail) + 14px); top: 52px; color: #fde047; font: 700 12px var(--font); background: var(--glass); padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+        #board.editing #bd-status, #board.sel #bd-status { display: none; }
+        #bd-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3; background: rgba(15,23,42,.94); color: #fff; padding: 12px 20px; border-radius: 14px; border: 1px solid var(--line-2); font-size: 14px; font-weight: 700; display: none; text-align: center; box-shadow: var(--sh-2); }
+
+        /* 左下：復原／重作、刪除選取 */
+        #bd-ur { position: absolute; left: 8px; bottom: 10px; z-index: 6; display: flex; gap: 10px; pointer-events: auto; }
+        #bd-ur .bt { width: 50px; height: 50px; border-radius: 50%; font-size: 22px; }
+        #bd-sdel { position: absolute; left: 8px; bottom: 68px; z-index: 6; display: none; width: 50px; height: 50px; border-radius: 50%; font-size: 21px; background: rgba(185,28,28,.95); border-color: #fecaca; pointer-events: auto; }
+        #board.sel #bd-sdel { display: flex; }
+        body.bd-on #cad-calib-box { display: none !important; }
+
+        /* 量長度：切換鈕、搬移／刪除、連續圖釘完成列 */
+        #bd-dimopt { position: absolute; left: 192px; bottom: 14px; z-index: 6; display: none; gap: 6px; pointer-events: auto; }
+        #board.dim #bd-dimopt { display: flex; }
+        #bd-opt-aim { display: none !important; }
+        #bd-dimopt button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 999px; height: 40px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+        #bd-dimopt button.on { background: var(--blue-d); border-color: #93c5fd; }
+        #bd-mg { position: absolute; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); z-index: 6; display: none; gap: 8px; pointer-events: auto; }
+        #bd-mg button { color: #fff; background: var(--glass); border: 2px solid var(--amber); border-radius: 14px; height: 46px; padding: 0 18px; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-2); }
+        #bd-mg button.dg { border-color: var(--red); }
+        #bd-done { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: none; gap: 8px; align-items: center; pointer-events: auto; }
+        #bd-done b { color: #fff; background: var(--glass); border: 1px solid var(--blue); border-radius: 999px; height: 46px; padding: 0 18px; font-size: 15px; display: flex; align-items: center; font-family: var(--mono); box-shadow: var(--sh-1); }
+        #bd-done button { color: #fff; background: linear-gradient(180deg, #22c55e, #16a34a); border: 1px solid #86efac; border-radius: 999px; height: 46px; padding: 0 20px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-1); }
+        #bd-cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; display: none; pointer-events: none; z-index: 4; }
+        #board.xh #bd-cross { display: block; }
+        #bd-cross i { position: absolute; background: #ef4444; box-shadow: 0 0 0 1px rgba(255,255,255,.9); }
+        #bd-cross i:nth-child(1) { left: -34px; top: -1px; width: 27px; height: 2px; } #bd-cross i:nth-child(2) { left: 7px; top: -1px; width: 27px; height: 2px; }
+        #bd-cross i:nth-child(3) { left: -1px; top: -34px; width: 2px; height: 27px; } #bd-cross i:nth-child(4) { left: -1px; top: 7px; width: 2px; height: 27px; }
+        #bd-cross i:nth-child(5) { left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; }
+
+        /* 電腦操作提示 */
+        #bd-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 3; display: none; pointer-events: none; max-width: calc(100% - 540px); padding: 8px 16px; border-radius: 999px; background: rgba(10,16,30,.7); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.95); font: 13px/1.3 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        @media (max-width: 760px) { #bd-hint { display: none !important; } }
+        #bd-hint b { color: #fde047; margin-right: 6px; }
+        #bd-hint .k { color: #cbd5e1; }
+
+        /* 文字編輯 */
+        #bd-selbar { position: absolute; left: calc(var(--rail) + 14px); right: 8px; top: 52px; z-index: 8; display: none; align-items: center; gap: 8px; background: var(--glass); border-radius: 14px; padding: 6px 8px; pointer-events: auto; }
+        #board.sel #bd-selbar { display: flex; }
+        #bd-selbar button { color: #fff; background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 10px; height: 38px; padding: 0 14px; font-size: 13px; font-weight: 800; }
+        #bd-txt { position: absolute; left: 50%; top: 60px; transform: translateX(-50%); z-index: 8; display: none; align-items: center; gap: 8px; pointer-events: auto; }
+        #bd-txt button { color: #fff; background: var(--surface-3); border: 2px solid rgba(255,255,255,.9); border-radius: 14px; height: 48px; padding: 0 18px; font-size: 15px; font-weight: 800; box-shadow: var(--sh-2); white-space: nowrap; cursor: pointer; }
+        #bd-inl { position: absolute; z-index: 7; display: none; pointer-events: auto; box-sizing: border-box; resize: none; overflow: hidden; text-align: center; font-weight: bold; font-family: sans-serif; outline: none; border: 2px dashed #2563eb; background: rgba(255,255,255,.82); white-space: pre; margin: 0; transform-origin: 50% 50%; border-radius: 6px; }
+
+        /* 調色盤面板 */
+        #bd-panel { position: absolute; left: calc(var(--rail) + 14px); top: 82px; z-index: 5; display: none; gap: 10px; padding: 10px; background: rgba(10,16,30,.92); border: 1px solid var(--line-2); border-radius: 16px; touch-action: none; box-shadow: var(--sh-2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
         #board.pen.pp #bd-panel { display: flex; }
         #bd-pbtn { display: none; }
         #board.pen #bd-pbtn { display: flex; }
-        #bd-pbtn i { display: block; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: #dc2626; }
-        #bd-ln { display: none; flex-direction: column; gap: 4px; }
+        #bd-pbtn i { display: block; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: #dc2626; }
+        #bd-ln { display: none; flex-direction: column; gap: 6px; }
         #board.ln #bd-ln { display: flex; }
-        #bd-ln button { width: 57px; height: 28px; border-radius: 8px; border: 1px solid #64748b; background: #334155; color: #fff; font-size: 12px; font-weight: bold; padding: 0; }
-        #bd-ln button.on { background: #f97316; border-color: #fff; }
-        .bd-sl { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #e2e8f0; font: 10px sans-serif; width: 34px; }
-        .bd-sl .trk { position: relative; width: 26px; height: 150px; background: #334155; border-radius: 13px; touch-action: none; overflow: hidden; }
-        .bd-sl .fil { position: absolute; left: 0; right: 0; bottom: 0; background: #f97316; }
-        .bd-sl .val { font-size: 10px; color: #fde047; height: 12px; }
-        #bd-pdot { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+        #bd-ln button { width: 64px; height: 34px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface-3); color: #fff; font-size: 13px; font-weight: 800; padding: 0; cursor: pointer; }
+        #bd-ln button.on { background: var(--blue-d); border-color: #93c5fd; }
+        .bd-sl { display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--text-2); font: 11px var(--font); width: 38px; }
+        .bd-sl .trk { position: relative; width: 30px; height: 150px; background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 15px; touch-action: none; overflow: hidden; }
+        .bd-sl .fil { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #2563eb, #60a5fa); }
+        .bd-sl .val { font-size: 11px; color: #fde047; height: 13px; font-family: var(--mono); font-weight: 700; }
+        #bd-pdot { width: 30px; height: 28px; display: flex; align-items: center; justify-content: center; }
         #bd-pdot i { display: block; border-radius: 50%; background: #dc2626; border: 1px solid #fff; }
-        #bd-colors { display: grid; grid-template-columns: repeat(2, 26px); gap: 5px; align-content: start; }
-        .bd-sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #94a3b8; padding: 0; }
-        .bd-sw.on { border: 3px solid #fff; box-shadow: 0 0 0 2px #f97316; }
-        #bd-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3; background: rgba(15,23,42,0.92); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; text-align: center; }`;
+        #bd-colors { display: grid; grid-template-columns: repeat(2, 30px); gap: 7px; align-content: start; }
+        .bd-sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); padding: 0; cursor: pointer; }
+        .bd-sw.on { border: 3px solid #fff; box-shadow: 0 0 0 3px var(--blue); }
+        `;
       document.head.appendChild(css);
       const d = document.createElement('div'); d.id = 'board';
       d.innerHTML = `<div id="bd-wrap"><div id="bd-stage"><canvas id="bd-ink"></canvas><canvas id="bd-ui" style="pointer-events:none"></canvas></div></div>
         <div id="bd-msg"></div>
+        <div id="bd-done" onpointerdown="event.stopPropagation()"><b id="bd-done-t"></b><button onclick="bdChainDone()">✔ 完成</button></div>
+        <div id="bd-mg" onpointerdown="event.stopPropagation()"><button onclick="bdMgMove()">✋ 搬移此點</button><button class="dg" onclick="bdMgDel()">🗑 刪除此線</button></div>
+        <div id="bd-cross"><i></i><i></i><i></i><i></i><i></i></div>
         <div id="bd-status"></div>
         <button class="bt" id="bd-sdel" onclick="bdSelDel()" title="刪除選取的物件">🗑</button>
-        <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作）">↪</button><button class="bt" id="bd-pbtn" onclick="bdPanelToggle()" title="顏色／粗細／透明度（開始畫就自動收起）"><i></i></button></div>
+        <div id="bd-dimopt"><button id="bd-opt-mode" onclick="bdOptMode()"></button><button id="bd-opt-aim" onclick="bdOptAim()"></button></div>
+        <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原，Ctrl+Z）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作，Ctrl+Y）">↪</button><button class="bt" id="bd-pbtn" onclick="bdPanelToggle()" title="顏色／粗細／透明度（開始畫就自動收起）"><i></i></button></div>
         <div id="bd-selbar"><span id="bd-seltxt" style="color:#fde047;font:bold 12px sans-serif"></span><span style="flex:1"></span><button id="bd-sedit" onclick="bdSelEdit()">編輯文字</button><button onclick="bdSelNone()">取消</button></div>
         <textarea id="bd-inl" spellcheck="false" placeholder="輸入文字"></textarea>
-        <div id="bd-txt"><span style="color:#fde047;font:bold 12px sans-serif">直接打字，Enter＝換行</span><span style="flex:1"></span><button id="bd-txdel" style="background:#7f1d1d">刪除</button><button id="bd-txcan">取消</button><button id="bd-txok" style="background:#f97316">完成</button></div>
+        <div id="bd-txt"><button id="bd-txdel" style="background:#b91c1c">🗑 刪除</button><button id="bd-txcan">✕ 取消</button><button id="bd-txok" style="background:#16a34a">✔ 完成</button></div>
         <div id="bd-panel">
           <div class="bd-sl"><div id="bd-pdot"><i></i></div><div class="trk" id="bd-wtrk"><div class="fil"></div></div><div class="val" id="bd-wv"></div><span>粗細</span></div>
           <div class="bd-sl"><div style="height:26px"></div><div class="trk" id="bd-atrk"><div class="fil"></div></div><div class="val" id="bd-av"></div><span>透明</span></div>
@@ -3536,7 +3797,7 @@
             <div id="bd-ln"><button data-d="0" onclick="bdSetDash(false)">實線</button><button data-d="1" onclick="bdSetDash(true)">虛線</button></div></div>
         </div>
         <div id="bd-top">
-          <button class="bt" onclick="closeBoard()" style="background:#7f1d1d;" title="離開畫板">✕</button>
+          <button class="bt close" onclick="closeBoard()" title="離開畫板（Esc）">✕</button>
           <div class="sp"></div>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdFitAll()" title="縮放到剛好框住所有筆跡（再按 💾 輸出這個範圍）">⤢</button>
@@ -3567,6 +3828,8 @@
         if (BD.mv) { BD.mv = null; bdDropCache(); }
         bdSave(); bdRedrawNow();
       };
+      let xt = null;                                            // 十字定點模式：目前按著的那一指（拖＝平移地圖，沒拖就放開＝定點）
+      const xtStart = (e) => { xt = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t0: Date.now(), ok: true }; };
       const mapPt = (x, y) => L.point(x - BD.rx, y - BD.ry);
       const startDraw = (e) => {
         const pt = bdPtOf(e);
@@ -3630,9 +3893,11 @@
         }
         if (BD.tool === 'dim') {
           const R = e.pointerType === 'touch' ? 46 : 24, pp = bdPx(pt), ends = [];
-          BD.shapes.forEach((sh, i) => { if (sh.t === 'dim') [['a', sh.a], ['b', sh.b]].forEach(([part, q]) => { const px = bdPx(q); ends.push({ sh, part, q, i, px, d: Math.hypot(px[0] - pp[0], px[1] - pp[1]) }); }); });
-          ends.sort((x, y) => x.d - y.d || y.i - x.i);
-          const best = ends.length && ends[0].d <= R ? ends[0] : null;
+          const rawPt = bdMerc(e.clientX - BD.rx, e.clientY - BD.ry), ppRaw = bdPx(rawPt), aimed = bdAimOn(e);
+          BD.shapes.forEach((sh, i) => { if (sh.t === 'dim') [['a', sh.a], ['b', sh.b]].forEach(([part, q]) => { const px = bdPx(q); ends.push({ sh, part, q, i, px, d: Math.hypot(px[0] - pp[0], px[1] - pp[1]), dr: Math.hypot(px[0] - ppRaw[0], px[1] - ppRaw[1]) }); }); });
+          let best = null, ramp = false;
+          if (aimed) { const er = ends.slice().sort((x, y) => x.dr - y.dr || y.i - x.i); if (er.length && er[0].dr <= R) { best = er[0]; ramp = true; } }   // 直接按在端點上就能拿起來（拿起後慢慢浮到指尖上方）
+          if (!best) { ends.sort((x, y) => x.d - y.d || y.i - x.i); best = ends.length && ends[0].d <= R ? ends[0] : null; }
           if (best) {
             // 吸附在一起的端點（座標相同）是「釘住」的：拖其中一個，整組一起動；長按則只拿起最後畫的那條
             const cluster = ends.filter(x => x.q[0] === best.q[0] && x.q[1] === best.q[1]);
@@ -3640,7 +3905,7 @@
               bdPush(); const cmap = new Map(); const items = [];
               list.forEach(en => { let cl = cmap.get(en.sh); if (!cl) { const i = BD.shapes.indexOf(en.sh); cl = JSON.parse(JSON.stringify(en.sh)); BD.shapes[i] = cl; cmap.set(en.sh, cl); } items.push({ sh: cl, part: en.part }); });
               bdMakeCache(Array.from(cmap.values()));
-              BD.mv = { mode: 'line', sh: items[0].sh, part: items[0].part, also: items.slice(1), last: startPt, start: startPt, moved: false };
+              BD.mv = { mode: 'line', sh: items[0].sh, part: items[0].part, also: items.slice(1), last: startPt, start: startPt, moved: false, ramp, base: items.map(o => o.sh[o.part].slice()), fs: ramp ? rawPt : startPt, tx0: e.clientX, ty0: e.clientY };
               drawing = true;
             };
             if (cluster.length === 1) { grab(cluster, pt); return; }
@@ -3656,7 +3921,7 @@
         }
         drawing = true; BD.erasing = false;
         if (BD.tool === 'erase') { bdEraseAt(pt); return; }
-        BD.cur = BD.tool === 'line' ? { t: 'line', a: pt, b: pt, c: BD.ln.c, w: BD.ln.w, al: BD.ln.a == null ? 1 : BD.ln.a, dash: !!BD.ln.dash } : BD.tool === 'rect' ? { t: 'rect', a: pt, b: pt, al: BD.rc.a == null ? 1 : BD.rc.a } : BD.tool === 'free' ? { t: 'free', p: [pt], c: BD.pen.c, w: BD.pen.w, a: BD.pen.a == null ? 1 : BD.pen.a } : { t: BD.tool, a: pt, b: pt };
+        BD.cur = BD.tool === 'line' ? { t: 'line', a: pt, b: pt, c: BD.ln.c, w: BD.ln.w, al: BD.ln.a == null ? 1 : BD.ln.a, dash: !!BD.ln.dash } : BD.tool === 'rect' ? { t: 'rect', a: pt, b: pt, al: BD.rc.a == null ? 1 : BD.rc.a } : BD.tool === 'free' ? { t: 'free', p: [pt], c: BD.pen.c, w: BD.pen.w, a: BD.pen.a == null ? 1 : BD.pen.a } : BD.tool === 'dim' ? bdNewDim(pt, pt) : { t: BD.tool, a: pt, b: pt };
         if (BD.tool === 'free' && BD.cur.a >= 1) bdInkSeg(BD.cur, pt, pt); else bdPreview();
       };
       wrap.addEventListener('pointerdown', (e) => {
@@ -3668,17 +3933,24 @@
         if (isTouch) {                                   // 手指：平移／縮放地圖本身；筆：畫圖
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (drawing && drawId === null) return;            // 筆正在畫 → 手掌／手指忽略（防誤觸）
-          if (touches.size === 1 && !drawing) { drawId = e.pointerId; startDraw(e); return; }   // 單指＝畫（跟筆一樣）
+          if (touches.size === 1 && !drawing && bdCrossOn()) { xtStart(e); return; }
+          if (touches.size === 1 && !drawing) { drawId = e.pointerId; startDraw(e); if (bdAimOn(e)) bdAim(e); return; }   // 單指＝畫（跟筆一樣）
           if (touches.size === 2) {
-            abortDraw(); pan = null; const [p, q] = Array.from(touches.values());
+            abortDraw(); pan = null; xt = null; const [p, q] = Array.from(touches.values());
             pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: map.getZoom(), mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
           }
           return;
         }
         if (drawing) return;
+        if (bdCrossOn()) { xtStart(e); return; }
         startDraw(e);
       });
       wrap.addEventListener('pointermove', (e) => {
+        if (xt && e.pointerId === xt.id) {
+          map.panBy([xt.x - e.clientX, xt.y - e.clientY], { animate: false }); xt.x = e.clientX; xt.y = e.clientY;
+          if (Math.hypot(e.clientX - xt.sx, e.clientY - xt.sy) > 10) xt.ok = false;
+          return;
+        }
         if (touches.has(e.pointerId) && e.pointerId !== drawId) {
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (pinch && touches.size >= 2) {
@@ -3691,12 +3963,25 @@
           return;
         }
         if (!drawing) return;
+        if (bdAimOn(e)) bdAim(e);
         if (BD.peel) {
           if (Math.hypot(e.clientX - BD.peel.x, e.clientY - BD.peel.y) < 7) return;
           clearTimeout(BD.peel.timer); const g0 = BD.peel.grab; BD.peel = null; g0();
         }
         if (BD.mv) {
           const m = BD.mv, pt = bdPtOf(e);
+          if (m.mode === 'line' && m.base) {                       // 端點：永遠「起點＋位移」算絕對位置（不累加），吸附只影響顯示位置，不會被卡住或亂跑
+            const travel = Math.hypot(e.clientX - m.tx0, e.clientY - m.ty0);
+            if (travel > 5) m.moved = true;
+            if (m.moved) {
+              let dx, dy;
+              if (m.ramp) { const a0 = bdMerc(e.clientX - BD.rx, e.clientY - BD.ry - BD_AIM * Math.min(1, travel / 40)); dx = a0[0] - m.fs[0]; dy = a0[1] - m.fs[1]; }
+              else { dx = pt[0] - m.fs[0]; dy = pt[1] - m.fs[1]; }
+              const its = [{ sh: m.sh, part: m.part }].concat(m.also || []);
+              its.forEach((o, i) => { o.sh[o.part] = [m.base[i][0] + dx, m.base[i][1] + dy]; });
+            }
+            bdRedraw(); return;
+          }
           if (m.mode === 'rot') {
             const c = bdPx(m.sh.a), q = bdPx(pt);
             m.sh.rot = Math.atan2(q[1] - c[1], q[0] - c[0]) + Math.PI / 2;
@@ -3717,6 +4002,12 @@
         else { BD.cur.b = bdPtOf(e); bdPreview(); }
       });
       const up = (e) => {
+        bdAim(null);
+        if (xt && e.pointerId === xt.id) {
+          const t = xt; xt = null; touches.delete(e.pointerId);
+          if (t.ok && e.type !== 'pointercancel' && Date.now() - t.t0 < 450 && touches.size === 0) bdCrossTap();
+          return;
+        }
         if (touches.has(e.pointerId)) {
           touches.delete(e.pointerId);
           if (e.pointerId !== drawId) {
@@ -3794,6 +4085,8 @@
       const h = lines.length * fs * 1.25 + fs * 0.5, pc = bdPx(sh.a), st = ta.style;
       st.fontSize = fs + 'px'; st.lineHeight = (fs * 1.25) + 'px'; st.padding = `${fs * 0.2}px ${fs * 0.35}px`; st.color = sh.c || '#dc2626';
       st.width = w + 'px'; st.height = h + 'px'; st.left = (pc[0] - w / 2) + 'px'; st.top = (pc[1] - h / 2) + 'px'; st.transform = `rotate(${sh.rot || 0}rad)`;
+      const bar = document.getElementById('bd-txt');    // 按鈕貼在文字框上方（手機鍵盤會蓋住下方），上方放不下才放下面
+      if (bar) { const bh = 56; let ty = pc[1] - h / 2 - bh - 10; if (ty < 46) ty = pc[1] + h / 2 + 10; bar.style.left = Math.max(130, Math.min(BD.W - 130, pc[0])) + 'px'; bar.style.top = ty + 'px'; }
     }
     function bdTextFinish(v) {
       const e = BD.edit; if (!e) return;
@@ -3876,15 +4169,19 @@
       setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
     }
     window.bdTool = (t) => {
-      BD.tool = t; BD.selObj = null; document.getElementById('board').classList.remove('pp'); if (document.getElementById('bd-w') === null) bdPenUi(); document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; document.getElementById('board').classList.toggle('pen', t === 'free' || t === 'text' || t === 'line' || t === 'rect'); document.getElementById('board').classList.toggle('ln', t === 'line'); if (BD.ink && BD.ink.width > 1) bdDrawUi();
+      if (BD.pend) { BD.cur = null; BD.pend = false; }
+      if (BD.mvp) { BD.mvp.sh[BD.mvp.part] = BD.mvp.orig; BD.mvp = null; BD.shapes = BD.hist.pop() || BD.shapes; bdSave(); }
+      BD.tool = t; BD.selObj = null; document.getElementById('board').classList.remove('pp'); if (document.getElementById('bd-w') === null) bdPenUi(); document.getElementById('board').classList.toggle('act', t !== 'none'); if (t !== 'text') BD.sel = null; document.getElementById('board').classList.toggle('pen', t === 'free' || t === 'text' || t === 'line' || t === 'rect' || t === 'dim'); document.getElementById('board').classList.toggle('ln', t === 'line'); document.getElementById('board').classList.toggle('dim', t === 'dim'); bdDimOptUi(); if (BD.ink && BD.ink.width > 1) bdDrawUi();
       document.querySelectorAll('#bd-rail .bt[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
       bdStatus();
     };
     const BD_COLORS = ['#dc2626', '#111827', '#2563eb', '#16a34a', '#f97316', '#9333ea', '#ca8a04', '#0891b2'];
     const bdLoad = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
     BD.ln = bdLoad('tpc_ln', { c: '#dc2626', w: 1, a: 1, dash: false });       // 直線自己的顏色／粗細／透明／虛實（和筆分開）
+    BD.dm = bdLoad('tpc_dm', { c: '#2563eb', w: 1, a: 1 });                   // 量長度的顏色／粗細／透明（預設藍色）
     BD.rc = bdLoad('tpc_rc', { a: 1 });                                        // 白底自己的透明度
-    const bdCfg = () => BD.tool === 'line' ? BD.ln : (BD.tool === 'rect' ? BD.rc : BD.pen);
+    const bdNewDim = (a, b) => ({ t: 'dim', a, b, c: BD.dm.c, w: BD.dm.w, al: BD.dm.a });
+    const bdCfg = () => BD.tool === 'line' ? BD.ln : (BD.tool === 'rect' ? BD.rc : (BD.tool === 'dim' ? BD.dm : BD.pen));
     window.bdPanelToggle = () => { document.getElementById('board').classList.toggle('pp'); };
     window.bdSetDash = (d) => { BD.ln.dash = !!d; bdPenUi(); };
     function bdPenUi() {
@@ -3898,7 +4195,7 @@
       const av = document.getElementById('bd-av'); if (av) av.textContent = Math.round(C.a * 100) + '%';
       const pb = document.querySelector('#bd-pbtn i'); if (pb) pb.style.background = C.c;
       const pd = document.querySelector('#bd-pdot i'); if (pd) { const d = Math.max(3, Math.min(26, 3 + C.w * 2.6)); pd.style.width = pd.style.height = d + 'px'; pd.style.background = C.c; pd.style.opacity = C.a; }
-      try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); localStorage.setItem('tpc_ln', JSON.stringify(BD.ln)); localStorage.setItem('tpc_rc', JSON.stringify(BD.rc)); } catch (e) {}
+      try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); localStorage.setItem('tpc_ln', JSON.stringify(BD.ln)); localStorage.setItem('tpc_rc', JSON.stringify(BD.rc)); localStorage.setItem('tpc_dm', JSON.stringify(BD.dm)); } catch (e) {}
     }
     window.bdPenPop = () => {};
     window.bdToolTap = (t) => {
@@ -3921,15 +4218,45 @@
       const sw = E3857().unproject(L.point(Math.min(...xs), Math.min(...ys))), ne = E3857().unproject(L.point(Math.max(...xs), Math.max(...ys)));
       map.fitBounds(L.latLngBounds(sw, ne), { padding: [70, 70], animate: false, maxZoom: 21 });
     };
-    window.bdUndo = () => { if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
+    window.bdUndo = () => { if (BD.mvp) { BD.mvp.sh[BD.mvp.part] = BD.mvp.orig; BD.mvp = null; BD.shapes = BD.hist.pop() || BD.shapes; bdSave(); bdRedrawNow(); return; } if (BD.pend) { if (BD.chainN > 0 && BD.shapes.length) { const r = BD.shapes.pop(); BD.hist.pop(); BD.chainN--; BD.cur = Object.assign({}, r); bdSave(); } else { BD.cur = null; BD.pend = false; } bdRedrawNow(); return; } if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
     window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.selObj = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
-    window.bdClearAll = () => { if (!BD.shapes.length || !confirm('清空這一天的所有筆跡？（可按復原找回）')) return; bdPush(); BD.sel = null; BD.shapes = []; bdSave(); bdRedraw(); };
+
+    // ===== 電腦鍵盤快捷鍵（畫圖板開啟時）=====
+    // Ctrl+Z 復原／Ctrl+Y 或 Ctrl+Shift+Z 重作／Delete 刪除選取／Esc 取消或結束／Enter 結束連續圖釘
+    // 工具：V 選取、P 筆、L 直線、R 白底、E 橡皮擦、M 量長度、T 文字、H 移動地圖（再按一次同一個鍵＝關閉）
+    document.addEventListener('keydown', (e) => {
+      if (typeof BD === 'undefined' || !BD.on) return;
+      const tg = e.target, k = e.key, mod = e.ctrlKey || e.metaKey;
+      if (k === '?' && !BD.edit && !(tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA'))) { BD.hintOff = !BD.hintOff; try { localStorage.setItem('tpc_hint', BD.hintOff ? '0' : '1'); } catch (_) {} bdHintUi(); e.preventDefault(); return; }
+      if (BD.edit) {                                            // 正在打字：只處理 Esc／Ctrl+Enter，其餘照常打字
+        if (k === 'Escape') { e.preventDefault(); bdTextFinish(null); }
+        else if (mod && k === 'Enter') { e.preventDefault(); bdTextFinish(document.getElementById('bd-inl').value); }
+        return;
+      }
+      if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.isContentEditable)) return;
+      if (mod && (k === 'z' || k === 'Z')) { e.preventDefault(); e.shiftKey ? bdRedo() : bdUndo(); return; }
+      if (mod && (k === 'y' || k === 'Y')) { e.preventDefault(); bdRedo(); return; }
+      if (mod || e.altKey) return;
+      if (k === 'Escape') {
+        if (BD.pend) bdChainDone(); else if (BD.mvp) bdUndo(); else if (BD.selObj || BD.sel) { BD.selObj = null; BD.sel = null; bdRedraw(); } else if (BD.tool !== 'none') bdTool('none');
+        e.preventDefault(); return;
+      }
+      if (k === 'Enter') { if (BD.pend) { e.preventDefault(); bdChainDone(); } return; }
+      if (k === 'Delete' || k === 'Backspace') {
+        if (BD.mag && !BD.pend) { e.preventDefault(); bdMgDel(); }
+        else if (BD.selObj) { e.preventDefault(); bdSelDel(); }
+        return;
+      }
+      const map_ = { v: 'select', p: 'free', l: 'line', r: 'rect', e: 'erase', m: 'dim', t: 'text', h: 'none' }, t = map_[String(k).toLowerCase()];
+      if (t) { e.preventDefault(); if (t === 'none') bdTool('none'); else bdToolTap(t); }
+    });
+    window.bdClearAll = async () => { if (!BD.shapes.length || !(await gqConfirm('清空這一天的所有筆跡？（可按復原找回）', { danger: true, okText: '清空' }))) return; bdPush(); BD.sel = null; BD.shapes = []; bdSave(); bdRedraw(); };
     window.bdExport = async (mode) => {
       const msg = document.getElementById('bd-msg'), say = (t, ms) => { msg.textContent = t; msg.style.display = t ? 'block' : 'none'; if (ms) setTimeout(() => { msg.style.display = 'none'; }, ms); };
       say('⏳ 產生高解析圖片…');
       { const r0 = document.getElementById('leaflet-map').getBoundingClientRect(); if (Math.round(r0.width) !== BD.W || Math.round(r0.height) !== BD.H) bdLayout(); }
       bdSyncView();
-      const f = Math.max(1, Math.min(4 * BD.dpr, 3600 / Math.max(BD.W, BD.H)));
+      const f = Math.max(1, Math.min(4 * BD.dpr, 5200 / Math.max(BD.W, BD.H)));
       const v = { W: Math.round(BD.W * f), H: Math.round(BD.H * f), k: BD.k * f, minX: BD.minX, maxY: BD.maxY };
       const saved = { k: BD.k, fx: BD.fx }, code = BD.centerCode, lat = BD.lat;
       const out = document.createElement('canvas'); out.width = v.W; out.height = v.H;
@@ -3937,12 +4264,14 @@
       let note = '';
       try {
         g.fillStyle = '#fff'; g.fillRect(0, 0, v.W, v.H);
+        const tl = bdTilesFor(v.minX, v.minX + v.W / v.k, v.maxY - v.H / v.k, v.maxY);
         const [base, cad] = await Promise.all([
           bdRenderBase(v).catch(() => ({ count: 0, tainted: false })),
-          isCadOverlayEnabled ? bdRenderBg(bdTilesFor(v.minX, v.minX + v.W / v.k, v.maxY - v.H / v.k, v.maxY), (t) => say(t), v).catch(() => null) : Promise.resolve(null)
+          (isCadOverlayEnabled && !cadVecFailed) ? Promise.resolve({ vec: true }) : isCadOverlayEnabled ? bdRenderBg(bdTilesFor(v.minX, v.minX + v.W / v.k, v.maxY - v.H / v.k, v.maxY), (t) => say(t), v).catch(() => null) : Promise.resolve(null)
         ]);
         if (base.count && !base.tainted) g.drawImage(base.cv, 0, 0); else if (base.count) note = '（國土測繪底圖不允許存入圖片：這張只含圖資＋筆跡。要完整畫面請改用手機截圖）';
-        if (cad && cad.got) { g.globalCompositeOperation = 'multiply'; g.drawImage(cad.cv, 0, 0); g.globalCompositeOperation = 'source-over'; cad.cv.width = 0; }
+        if (cad && cad.vec) { const n = await cadVecOnto(g, tl, v, f, (t) => say(t)); if (!n && cadVecFailed) { const o = await bdRenderBg(tl, (t) => say(t), v).catch(() => null); if (o && o.got) { g.globalCompositeOperation = 'multiply'; g.drawImage(o.cv, 0, 0); g.globalCompositeOperation = 'source-over'; o.cv.width = 0; } } }
+        else if (cad && cad.got) { g.globalCompositeOperation = 'multiply'; g.drawImage(cad.cv, 0, 0); g.globalCompositeOperation = 'source-over'; cad.cv.width = 0; }
         base.cv && (base.cv.width = 0);
       } catch (e) { console.warn(e); }
       BD.k = v.k; BD.fx = f;                                   // 把筆跡以匯出解析度畫上去
@@ -3982,7 +4311,8 @@
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
-      try { BD.shapes = JSON.parse(localStorage.getItem(bdKey()) || '[]'); } catch (e) { BD.shapes = []; }
+      BD.key = bdKey();
+      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
       bdTool(BD.tool); bdLayout(); bdPenUi();
     };
@@ -4223,10 +4553,10 @@
     }
 
     // 清空：只清「目前這一天」，並提供 8 秒復原
-    document.getElementById('btn-clear').onclick = () => {
+    document.getElementById('btn-clear').onclick = async () => {
       if (tasks.length === 0) return;
       const label = (activeDate === todayKey) ? '今日' : activeDate;
-      if (!confirm(`確定清空${label}的 ${tasks.length} 件工單？\n（清空後 8 秒內可按「復原」）`)) return;
+      if (!(await gqConfirm(`確定清空${label}的 ${tasks.length} 件工單？\n（清空後 8 秒內可按「復原」）`, { danger: true, okText: '清空' }))) return;
       const snap = clone(tasks), date = activeDate;
       tasks = [];
       currentIndex = 0;
@@ -4335,7 +4665,7 @@
     };
 
     // 複製目前畫面到另一天：採「追加」，相同工單略過，絕不覆蓋原有紀錄
-    document.getElementById('btn-action-save').onclick = () => {
+    document.getElementById('btn-action-save').onclick = async () => {
       if (tasks.length === 0 || selectedDate === activeDate) return;
       const exist = monthLogs[selectedDate] || [];
       const sameKey = (a, b) => (a.code === '📍地址導航' || b.code === '📍地址導航')
@@ -4345,7 +4675,7 @@
       const msg = exist.length > 0
         ? `${selectedDate} 已有 ${exist.length} 件。\n要追加 ${toAdd.length} 件進去嗎？（原有紀錄不會被覆蓋）`
         : `要把目前 ${toAdd.length} 件複製到 ${selectedDate} 嗎？`;
-      if (confirm(msg)) {
+      if (await gqConfirm(msg, { okText: '確定' })) {
         monthLogs[selectedDate] = [...exist, ...clone(toAdd)];
         persistLogs();
         renderCalendar();
@@ -4353,9 +4683,9 @@
       }
     };
 
-    document.getElementById('btn-action-del').onclick = () => {
+    document.getElementById('btn-action-del').onclick = async () => {
       if (!monthLogs[selectedDate]) return;
-      if (confirm(`⚠️ 確定要刪除 ${selectedDate} 的所有工單紀錄嗎？`)) {
+      if (await gqConfirm(`確定要刪除 ${selectedDate} 的所有工單紀錄嗎？`, { danger: true, okText: '刪除' })) {
         if (selectedDate === activeDate) {
           tasks = [];
           currentIndex = 0;
