@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;"><span id="cad-offset-label">X:0m, Y:0m</span> · v95</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v97</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1972,7 +1972,7 @@
       try { if (cadOv.items.has(it.id)) return; const c = await cadOvCache(); if (!c) return; if (await c.match(cadOvUrl(it.id))) return; cadOv.known.add(it.id); cadOvRender(it); } catch (e) {}
     }
     // 電腦：背景預建「所有已匯入圖幅」的縮圖（一張一張慢慢做，不卡操作），做完縮小總覽就是全區、順暢
-    const cadPre = { on: false, fin: false };
+    const cadPre = { on: false, fin: false }, cadWant = new Set();
     async function cadOvPrebuild() {
       if (cadPre.on || cadPre.fin || !CAD_DESK) return; cadPre.on = true;
       const st = document.getElementById('cad-status-text'), sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2096,9 +2096,13 @@
       ctx.lineJoin = 'round'; ctx.lineCap = 'butt'; ctx.strokeStyle = '#000'; ctx.fillStyle = '#000'; ctx.globalAlpha = 0.9;
       const P = (q) => [((q.x + CAD_ORG) * k - ox) * dpr, ((CAD_ORG - q.y) * k - oy) * dpr];
       if (ovMode) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; for (const it of cadOv.items.values()) cadOvPaint(ctx, it, P, pw, ph, okey); }
-      else for (const it of cadVec.tiles.values()) {
+      else {
+        // 還沒解析好的圖幅：先用縮圖（糊的）墊著，向量解析完再換成清晰的——走到新區域不會空白
+        if (cadOv.items.size) { ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low'; for (const it of cadOv.items.values()) if (!cadVec.tiles.has(it.id)) cadOvPaint(ctx, it, P, pw, ph, okey); }
+        for (const it of cadVec.tiles.values()) {
         if (it.crKey !== okey) { it.cr = tileCornersMerc(it.zone, it.x, it.y, true); it.crKey = okey; }
         cadVecPaintTile(ctx, it, P, pw, ph, 0.9 * dpr, 6 * dpr);
+        }
       }
       cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY, bnds: L.latLngBounds(map.containerPointToLatLng([-padX, -padY]), map.containerPointToLatLng([sz.x + padX, sz.y + padY])) };
     }
@@ -2115,18 +2119,28 @@
       if (map.getZoom() < MIN_CAD_ZOOM) { if (map.getZoom() >= OV_MIN && !cadVecFailed) { cadVecEnsureCanvas(); cadOvSchedule(); } cadVecRedraw(); return; }
       if (cadVecFailed) { cadSchedulePatch(60); return; }
       cadVecEnsureCanvas();
-      const v = cadViewMerc(), w = (v.maxX - v.minX) * 0.5, h = (v.maxY - v.minY) * 0.5;
+      // 像「地圖串流」：先處理腳下這張，再處理旁邊的；預載範圍＝畫面外 30%（至少 60 公尺），走近圖幅邊緣才會去載鄰圖
+      const v = cadViewMerc(), w = Math.max((v.maxX - v.minX) * (CAD_DESK ? 0.5 : 0.3), 60), h = Math.max((v.maxY - v.minY) * (CAD_DESK ? 0.5 : 0.3), 60);
       const ts = bdTilesFor(v.minX - w, v.maxX + w, v.minY - h, v.maxY + h);
+      { const ll = map.getCenter(), p0 = wgs84ToTWD97(ll.lat, ll.lng), q0 = twd97ToTWD67(p0.x, p0.y);
+        const dist = (t) => { const b = BASE_COORDS[t.id[0]]; return b ? Math.hypot(b[0] + t.x * 800 + 400 - q0.x, b[1] + t.y * 500 + 250 - q0.y) : 1e9; };
+        ts.forEach(t => { t.d = dist(t); }); ts.sort((a, b) => a.d - b.d); }
       const need = ts.filter(t => !cadVec.tiles.has(t.id));
+      need.forEach(t => {                                     // 解析好之前先把縮圖（若有）讀出來墊底
+        if (cadOv.items.has(t.id) || cadWant.has(t.id)) return; cadWant.add(t.id);
+        cadOvFromCache(t.id).then(img => { cadWant.delete(t.id); if (!img) return; if (cadVec.tiles.has(t.id) || cadOv.items.has(t.id)) { try { img.close && img.close(); } catch (e) {} return; } cadOvAdd(t.id, img); cadVecRedraw(); });
+      });
       const st = document.getElementById('cad-status-text');
       if (need.length && st) { st.textContent = '⚡ 圖資解析中…'; st.style.display = 'inline'; }
-      Promise.all(ts.map(cadVecLoad)).then(() => {
+      const fin = () => {
         const ids = new Set(ts.map(t => t.id));
-        for (const k of Array.from(cadVec.tiles.keys())) { if (cadVec.tiles.size <= 8) break; if (!ids.has(k)) cadVec.tiles.delete(k); }
+        for (const k of Array.from(cadVec.tiles.keys())) { if (cadVec.tiles.size <= (CAD_DESK ? 8 : 4)) break; if (!ids.has(k)) cadVec.tiles.delete(k); }   /* 手機最多留 4 張已解析圖幅 */
         if (st && !cadVec.loading.size) st.style.display = 'none';
         cadVecRedraw();
         if (cadVecFailed) cadSchedulePatch(60);
-      });
+      };
+      if (!ts.length) { fin(); return; }
+      cadVecLoad(ts[0]).then(() => { cadVecRedraw(); return Promise.all(ts.slice(1).map(cadVecLoad)); }).then(fin);
       cadVecRedraw();
     }
     function cadVecOff() {
@@ -4139,8 +4153,11 @@
       map.on('move zoom', () => {
         if (!BD.on) return;
         BD.moving = true;
-        if (BD.edit || BD.mv || BD.cur || BD.pend || BD.mvp || BD.cache || !BD.dmn || BD.dz !== map.getZoom()) { bdRedraw(); return; }
-        const mn = map.getPixelBounds().min, tf = `translate3d(${BD.dmn.x - mn.x}px,${BD.dmn.y - mn.y}px,0)`;
+        const sc = BD.dmn ? Math.pow(2, map.getZoom() - BD.dz) : 1;
+        if (BD.edit || BD.mv || BD.cur || BD.pend || BD.mvp || BD.cache || !BD.dmn || sc > 3 || sc < 0.33) { bdRedraw(); return; }
+        // 平移＝搬畫布；縮放＝把畫布放大縮小（停手後才重畫成清晰的），滑動／雙指縮放中完全不重畫筆跡
+        const mn = map.getPixelBounds().min, tf = `translate3d(${sc * BD.dmn.x - mn.x}px,${sc * BD.dmn.y - mn.y}px,0) scale(${sc})`;
+        BD.ink.style.transformOrigin = '0 0'; BD.ui.style.transformOrigin = '0 0';
         BD.ink.style.transform = tf; BD.ui.style.transform = tf; BD.shifted = true;
       });
       map.on('moveend zoomend', () => { if (BD.on && BD.moving) { BD.moving = false; bdRedraw(); } });
@@ -4424,6 +4441,29 @@
       setTimeout(() => map.invalidateSize(), 100);
     };
     window.measureViaBoard = () => { if (!BD.on) openBoard(); bdTool('dim'); };
+    // 效能小表（連點版本號 5 下開關）：左上角顯示 fps／最長卡頓／記憶體／已解析圖幅，方便回報「哪個操作卡」
+    (function () {
+      const lab = document.getElementById('ver-label'); if (!lab) return;
+      let n = 0, tmr = 0, box = null, raf = 0, last = 0, frames = 0, t0 = 0, worst = 0, lw = 0;
+      function loop(t) {
+        if (last) { const d = t - last; frames++; if (d > worst) worst = d; }
+        last = t;
+        if (!t0) t0 = t;
+        if (t - t0 >= 1000) {
+          const fps = Math.round(frames * 1000 / (t - t0)); lw = Math.max(worst, lw * 0.0); const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : '-';
+          let sh = 0; try { sh = BD.shapes.length; } catch (e) {}
+          box.textContent = `fps ${fps}｜最卡 ${Math.round(worst)}ms｜記憶體 ${mem}｜圖幅 ${cadVec.tiles.size}｜筆跡 ${sh}｜DOM ${document.getElementsByTagName('*').length}`;
+          frames = 0; worst = 0; t0 = t;
+        }
+        raf = requestAnimationFrame(loop);
+      }
+      lab.addEventListener('click', () => {
+        clearTimeout(tmr); tmr = setTimeout(() => { n = 0; }, 900); if (++n < 5) return; n = 0;
+        if (box) { cancelAnimationFrame(raf); box.remove(); box = null; return; }
+        box = document.createElement('div'); box.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#4ade80;font:700 11px/1.3 monospace;pointer-events:none;max-width:96vw;white-space:normal';
+        document.body.appendChild(box); last = 0; t0 = 0; frames = 0; worst = 0; raf = requestAnimationFrame(loop);
+      });
+    })();
     window.toggleMoreTools = () => {
       const el = document.getElementById('more-tools');
       const open = el.style.display !== 'flex';
