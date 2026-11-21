@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v108</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v109</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3935,7 +3935,7 @@
       document.querySelector('.map-container').appendChild(d);
       BD.ui = document.getElementById('bd-ui'); BD.ink = document.getElementById('bd-ink'); BD.stage = document.getElementById('bd-stage');
       const wrap = document.getElementById('bd-wrap'), touches = new Map();
-      let pan = null, pinch = null, drawing = false, drawId = null;
+      let pan = null, pinch = null, drawing = false, drawId = null, penId = null; const capIds = new Set();
       const abortDraw = () => {
         if (!drawing) return;
         drawing = false; drawId = null; BD.erasing = false;
@@ -4071,7 +4071,14 @@
         e.preventDefault();
         if (BD.edit) { bdTextFinish(document.getElementById('bd-inl').value); return; }
         document.getElementById('board').classList.remove('pp');          // 開始畫就把設定面板收起來，不擋畫面
-        try { wrap.setPointerCapture(e.pointerId); } catch (_) {}
+        // 防「卡住」：系統吃掉某根手指／筆的 pointerup 時（手勢列、手掌、錄影浮窗…），舊紀錄會殘留 → 下一次單指被當成雙指、或一直當成「正在畫」而擦不掉。這裡把已失去捕捉的殘留紀錄清掉
+        for (const id of Array.from(touches.keys())) if (id !== e.pointerId && capIds.has(id) && !(wrap.hasPointerCapture && wrap.hasPointerCapture(id))) { touches.delete(id); capIds.delete(id); }
+        if (touches.size < 2 && pinch) { if (pinch.raf) cancelAnimationFrame(pinch.raf); pinch = null; }
+        if (touches.size < 2) pinchEnd();
+        if (!touches.size) { pan = null; xt = null; panEnd(); }
+        if (drawing && drawId !== null && !touches.has(drawId)) abortDraw();
+        if (drawing && drawId === null && penId !== null && capIds.has(penId) && !(wrap.hasPointerCapture && wrap.hasPointerCapture(penId))) { capIds.delete(penId); penId = null; abortDraw(); }
+        try { wrap.setPointerCapture(e.pointerId); if (wrap.hasPointerCapture && wrap.hasPointerCapture(e.pointerId)) capIds.add(e.pointerId); } catch (_) {}
         const isTouch = e.pointerType === 'touch';
         if (isTouch) {                                   // 手指：平移／縮放地圖本身；筆：畫圖
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4087,7 +4094,7 @@
         }
         if (drawing) return;
         if (bdCrossOn()) { xtStart(e); return; }
-        startDraw(e);
+        penId = e.pointerId; startDraw(e);
       });
       wrap.addEventListener('pointermove', (e) => {
         if (xt && e.pointerId === xt.id) {
@@ -4142,7 +4149,7 @@
         else { BD.cur.b = bdPtOf(e); bdPreview(); }
       });
       const up = (e) => {
-        bdAim(null);
+        bdAim(null); capIds.delete(e.pointerId); if (e.pointerId === penId) penId = null;
         if (xt && e.pointerId === xt.id) {
           const t = xt; xt = null; touches.delete(e.pointerId); panEnd();
           if (t.ok && e.type !== 'pointercancel' && Date.now() - t.t0 < 450 && touches.size === 0) bdCrossTap();
@@ -4194,7 +4201,7 @@
           if (c.t === 'free' && (c.a == null || c.a >= 1)) { if (!ok) bdRedrawNow(); } else bdRedrawNow();
         } else { bdSave(); bdRedrawNow(); }
       };
-      wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up);
+      wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', up); wrap.addEventListener('lostpointercapture', up);
       wrap.addEventListener('wheel', (e) => {
         e.preventDefault(); map.setZoomAround(mapPt(e.clientX, e.clientY), map.getZoom() + (e.deltaY < 0 ? 0.4 : -0.4), { animate: false });
       }, { passive: false });
