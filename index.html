@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v105</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v106</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3940,8 +3940,27 @@
         if (!drawing) return;
         drawing = false; drawId = null; BD.erasing = false;
         if (BD.cur) { BD.cur = null; bdPreview(); }
-        if (BD.mv) { BD.mv = null; bdDropCache(); }
-        bdSave(); bdRedrawNow();
+        const hadMv = !!BD.mv; if (BD.mv) { BD.mv = null; bdDropCache(); }
+        if (hadMv) bdSave(); bdRedrawNow();
+      };
+      // 雙指縮放：同一個畫面最多套用一次、平移＋縮放合成一次 setView（原本每個 pointermove 做兩次地圖更新，手機上會一頓一頓、亂滑）
+      const applyPinch = () => {
+        if (!pinch) return; pinch.raf = 0;
+        if (touches.size < 2) return;
+        const [p, q] = Array.from(touches.values()), d = Math.hypot(p.x - q.x, p.y - q.y);
+        if (d < 8) return;
+        const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+        let z = pinch.z + Math.log2(d / pinch.d);
+        if (map.getMinZoom && map.getMaxZoom) z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), z));
+        if (map.project && map.unproject && map.setView && map.getSize) {
+          const A = map.containerPointToLatLng(mapPt(pinch.mx, pinch.my)), sz = map.getSize(), pa = map.project(A, z);
+          const c = map.unproject(L.point(pa.x - (mx - BD.rx - sz.x / 2), pa.y - (my - BD.ry - sz.y / 2)), z);
+          map.setView(c, z, { animate: false });
+        } else {
+          map.panBy([pinch.mx - mx, pinch.my - my], { animate: false });
+          map.setZoomAround(mapPt(mx, my), z, { animate: false });
+        }
+        pinch.mx = mx; pinch.my = my;
       };
       let xt = null;                                            // 十字定點模式：目前按著的那一指（拖＝平移地圖，沒拖就放開＝定點）
       const xtStart = (e) => { xt = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t0: Date.now(), ok: true }; };
@@ -4069,11 +4088,7 @@
         if (touches.has(e.pointerId) && e.pointerId !== drawId) {
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (pinch && touches.size >= 2) {
-            const [p, q] = Array.from(touches.values()), d = Math.hypot(p.x - q.x, p.y - q.y);
-            const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
-            map.panBy([pinch.mx - mx, pinch.my - my], { animate: false });
-            pinch.mx = mx; pinch.my = my;
-            map.setZoomAround(mapPt(mx, my), pinch.z + Math.log2(d / pinch.d), { animate: false });
+            if (!pinch.raf) pinch.raf = requestAnimationFrame(applyPinch);
           } else if (pan) { map.panBy([pan.x - e.clientX, pan.y - e.clientY], { animate: false }); pan.x = e.clientX; pan.y = e.clientY; }
           return;
         }
@@ -4126,7 +4141,7 @@
         if (touches.has(e.pointerId)) {
           touches.delete(e.pointerId);
           if (e.pointerId !== drawId) {
-            if (touches.size < 2) pinch = null;
+            if (touches.size < 2) { if (pinch && pinch.raf) cancelAnimationFrame(pinch.raf); pinch = null; }
             if (touches.size === 1) { const r = Array.from(touches.values())[0]; pan = { x: r.x, y: r.y }; } else if (!touches.size) pan = null;
             return;
           }
