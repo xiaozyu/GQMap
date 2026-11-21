@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v114</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v117</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3936,6 +3936,7 @@
           #bd-mg button { height: 38px; font-size: 13px; padding: 0 14px; }
           #bd-hint { display: none !important; }
         }
+        @media (max-width: 460px) { #bd-top { gap: 3px; } #bd-top .bt { width: 34px; } #bd-status { font-size: 15px; padding: 0 10px; } }
         #bd-hint b { color: #fde047; margin-right: 6px; }
         #bd-hint .k { color: #cbd5e1; }
 
@@ -3998,6 +3999,7 @@
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdExport('share')" title="分享">📤</button>
           <button class="bt" onclick="bdExport('save')" title="存成圖片">💾</button>
+          <button class="bt" onclick="bdFileMenu()" title="分享可編輯的畫／匯入別人的畫">📎</button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdClearAll()" title="清空">🗑</button>
         </div>
@@ -4457,13 +4459,48 @@
       bdPenUi();
     };
     
-    window.bdFitAll = () => {
+    window.bdFitAll = (list) => {
       const pts = [];
-      BD.shapes.forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
+      (Array.isArray(list) ? list : BD.shapes).forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
       if (!pts.length) return;
       const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
       const sw = E3857().unproject(L.point(Math.min(...xs), Math.min(...ys))), ne = E3857().unproject(L.point(Math.max(...xs), Math.max(...ys)));
       map.fitBounds(L.latLngBounds(sw, ne), { padding: [70, 70], animate: false, maxZoom: 21 });
+    };
+    // ===== 分享／匯入「可編輯的畫」：把今天的筆跡存成小檔案（座標是真實地圖位置），別人的巨擎導航匯入後會出現在同樣的位置 =====
+    window.bdFileMenu = () => {
+      const ov = document.createElement('div'); ov.className = 'gq-overlay';
+      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫</button><button class="gq-btn" data-k="c">取消</button></div></div>';
+      ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); } });
+      document.body.appendChild(ov);
+    };
+    window.bdShareDraw = async () => {
+      if (!BD.shapes.length) { await gqAlert('這一天還沒有畫任何東西'); return; }
+      const data = JSON.stringify({ app: 'gqnav', kind: 'draw', ver: 1, date: activeDate, saved: new Date().toISOString(), shapes: BD.shapes });
+      const name = `巨擎畫_${activeDate}.gqdraw.json`;
+      if (navigator.canShare) {
+        const file = new File([data], name, { type: 'text/plain' });
+        if (navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+      }
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/json' })), a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 8000);
+      const m = document.getElementById('bd-msg'); if (m) { m.textContent = '✓ 已下載檔案：' + name; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 2600); }
+    };
+    window.bdImportDraw = () => {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.style.display = 'none';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
+        let obj; try { obj = JSON.parse(await f.text()); } catch (e) { obj = null; }
+        const num = (q) => Array.isArray(q) && q.length === 2 && isFinite(q[0]) && isFinite(q[1]);
+        const ok = (x) => x && ((x.t === 'free' && Array.isArray(x.p) && x.p.length && x.p.every(num)) || (['line', 'rect', 'dim'].includes(x.t) && num(x.a) && num(x.b)) || (x.t === 'text' && num(x.a) && typeof x.text === 'string'));
+        if (!obj || obj.app !== 'gqnav' || !Array.isArray(obj.shapes)) { await gqAlert('這不是巨擎導航的畫檔'); return; }
+        const sh = obj.shapes.slice(0, 5000).filter(ok);
+        if (!sh.length) { await gqAlert('檔案裡沒有可匯入的內容'); return; }
+        if (!(await gqConfirm(`匯入 ${sh.length} 個物件（原畫日期 ${obj.date || '?'}）到目前這一天？\n會疊加在現有的畫上，不會覆蓋；匯入後可按復原。`, { okText: '匯入' }))) return;
+        bdPush(); BD.sel = null; BD.selObj = null; BD.shapes = BD.shapes.concat(JSON.parse(JSON.stringify(sh))); bdSave(); bdRedrawNow();
+        try { bdFitAll(sh); } catch (e) {}
+      };
+      document.body.appendChild(inp); inp.click();
     };
     window.bdUndo = () => { if (BD.mvp) { BD.mvp.sh[BD.mvp.part] = BD.mvp.orig; BD.mvp = null; BD.shapes = BD.hist.pop() || BD.shapes; bdSave(); bdRedrawNow(); return; } if (BD.pend) { if (BD.chainN > 0 && BD.shapes.length) { const r = BD.shapes.pop(); BD.hist.pop(); BD.chainN--; BD.cur = Object.assign({}, r); bdSave(); } else { BD.cur = null; BD.pend = false; } bdRedrawNow(); return; } if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
     window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.selObj = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
