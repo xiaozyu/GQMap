@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v117</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v120</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2406,6 +2406,7 @@
       else streetviewframe.src = 'about:blank';
       updateDateBar();
       if (typeof window.bdOnDateChange === 'function') window.bdOnDateChange();
+      try { window.syDateChanged && window.syDateChanged(); } catch (e) {}
     }
 
     // App 開著跨過午夜 / 從背景回來時，自動換到新的一天
@@ -3450,7 +3451,8 @@
     const bdGround = (a, b) => map.distance(E3857().unproject(L.point(a[0], a[1])), E3857().unproject(L.point(b[0], b[1])));
     const bdFmt = (m) => m.toFixed(1) + 'M';
     function bdSave() {
-      try { localStorage.setItem(BD.key || bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}      // 永遠寫回「載入時的那一天」，不會因為換日期而寫進別天
+      try { localStorage.setItem(BD.key || bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}
+      try { window.syPush && window.syPush(); } catch (e) {}      // 永遠寫回「載入時的那一天」，不會因為換日期而寫進別天
     }
     window.bdOnDateChange = () => {                            // 換日期：先存好舊的那天，再載入新那天的畫紙（每天一張白紙）
       if (!BD.on) return;
@@ -3999,7 +4001,7 @@
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdExport('share')" title="分享">📤</button>
           <button class="bt" onclick="bdExport('save')" title="存成圖片">💾</button>
-          <button class="bt" onclick="bdFileMenu()" title="分享可編輯的畫／匯入別人的畫">📎</button>
+          <button class="bt" onclick="bdFileMenu()" title="分享／匯入／班同步" style="position:relative">📎<i id="bd-syncdot" style="display:none;position:absolute;right:3px;top:3px;width:9px;height:9px;border-radius:50%;background:#22c55e;border:1.5px solid #0f172a"></i></button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdClearAll()" title="清空">🗑</button>
         </div>
@@ -4470,38 +4472,152 @@
     // ===== 分享／匯入「可編輯的畫」：把今天的筆跡存成小檔案（座標是真實地圖位置），別人的巨擎導航匯入後會出現在同樣的位置 =====
     window.bdFileMenu = () => {
       const ov = document.createElement('div'); ov.className = 'gq-overlay';
-      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫</button><button class="gq-btn" data-k="c">取消</button></div></div>';
-      ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); } });
+      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫（檔案）</button><button class="gq-btn primary" data-k="g">👥 班即時同步（同班自動共用）</button><button class="gq-btn" data-k="c">取消</button></div></div>';
+      ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); else if (k === 'g') syOpen(); } });
       document.body.appendChild(ov);
     };
     window.bdShareDraw = async () => {
       if (!BD.shapes.length) { await gqAlert('這一天還沒有畫任何東西'); return; }
       const data = JSON.stringify({ app: 'gqnav', kind: 'draw', ver: 1, date: activeDate, saved: new Date().toISOString(), shapes: BD.shapes });
-      const name = `巨擎畫_${activeDate}.gqdraw.json`;
+      const name = `巨擎畫_${activeDate}.gqdraw.txt`;     // 用 .txt＋text/plain：Android 分享選單（LINE、雲端硬碟）只收這類「安全」檔案，.json 會被擋下而變成下載
+      let why = '';
       if (navigator.canShare) {
         const file = new File([data], name, { type: 'text/plain' });
-        if (navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+        if (navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; why = '（分享失敗：' + (e && e.name) + '）'; } }
+        else why = '（此瀏覽器不支援分享這種檔案）';
       }
       const url = URL.createObjectURL(new Blob([data], { type: 'application/json' })), a = document.createElement('a');
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 8000);
-      const m = document.getElementById('bd-msg'); if (m) { m.textContent = '✓ 已下載檔案：' + name; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 2600); }
+      const m = document.getElementById('bd-msg'); if (m) { m.textContent = '✓ 已下載檔案：' + name + why; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 4500); }
     };
-    window.bdImportDraw = () => {
-      const inp = document.createElement('input'); inp.type = 'file'; inp.style.display = 'none';
-      inp.onchange = async () => {
-        const f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
-        let obj; try { obj = JSON.parse(await f.text()); } catch (e) { obj = null; }
+    window.bdImportObj = async (obj) => {
         const num = (q) => Array.isArray(q) && q.length === 2 && isFinite(q[0]) && isFinite(q[1]);
         const ok = (x) => x && ((x.t === 'free' && Array.isArray(x.p) && x.p.length && x.p.every(num)) || (['line', 'rect', 'dim'].includes(x.t) && num(x.a) && num(x.b)) || (x.t === 'text' && num(x.a) && typeof x.text === 'string'));
         if (!obj || obj.app !== 'gqnav' || !Array.isArray(obj.shapes)) { await gqAlert('這不是巨擎導航的畫檔'); return; }
         const sh = obj.shapes.slice(0, 5000).filter(ok);
         if (!sh.length) { await gqAlert('檔案裡沒有可匯入的內容'); return; }
         if (!(await gqConfirm(`匯入 ${sh.length} 個物件（原畫日期 ${obj.date || '?'}）到目前這一天？\n會疊加在現有的畫上，不會覆蓋；匯入後可按復原。`, { okText: '匯入' }))) return;
-        bdPush(); BD.sel = null; BD.selObj = null; BD.shapes = BD.shapes.concat(JSON.parse(JSON.stringify(sh))); bdSave(); bdRedrawNow();
+        bdPush(); BD.sel = null; BD.selObj = null; BD.shapes = BD.shapes.concat(JSON.parse(JSON.stringify(sh)).map(x => { x.imp = 1; return x; })); bdSave();      /* imp＝別人的畫：留在自己的手機上，但不會再被自動上傳成「我的」（避免大家互傳互拷、越存越多份） */
+         bdRedrawNow();
         try { bdFitAll(sh); } catch (e) {}
+    };
+    window.bdImportDraw = () => {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.style.display = 'none';
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
+        let obj; try { obj = JSON.parse(await f.text()); } catch (e) { obj = null; }
+        await bdImportObj(obj);
       };
       document.body.appendChild(inp); inp.click();
     };
+
+    // ===== 👥 班即時同步（Firebase Firestore）：同班的手機／電腦共用「今天的畫」，一邊畫、另一邊即時出現；沒訊號先存本機，有訊號自動補傳 =====
+    // 設定：把 Firebase 網頁應用程式的設定貼到下面 GQ_FB（apiKey、authDomain、projectId、appId）。沒設定時整個功能不啟動。
+    const GQ_FB = null;
+    const SY = { team: '', by: '', on: false, st: '未加入', fb: null, unsub: null, date: '', sig: new Map(), timer: 0, lastErr: '' };
+    const syGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+    const syPutLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    SY.team = syGet('tpc_sy_team', ''); SY.by = syGet('tpc_sy_by', '');
+    const syNewId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+    const syPath = (sub) => `teams/${SY.team}/days/${SY.date}/${sub || 'draws'}`;
+    async function syLoad() {
+      if (SY.fb) return SY.fb;
+      if (window.__GQ_FB_STUB) return (SY.fb = window.__GQ_FB_STUB);
+      if (!GQ_FB) throw new Error('尚未設定 Firebase');
+      const b = 'https://www.gstatic.com/firebasejs/10.12.2/';
+      const [A, Au, F] = await Promise.all([import(b + 'firebase-app.js'), import(b + 'firebase-auth.js'), import(b + 'firebase-firestore.js')]);
+      const app = A.initializeApp(GQ_FB), auth = Au.getAuth(app);
+      const db = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) });
+      await Au.signInAnonymously(auth);
+      return (SY.fb = {
+        watch: (path, cb) => F.onSnapshot(F.collection(db, path), (snap) => cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data(), local: c.doc.metadata.hasPendingWrites }))), (err) => cb(null, err)),
+        set: (path, id, data) => F.setDoc(F.doc(db, path, id), data),
+        del: (path, id) => F.deleteDoc(F.doc(db, path, id)),
+        list: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => d.id),
+      });
+    }
+    function syApply(changes) {                                     // 雲端傳來的變動 → 合併進這一天的筆跡（畫板開著就即時重畫，沒開就寫回本機）
+      const key = 'tpc_board_' + SY.date, live = BD.on && BD.key === key;
+      let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
+      let changed = false;
+      changes.forEach(c => {
+        if (c.local) return;                                         // 自己剛寫出去的回音，略過
+        const i = arr.findIndex(x => x.id === c.id);
+        if (c.type === 'removed') { SY.sig.delete(c.id); if (i >= 0) { if (BD.selObj === arr[i]) { BD.selObj = null; BD.sel = null; } arr.splice(i, 1); changed = true; } return; }
+        let sh; try { sh = JSON.parse(c.data.d); } catch (e) { return; }
+        sh.id = c.id; const js = JSON.stringify(sh); SY.sig.set(c.id, js);
+        if (i < 0) { arr.push(sh); changed = true; } else if (JSON.stringify(arr[i]) !== js) { arr[i] = sh; changed = true; }
+      });
+      if (!changed) return;
+      syPutLS(key, JSON.stringify(arr));
+      if (live) { bdDropCache(); bdRedraw(); }
+    }
+    async function syFlush() {                                       // 本機的變動 → 雲端（新增／修改的筆跡、被刪掉的筆跡）
+      SY.timer = 0; if (!SY.on || !SY.fb || !SY.team) return;
+      const key = 'tpc_board_' + SY.date, live = BD.on && BD.key === key;
+      let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
+      const cur = new Map(); let idAdded = false; arr.forEach(sh => { if (!sh.id) { sh.id = syNewId(); idAdded = true; } cur.set(sh.id, JSON.stringify(sh)); });
+      if (idAdded && !live) syPutLS(key, JSON.stringify(arr));
+      const jobs = [];
+      for (const [id, js] of cur) if (SY.sig.get(id) !== js) { SY.sig.set(id, js); jobs.push(SY.fb.set(syPath(), id, { d: js, by: SY.by, ts: Date.now() })); }
+      for (const id of Array.from(SY.sig.keys())) if (!cur.has(id)) { SY.sig.delete(id); jobs.push(SY.fb.del(syPath(), id)); }
+      if (!jobs.length) return;
+      jobs.length && SY.fb.set(`teams/${SY.team}/days`, SY.date, { ts: Date.now() }).catch(() => {});       // 日期標記：讓「刪除舊資料」找得到有哪些天
+      try { await Promise.all(jobs); SY.st = '已同步'; } catch (e) { SY.st = '同步失敗：' + (e && e.message || e); }
+      syUi();
+    }
+    window.syPush = () => { if (!SY.on) return; clearTimeout(SY.timer); SY.timer = setTimeout(syFlush, 1200); };
+    function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; b.style.background = /失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e'; b.title = '班同步：' + SY.st; } }
+    window.syStart = async () => {
+      if (!SY.team) return; window.syStop(true);
+      try {
+        SY.st = '連線中…'; SY.on = true; syUi();
+        const fb = await syLoad(); SY.date = String(activeDate); SY.sig = new Map();
+        const myDate = SY.date;
+        SY.unsub = fb.watch(syPath(), (changes, err) => {
+          if (SY.date !== myDate) return;
+          if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
+          syApply(changes); SY.st = '已同步'; syUi();
+          syFlush();                                                       // 連上之後：把本機已有、雲端還沒有的筆跡補傳
+        });
+      } catch (e) { SY.st = '錯誤：' + (e && e.message || e); SY.on = false; syUi(); }
+    };
+    window.syStop = (keepTeam) => { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.timer); SY.on = !!keepTeam && !!SY.team; if (!keepTeam) SY.st = '未加入'; };
+    window.syDateChanged = () => { if (SY.team) { SY.sig = new Map(); window.syStart(); } };
+    window.syJoin = async () => {
+      let code = await gqPrompt('輸入班代碼（同班的人輸入一樣的代碼才看得到彼此的畫）。\n要新建一個班就用這個隨機的；至少 6 碼，只能用英數與 -。', SY.team || ('A班-' + Math.random().toString(36).slice(2, 8)));
+      if (code === null) return false; code = code.trim().replace(/[^\w一-龥-]/g, '');
+      if (code.length < 6) { await gqAlert('班代碼至少 6 碼'); return false; }
+      const nm = await gqPrompt('你的名字（顯示用，例如：政宇）', SY.by); if (nm === null) return false;
+      SY.team = code; SY.by = nm.trim().slice(0, 12) || '未命名'; syPutLS('tpc_sy_team', SY.team); syPutLS('tpc_sy_by', SY.by);
+      await window.syStart(); return true;
+    };
+    window.syLeave = async () => { if (!(await gqConfirm('退出這個班？本機的畫會保留，但不再和別人同步。', { okText: '退出' }))) return; window.syStop(false); SY.team = ''; syPutLS('tpc_sy_team', ''); syUi(); };
+    window.syClean = async () => {
+      const n = await gqPrompt('只保留最近幾天的雲端畫？（含今天；更早的全部從雲端刪除，所有人都會看不到）', '7'); if (n === null) return;
+      const keep = Math.max(1, Math.floor(Number(n) || 0)); const c = new Date(); c.setDate(c.getDate() - (keep - 1));
+      const cut = c.getFullYear() + '-' + String(c.getMonth() + 1).padStart(2, '0') + '-' + String(c.getDate()).padStart(2, '0');
+      try {
+        const fb = await syLoad(), days = (await fb.list(`teams/${SY.team}/days`)).filter(d => d < cut);
+        if (!days.length) { await gqAlert('沒有比 ' + keep + ' 天更舊的資料'); return; }
+        if (!(await gqConfirm(`刪除雲端 ${days.length} 天的資料（${cut} 以前）？此動作無法復原。`, { danger: true, okText: '刪除' }))) return;
+        for (const d of days) { for (const sub of ['draws', 'tasks']) { for (const id of await fb.list(`teams/${SY.team}/days/${d}/${sub}`)) await fb.del(`teams/${SY.team}/days/${d}/${sub}`, id); } await fb.del(`teams/${SY.team}/days`, d); }
+        await gqAlert(`已刪除 ${days.length} 天`);
+      } catch (e) { await gqAlert('刪除失敗：' + (e && e.message || e)); }
+    };
+    window.syOpen = () => {
+      const ov = document.createElement('div'); ov.className = 'gq-overlay';
+      const joined = !!SY.team;
+      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>👥 班即時同步</span><button class="gq-x" data-k="c">✕</button></div><div class="gq-msg">' +
+        (joined ? `班代碼：<b style="color:#fde047;font-family:var(--mono)">${SY.team.replace(/[<>&]/g, '')}</b>\n你：${SY.by.replace(/[<>&]/g, '')}\n狀態：${String(SY.st).replace(/[<>&]/g, '')}\n\n同班的人輸入同一個班代碼，今天的畫就會即時同步。` : '還沒加入任何班。加入後，你畫的圖會即時出現在同班的手機與電腦。') +
+        '</div><div class="gq-actions" style="flex-direction:column">' + (joined ? '<button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
+      ov.addEventListener('click', async (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target !== ov && !k) return; ov.remove();
+        if (k === 'jn') await syJoin(); else if (k === 'lv') await syLeave(); else if (k === 'cl') await syClean();
+        else if (k === 'cp') { try { await navigator.clipboard.writeText(SY.team); ghSayX('已複製班代碼'); } catch (er) {} } });
+      document.body.appendChild(ov);
+    };
+    const ghSayX = (t) => { const m = document.getElementById('bd-msg'); if (m && BD.on) { m.textContent = t; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1500); } };
+    setTimeout(() => { if (SY.team) window.syStart(); }, 3000);
     window.bdUndo = () => { if (BD.mvp) { BD.mvp.sh[BD.mvp.part] = BD.mvp.orig; BD.mvp = null; BD.shapes = BD.hist.pop() || BD.shapes; bdSave(); bdRedrawNow(); return; } if (BD.pend) { if (BD.chainN > 0 && BD.shapes.length) { const r = BD.shapes.pop(); BD.hist.pop(); BD.chainN--; BD.cur = Object.assign({}, r); bdSave(); } else { BD.cur = null; BD.pend = false; } bdRedrawNow(); return; } if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
     window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.selObj = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
 
