@@ -383,6 +383,18 @@
       .btn-mode-switch { height: auto; padding: 3px 0; font-size: .85rem; border-radius: 5px; }
     }
 
+    /* ---------- 手機打橫：左＝工單／操作，右＝整個高度都給地圖（不再自動收起工單）---------- */
+    @media (orientation: landscape) and (max-height: 560px) {
+      html, body { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+      .top-section { grid-column: 1; grid-row: 1; width: min(40vw, 380px); min-width: 280px; overflow-y: auto; overflow-x: hidden; padding: 3px 5px 2px; }
+      .nav-action-bar { grid-column: 1; grid-row: 2; width: min(40vw, 380px); min-width: 280px; padding: 3px 6px 4px; }
+      .map-container { grid-column: 2; grid-row: 1 / 3; border-top: none; border-left: 1px solid var(--line-2); min-height: 0; }
+      .task-list-section { height: max(96px, calc(100dvh - 122px)); }
+      .floating-controls { bottom: 8px; right: 8px; gap: 6px; max-height: calc(100% - 16px); flex-wrap: wrap-reverse; align-content: flex-end; }
+      .float-btn { width: 40px; height: 40px; font-size: 17px; }
+      .float-btn.tracking-active, .float-btn.pin-mode-active, .float-btn.sort-mode-active, .float-btn.cad-mode-active { box-shadow: 0 0 0 3px rgba(255,255,255,.18), var(--sh-1); }
+    }
+
     /* ---------- 大螢幕（電腦）：滑鼠停留回饋 ---------- */
     @media (hover: hover) and (pointer: fine) {
       .btn-top:hover, .btn-nav-start:hover, .btn-manual-add:hover, .sheet-btn:hover, .gq-btn:hover, .pop-btn:hover { filter: brightness(1.12); }
@@ -455,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v109</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v114</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -919,22 +931,22 @@
     };
 
     const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
+      maxZoom: 25, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
-      maxZoom: 21, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
+      maxZoom: 25, maxNativeZoom: 20, attribution: '© 國土測繪中心', updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const googleRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
+      maxZoom: 25, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
     const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 21, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
+      maxZoom: 25, maxNativeZoom: 20, subdomains: ['0', '1', '2', '3'], updateWhenIdle: false, updateWhenZooming: false, keepBuffer: 2, updateInterval: 140
     });
 
     const map = L.map('leaflet-map', {
       center: [24.2303, 120.5654],
       zoom: 14,
-      maxZoom: 21,
+      maxZoom: 25,
       zoomControl: false,
       wheelDebounceTime: 30, inertiaDeceleration: 3600, bounceAtZoomLimits: false,
       layers: [nlscEMap]
@@ -1131,7 +1143,7 @@
 
     // 手機打橫：自動收起工單，整個畫面給地圖；轉回直式就還原（手動按過清淨模式則不干涉）
     (function () {
-      const mq = window.matchMedia('(orientation: landscape) and (max-height: 560px)');
+      const mq = window.matchMedia('(min-width: 99999px)');   /* 打橫改成左右分欄，不再自動收起工單 */
       let auto = false;
       const apply = () => {
         if (mq.matches) { if (!isFullscreenClean && !(typeof BD !== 'undefined' && BD.on)) { auto = true; toggleFullscreenCleanMode(); } }
@@ -3754,9 +3766,53 @@
       }
       return null;
     }
+    // ===== 量長度線圍成的封閉區域 → 面積（㎡／坪）。平常完全不出現；有封閉區域時，左下才多一顆「▢ 面積」，按了才顯示、再按關掉 =====
+    function bdFaces() {
+      const ds = BD.shapes.filter(x => x.t === 'dim'); if (ds.length < 3) return [];
+      const sig = ds.map(x => x.a[0] + ',' + x.a[1] + ',' + x.b[0] + ',' + x.b[1]).join('|') + '@' + BD.lat;
+      if (BD._fs === sig) return BD._ff;
+      const co = Math.cos(BD.lat * Math.PI / 180), tol = 0.4 / co, nodes = [], adj = [];
+      const nid = (q) => { for (let i = 0; i < nodes.length; i++) if (Math.hypot(nodes[i][0] - q[0], nodes[i][1] - q[1]) < tol) return i; nodes.push(q); adj.push([]); return nodes.length - 1; };
+      ds.forEach(x => { const u = nid(x.a), v = nid(x.b); if (u !== v && !adj[u].includes(v)) { adj[u].push(v); adj[v].push(u); } });
+      adj.forEach((l, i) => l.sort((p, q) => Math.atan2(nodes[p][1] - nodes[i][1], nodes[p][0] - nodes[i][0]) - Math.atan2(nodes[q][1] - nodes[i][1], nodes[q][0] - nodes[i][0])));
+      const N = nodes.length, seen = new Set(), out = [], ne = adj.reduce((t, l) => t + l.length, 0);
+      for (let u0 = 0; u0 < N; u0++) for (const v0 of adj[u0]) {
+        if (seen.has(u0 * N + v0)) continue;
+        const poly = []; let u = u0, v = v0, n = 0, ok = true;
+        while (n++ <= ne + 2) {
+          seen.add(u * N + v); poly.push(nodes[u]);
+          const l = adj[v], i = l.indexOf(u), w = l[(i - 1 + l.length) % l.length]; u = v; v = w;
+          if (u === u0 && v === v0) break;
+          if (n > ne + 1) { ok = false; break; }
+        }
+        if (!ok || poly.length < 3) continue;
+        let a2 = 0, cx = 0, cy = 0;
+        const ox = poly[0][0], oy = poly[0][1];          // 先平移到區域自己的原點：墨卡托座標動輒上千萬，直接乘會因浮點相消讓中心點亂跑
+        for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length], px = p[0] - ox, py = p[1] - oy, qx = q[0] - ox, qy = q[1] - oy, c = px * qy - qx * py; a2 += c; cx += (px + qx) * c; cy += (py + qy) * c; }
+        if (a2 <= 0) continue;                                   // 順時針＝最外圈，不是區域
+        const m2 = a2 / 2 * co * co; if (m2 < 1) continue;
+        out.push({ m2, cx: ox + cx / (3 * a2), cy: oy + cy / (3 * a2) });
+      }
+      BD._fs = sig; BD._ff = out; return out;
+    }
+    window.bdToggleArea = () => { BD.area = !BD.area; bdSumUi(); bdRedraw(); };
+    function bdDrawAreas(g) {
+      const fs = bdFaces(); if (!fs.length) return;
+      g.save(); g.font = 'bold 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      fs.forEach(f => {
+        const p = bdPx([f.cx, f.cy]); if (p[0] < -80 || p[1] < -40 || p[0] > BD.W + 80 || p[1] > BD.H + 40) return;
+        const t1 = f.m2.toLocaleString('en', { maximumFractionDigits: 1 }) + ' ㎡', t2 = (f.m2 / 3.305785).toLocaleString('en', { maximumFractionDigits: 1 }) + ' 坪';
+        const w = Math.max(g.measureText(t1).width, g.measureText(t2).width) + 16;
+        g.fillStyle = 'rgba(255,255,255,.93)'; g.strokeStyle = '#2563eb'; g.lineWidth = 1.5;
+        g.beginPath(); (g.roundRect ? g.roundRect(p[0] - w / 2, p[1] - 22, w, 44, 9) : g.rect(p[0] - w / 2, p[1] - 22, w, 44)); g.fill(); g.stroke();
+        g.fillStyle = '#0f172a'; g.fillText(t1, p[0], p[1] - 9); g.fillStyle = '#1d4ed8'; g.fillText(t2, p[0], p[1] + 10);
+      });
+      g.restore();
+    }
     function bdDrawUi() {
       const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H);
       if (BD.tool === 'dim') {                                  // 量長度：兩端畫圓圈提示可拖曳（任意位置按住圓圈附近即可微調，手指不用蓋在點上）
+        if (BD.area) { try { bdDrawAreas(g); } catch (e) {} }
         g.lineWidth = 2; g.strokeStyle = '#2563eb'; g.fillStyle = 'rgba(255,255,255,0.35)';
         BD.shapes.forEach(sh0 => { if (sh0.t !== 'dim') return; [sh0.a, sh0.b].forEach(q => { const p = bdPx(q); g.beginPath(); g.arc(p[0], p[1], 11, 0, Math.PI * 2); g.fill(); g.stroke(); }); });
       }
@@ -3854,9 +3910,32 @@
         #bd-ln2 button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; height: 34px; padding: 0 10px; font-size: 13px; font-weight: 800; cursor: pointer; width: 100%; }
         #bd-colsum { position: absolute; left: 8px; bottom: 72px; z-index: 3; display: none; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 100px); pointer-events: none; }
         #bd-colsum .r { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; background: rgba(10,16,30,.78); border: 1px solid rgba(255,255,255,.16); color: #fff; font: 800 13px/1.2 var(--mono); white-space: nowrap; }
+        #bd-colsum .r.ar { pointer-events: auto; cursor: pointer; color: #bfdbfe; border-color: #60a5fa; }
+        #bd-colsum .r.ar.on { background: var(--blue-d); color: #fff; border-color: #93c5fd; }
         #bd-colsum i { width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; flex: none; box-sizing: border-box; }
         #bd-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 3; display: none; pointer-events: none; max-width: calc(100% - 600px); padding: 8px 16px; border-radius: 999px; background: rgba(10,16,30,.7); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.95); font: 13px/1.3 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 760px) { #bd-hint { display: none !important; } }
+        /* 手機打橫：工具列縮小、不互相擋 */
+        @media (orientation: landscape) and (max-height: 560px) {
+          #board { --rail: 46px; }
+          #bd-rail { top: 42px; max-height: calc(100% - 104px); gap: 3px; padding: 3px; border-radius: 12px; }
+          #bd-rail .bt, .bt { height: 36px; border-radius: 10px; font-size: 16px; }
+          .bt small { font-size: 9px; margin-top: 0; }
+          #bd-top { top: 4px; height: 34px; gap: 4px; right: 52px; }
+          #bd-top .bt { width: 34px; height: 34px; font-size: 15px; border-radius: 10px; }
+          #bd-status { top: 4px; left: 6px; height: 32px; font-size: 15px; padding: 0 10px; }
+          #bd-ur { left: 6px; bottom: 6px; gap: 8px; }
+          #bd-ur .bt { width: 40px; height: 40px; font-size: 18px; }
+          #bd-sdel { left: 6px; bottom: 52px; width: 40px; height: 40px; font-size: 17px; }
+          #board.sel #bd-rail { max-height: calc(100% - 140px); }
+          #bd-colsum { left: 6px; bottom: 52px; gap: 4px; max-width: calc(100% - 90px); }
+          #bd-colsum .r { font-size: 11.5px; padding: 2px 7px 2px 6px; }
+          #bd-dimopt { left: 120px; bottom: 8px; }
+          #bd-dimopt button { height: 34px; padding: 0 12px; font-size: 12px; }
+          #bd-done { bottom: 8px; } #bd-done b, #bd-done button { height: 38px; font-size: 13px; padding: 0 14px; }
+          #bd-mg button { height: 38px; font-size: 13px; padding: 0 14px; }
+          #bd-hint { display: none !important; }
+        }
         #bd-hint b { color: #fde047; margin-right: 6px; }
         #bd-hint .k { color: #cbd5e1; }
 
@@ -4303,7 +4382,7 @@
       const el = document.getElementById('bd-colsum'); if (!el) return;
       if (!dims.length) { el.style.display = 'none'; return; }
       const g = new Map(); dims.forEach(x => { const c = x.c || def, o = g.get(c) || { n: 0, m: 0 }; o.n++; o.m += Number(bdGround(x.a, x.b).toFixed(1)); g.set(c, o); });
-      el.innerHTML = [...g].sort((a, b) => b[1].m - a[1].m).map(([c, o]) => `<div class="r" title="${nm}：${o.n} 條"><i style="background:${c}"></i>${o.m.toFixed(1)}m</div>`).join('');
+      el.innerHTML = [...g].sort((a, b) => b[1].m - a[1].m).map(([c, o]) => `<div class="r" title="${nm}：${o.n} 條"><i style="background:${c}"></i>${o.m.toFixed(1)}m</div>`).join('') + ((BD.tool === 'dim' && bdFaces().length) ? `<div class="r ar${BD.area ? ' on' : ''}" onpointerdown="event.stopPropagation()" onclick="bdToggleArea()">▢ 面積</div>` : '');
       el.style.display = 'flex';
     }
     function bdSelUi() {
