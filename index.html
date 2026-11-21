@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v120</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v122</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -3459,7 +3459,7 @@
       bdSave();
       BD.key = bdKey();
       try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
-      BD.hist = []; BD.redo = []; BD.cur = null; BD.pend = false; BD.mvp = null; BD.mag = null; BD.sel = null; BD.selObj = null; BD.mv = null; BD.cache = null;
+      BD.hist = []; BD.redo = []; BD.cur = null; BD.pend = false; BD.mvp = null; BD.mag = null; BD.sel = null; BD.selObj = null; BD.mv = null; BD.cache = null; BD.hl = null;
       try { bdDropCache(); } catch (e) {}
       bdRedrawNow();
     };
@@ -3474,6 +3474,40 @@
       ctx.strokeText(text, 0, -lw * (off || 1.2)); ctx.fillStyle = color; ctx.fillText(text, 0, -lw * (off || 1.2));
       ctx.restore();
     }
+    // ===== 合併各日圖層：把「其他天」畫過的東西淡淡地疊在地圖上（只看、不能擦／選），方便知道以前在哪裡做過 =====
+    // 省資源：只讀一次存起來、只畫目前畫面範圍內的、太小的不畫、最多畫 800 筆；輸出圖片不包含這些
+    function bdHistBuild() {
+      const out = [], cur = BD.key || bdKey();
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i); if (!k || k.indexOf('tpc_board_') !== 0 || k === cur) continue;
+          let arr; try { arr = JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { continue; }
+          if (!Array.isArray(arr)) continue;
+          arr.forEach(sh => {
+            if (!sh || sh.t === 'rect') return;                       // 白底不疊（會蓋住地圖）
+            let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; const pts = sh.t === 'free' ? sh.p : [sh.a, sh.b || sh.a];
+            if (!Array.isArray(pts)) return;
+            for (const q of pts) { if (!q) return; if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+            out.push({ sh, x0, y0, x1, y1 });
+          });
+        }
+      } catch (e) {}
+      BD.hl = out; return out;
+    }
+    function bdDrawHist(g) {
+      if (!BD.merge) return;
+      const list = BD.hl || bdHistBuild(); if (!list.length) return;
+      const a = bdMerc(-60, BD.H + 60), b = bdMerc(BD.W + 60, -60), minX = a[0], minY = a[1], maxX = b[0], maxY = b[1], pxm = BD.k;
+      let n = 0; g.save(); g.globalAlpha = 0.42;
+      for (const o of list) {
+        if (o.x1 < minX || o.x0 > maxX || o.y1 < minY || o.y0 > maxY) continue;
+        if ((o.x1 - o.x0) * pxm < 3 && (o.y1 - o.y0) * pxm < 3 && o.sh.t !== 'text') continue;
+        try { bdDrawShape(g, o.sh); } catch (e) {}
+        if (++n >= 800) break;
+      }
+      g.restore();
+    }
+    window.bdToggleMerge = () => { BD.merge = !BD.merge; try { localStorage.setItem('tpc_bd_merge', BD.merge ? '1' : '0'); } catch (e) {} BD.hl = null; bdDropCache(); bdRedrawNow(); };
     function bdDrawAll(g, list, ex) {                      // 白底永遠在最底層，其餘依畫的順序
       ex = ex || [];
       list.forEach(x => { if (x.t === 'rect' && !ex.includes(x)) bdDrawShape(g, x); });
@@ -3580,7 +3614,7 @@
       if (BD.cache && (!BD.mv || BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k)) bdDropCache();   // 快取只在「拖動單一物件」時有效；其他時候一律重畫，避免舊圖殘留（擦不掉）
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
       if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
-      else { bdDrawAll(ctx, BD.shapes); }
+      else { bdDrawHist(ctx); bdDrawAll(ctx, BD.shapes); }
       bdDrawUi(); bdPendUi();
       if (BD.moving && !BD.cur && !BD.edit) return;                        // 地圖還在動：小面板（長度合計、狀態列…）等停下來再更新
       bdMagUi(); bdDoneUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
@@ -3652,7 +3686,7 @@
       bdDropCache();
       bdSyncView();
       const c = document.createElement('canvas'); c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr);
-      const g = bdCtx(c); const ex = Array.isArray(except) ? except : [except]; bdDrawAll(g, BD.shapes, ex);
+      const g = bdCtx(c); const ex = Array.isArray(except) ? except : [except]; bdDrawHist(g); bdDrawAll(g, BD.shapes, ex);
       BD.cache = c; BD.cacheStamp = BD.minX + '|' + BD.maxY + '|' + BD.k;
     }
     function bdDropCache() { if (BD.cache) { BD.cache.width = BD.cache.height = 0; BD.cache = null; } }
@@ -4472,8 +4506,8 @@
     // ===== 分享／匯入「可編輯的畫」：把今天的筆跡存成小檔案（座標是真實地圖位置），別人的巨擎導航匯入後會出現在同樣的位置 =====
     window.bdFileMenu = () => {
       const ov = document.createElement('div'); ov.className = 'gq-overlay';
-      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫（檔案）</button><button class="gq-btn primary" data-k="g">👥 班即時同步（同班自動共用）</button><button class="gq-btn" data-k="c">取消</button></div></div>';
-      ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); else if (k === 'g') syOpen(); } });
+      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫（檔案）</button><button class="gq-btn primary" data-k="g">👥 班即時同步（同班自動共用）</button><button class="gq-btn" data-k="m">🗂 合併各日圖層：' + (BD.merge ? '開' : '關') + '</button><button class="gq-btn" data-k="c">取消</button></div></div>';
+      ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); else if (k === 'g') syOpen(); else if (k === 'm') bdToggleMerge(); } });
       document.body.appendChild(ov);
     };
     window.bdShareDraw = async () => {
@@ -4513,7 +4547,7 @@
 
     // ===== 👥 班即時同步（Firebase Firestore）：同班的手機／電腦共用「今天的畫」，一邊畫、另一邊即時出現；沒訊號先存本機，有訊號自動補傳 =====
     // 設定：把 Firebase 網頁應用程式的設定貼到下面 GQ_FB（apiKey、authDomain、projectId、appId）。沒設定時整個功能不啟動。
-    const GQ_FB = null;
+    const GQ_FB = { apiKey: "AIzaSyBSiGZK9yOoFGFbB23T_LFqp3DNzz5IctM", authDomain: "gqmap-c139a.firebaseapp.com", projectId: "gqmap-c139a", appId: "1:26899660674:web:ddb58c2ad05d015e17d99b" };
     const SY = { team: '', by: '', on: false, st: '未加入', fb: null, unsub: null, date: '', sig: new Map(), timer: 0, lastErr: '' };
     const syGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
     const syPutLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -4711,6 +4745,7 @@
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
+      try { BD.merge = localStorage.getItem('tpc_bd_merge') === '1'; } catch (e) {} BD.hl = null;
       BD.key = bdKey();
       try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
