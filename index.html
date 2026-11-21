@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v122</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v124</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -489,6 +489,7 @@
       <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="開關即時定位追蹤（連按兩下：停止並清除車子標記）">🚗</div>
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
+        <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
         <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
       </div>
       <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
@@ -2341,6 +2342,7 @@
       else delete monthLogs[activeDate];
       persistLogs();
       updateDateBar();
+      if (window.syTaskPush) window.syTaskPush();
     }
 
     const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
@@ -2395,6 +2397,7 @@
     // 切換正在編輯的那一天（先存好目前這天，再載入目標那天；絕不覆蓋）
     function switchActiveDate(dateStr) {
       saveTasks();
+      try { window.syTaskFlushNow && window.syTaskFlushNow(); } catch (e) {}      // 換天前先把這天的變動送出去
       activeDate = dateStr;
       tasks = clone(monthLogs[dateStr] || []);
       currentIndex = 0;
@@ -3437,7 +3440,19 @@
     }
 
     // ---- 資料與繪製（筆跡存 Mercator 公尺座標，與畫板範圍無關，重開還在）----
-    const bdKey = () => 'tpc_board_' + activeDate;
+    const bdKey = () => 'tpc_board_all';                                   // v124：畫圖不分日期，全部畫在同一張圖上
+    (function bdMigrateAll() {                                              // 一次性：把舊的「每天一張」全部併進 tpc_board_all（依日期由舊到新、依 id 去重），成功寫入後才刪舊的
+      try {
+        const olds = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /^tpc_board_\d{4}-\d{2}-\d{2}$/.test(k)) olds.push(k); }
+        if (!olds.length) return; olds.sort();
+        let all = []; try { all = JSON.parse(localStorage.getItem('tpc_board_all') || '[]'); } catch (e) { all = []; } if (!Array.isArray(all)) all = [];
+        const seen = new Set(all.map(x => x && x.id).filter(Boolean)), nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+        olds.forEach(k => { let a; try { a = JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { a = []; } if (!Array.isArray(a)) return;
+          a.forEach(sh => { if (!sh) return; if (!sh.id) sh.id = nid(); if (seen.has(sh.id)) return; seen.add(sh.id); all.push(sh); }); });
+        localStorage.setItem('tpc_board_all', JSON.stringify(all));
+        if (localStorage.getItem('tpc_board_all') !== null) olds.forEach(k => localStorage.removeItem(k));
+      } catch (e) {}
+    })();
     const BD_ORG = 20037508.342789244;
     const bdLw = () => Math.max(1.5 * BD.fx, BD.k * 0.5);                 // 1 倍粗細的線寬（隨縮放：約 0.5 公尺寬，最細 1.5px）
     const bdCtx = (cv) => { const g = cv.getContext('2d'); g.setTransform(BD.dpr, 0, 0, BD.dpr, 0, 0); return g; };
@@ -3454,7 +3469,8 @@
       try { localStorage.setItem(BD.key || bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}
       try { window.syPush && window.syPush(); } catch (e) {}      // 永遠寫回「載入時的那一天」，不會因為換日期而寫進別天
     }
-    window.bdOnDateChange = () => {                            // 換日期：先存好舊的那天，再載入新那天的畫紙（每天一張白紙）
+    window.bdOnDateChange = () => {                            // v124：畫不分日期，換日期不動畫紙
+      return;
       if (!BD.on) return;
       bdSave();
       BD.key = bdKey();
@@ -3508,10 +3524,20 @@
       g.restore();
     }
     window.bdToggleMerge = () => { BD.merge = !BD.merge; try { localStorage.setItem('tpc_bd_merge', BD.merge ? '1' : '0'); } catch (e) {} BD.hl = null; bdDropCache(); bdRedrawNow(); };
-    function bdDrawAll(g, list, ex) {                      // 白底永遠在最底層，其餘依畫的順序
+    const bdBB = new WeakMap();
+    function bdBox(sh) {                                   // 每個物件的外框（只算一次；物件被修改時會換成新物件，所以不會過期）
+      let b = bdBB.get(sh); if (b) return b;
+      let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18; const pts = sh.t === 'free' ? sh.p : [sh.a, sh.b || sh.a];
+      for (const q of pts) { if (!q) continue; if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
+      b = [x0, y0, x1, y1]; bdBB.set(sh, b); return b;
+    }
+    function bdDrawAll(g, list, ex, cull) {                // 白底永遠在最底層，其餘依畫的順序；cull＝只畫畫面附近的（圖多時省很多力）
       ex = ex || [];
-      list.forEach(x => { if (x.t === 'rect' && !ex.includes(x)) bdDrawShape(g, x); });
-      list.forEach(x => { if (x.t !== 'rect' && !ex.includes(x)) bdDrawShape(g, x); });
+      let vx0 = -1e19, vy0 = -1e19, vx1 = 1e19, vy1 = 1e19;
+      if (cull) { const a = bdMerc(-300, BD.H + 300), b = bdMerc(BD.W + 300, -300); vx0 = a[0]; vy0 = a[1]; vx1 = b[0]; vy1 = b[1]; }
+      const vis = (x) => { if (!cull) return true; try { const b = bdBox(x); return !(b[2] < vx0 || b[0] > vx1 || b[3] < vy0 || b[1] > vy1); } catch (e) { return true; } };
+      list.forEach(x => { if (x.t === 'rect' && !ex.includes(x) && vis(x)) bdDrawShape(g, x); });
+      list.forEach(x => { if (x.t !== 'rect' && !ex.includes(x) && vis(x)) bdDrawShape(g, x); });
     }
     function bdDrawShape(ctx, sh) {
       const lw = bdLw();
@@ -3614,7 +3640,7 @@
       if (BD.cache && (!BD.mv || BD.cacheStamp !== BD.minX + '|' + BD.maxY + '|' + BD.k)) bdDropCache();   // 快取只在「拖動單一物件」時有效；其他時候一律重畫，避免舊圖殘留（擦不掉）
       const ctx = bdCtx(BD.ink); ctx.clearRect(0, 0, BD.W, BD.H);
       if (BD.cache) { ctx.drawImage(BD.cache, 0, 0, BD.W, BD.H); if (BD.mv) { bdDrawShape(ctx, BD.mv.sh); (BD.mv.also || []).forEach(o => bdDrawShape(ctx, o.sh)); } }
-      else { bdDrawHist(ctx); bdDrawAll(ctx, BD.shapes); }
+      else { bdDrawHist(ctx); bdDrawAll(ctx, BD.shapes, null, true); }
       bdDrawUi(); bdPendUi();
       if (BD.moving && !BD.cur && !BD.edit) return;                        // 地圖還在動：小面板（長度合計、狀態列…）等停下來再更新
       bdMagUi(); bdDoneUi(); bdStatus(); bdSelUi(); bdSumUi(); if (BD.edit) bdPlaceInl();
@@ -3686,7 +3712,7 @@
       bdDropCache();
       bdSyncView();
       const c = document.createElement('canvas'); c.width = Math.round(BD.W * BD.dpr); c.height = Math.round(BD.H * BD.dpr);
-      const g = bdCtx(c); const ex = Array.isArray(except) ? except : [except]; bdDrawHist(g); bdDrawAll(g, BD.shapes, ex);
+      const g = bdCtx(c); const ex = Array.isArray(except) ? except : [except]; bdDrawHist(g); bdDrawAll(g, BD.shapes, ex, true);
       BD.cache = c; BD.cacheStamp = BD.minX + '|' + BD.maxY + '|' + BD.k;
     }
     function bdDropCache() { if (BD.cache) { BD.cache.width = BD.cache.height = 0; BD.cache = null; } }
@@ -4262,7 +4288,7 @@
         let evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || []; if (!evs.length) evs = [e];
         if (BD.tool === 'erase') { evs.forEach(ev => bdEraseAt(bdPtOf(ev))); return; }
         if (!BD.cur) return;
-        if (BD.cur.t === 'free') { evs.forEach(ev => { const q = bdPtOf(ev), last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); if (BD.cur.a >= 1) bdInkSeg(BD.cur, last, q); }); if (BD.cur.a < 1) bdPreview(); }
+        if (BD.cur.t === 'free') { evs.forEach(ev => { const q0 = bdPtOf(ev), q = [Math.round(q0[0] * 1000) / 1000, Math.round(q0[1] * 1000) / 1000], last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); if (BD.cur.a >= 1) bdInkSeg(BD.cur, last, q); }); if (BD.cur.a < 1) bdPreview(); }
         else { BD.cur.b = bdPtOf(e); bdPreview(); }
       });
       const up = (e) => {
@@ -4506,7 +4532,7 @@
     // ===== 分享／匯入「可編輯的畫」：把今天的筆跡存成小檔案（座標是真實地圖位置），別人的巨擎導航匯入後會出現在同樣的位置 =====
     window.bdFileMenu = () => {
       const ov = document.createElement('div'); ov.className = 'gq-overlay';
-      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把這一天的畫存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前這一天，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享這一天的畫</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫（檔案）</button><button class="gq-btn primary" data-k="g">👥 班即時同步（同班自動共用）</button><button class="gq-btn" data-k="m">🗂 合併各日圖層：' + (BD.merge ? '開' : '關') + '</button><button class="gq-btn" data-k="c">取消</button></div></div>';
+      ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>可編輯的畫（檔案）</span></div><div class="gq-msg">分享：把整張圖存成檔案，丟到 LINE／雲端給同事。\n匯入：打開同事給的檔案，疊加到目前的圖上，不會蓋掉你原有的。</div><div class="gq-actions" style="flex-direction:column"><button class="gq-btn primary" data-k="s">📎 分享整張圖</button><button class="gq-btn ok" data-k="i">📥 匯入別人的畫（檔案）</button><button class="gq-btn primary" data-k="g">👥 班即時同步（同班自動共用）</button><button class="gq-btn" data-k="c">取消</button></div></div>';
       ov.addEventListener('click', (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target === ov || k) { ov.remove(); if (k === 's') bdShareDraw(); else if (k === 'i') bdImportDraw(); else if (k === 'g') syOpen(); else if (k === 'm') bdToggleMerge(); } });
       document.body.appendChild(ov);
     };
@@ -4553,7 +4579,7 @@
     const syPutLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
     SY.team = syGet('tpc_sy_team', ''); SY.by = syGet('tpc_sy_by', '');
     const syNewId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
-    const syPath = (sub) => `teams/${SY.team}/days/${SY.date}/${sub || 'draws'}`;
+    const syPath = (sub) => sub ? `teams/${SY.team}/days/${SY.date}/${sub}` : `teams/${SY.team}/board`;     // 畫圖：全班一張圖（不分日期）；工單：每天一份
     async function syLoad() {
       if (SY.fb) return SY.fb;
       if (window.__GQ_FB_STUB) return (SY.fb = window.__GQ_FB_STUB);
@@ -4571,7 +4597,7 @@
       });
     }
     function syApply(changes) {                                     // 雲端傳來的變動 → 合併進這一天的筆跡（畫板開著就即時重畫，沒開就寫回本機）
-      const key = 'tpc_board_' + SY.date, live = BD.on && BD.key === key;
+      const key = bdKey(), live = BD.on && BD.key === key;
       let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
       let changed = false;
       changes.forEach(c => {
@@ -4588,7 +4614,7 @@
     }
     async function syFlush() {                                       // 本機的變動 → 雲端（新增／修改的筆跡、被刪掉的筆跡）
       SY.timer = 0; if (!SY.on || !SY.fb || !SY.team) return;
-      const key = 'tpc_board_' + SY.date, live = BD.on && BD.key === key;
+      const key = bdKey(), live = BD.on && BD.key === key;
       let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
       const cur = new Map(); let idAdded = false; arr.forEach(sh => { if (!sh.id) { sh.id = syNewId(); idAdded = true; } cur.set(sh.id, JSON.stringify(sh)); });
       if (idAdded && !live) syPutLS(key, JSON.stringify(arr));
@@ -4596,28 +4622,35 @@
       for (const [id, js] of cur) if (SY.sig.get(id) !== js) { SY.sig.set(id, js); jobs.push(SY.fb.set(syPath(), id, { d: js, by: SY.by, ts: Date.now() })); }
       for (const id of Array.from(SY.sig.keys())) if (!cur.has(id)) { SY.sig.delete(id); jobs.push(SY.fb.del(syPath(), id)); }
       if (!jobs.length) return;
-      jobs.length && SY.fb.set(`teams/${SY.team}/days`, SY.date, { ts: Date.now() }).catch(() => {});       // 日期標記：讓「刪除舊資料」找得到有哪些天
       try { await Promise.all(jobs); SY.st = '已同步'; } catch (e) { SY.st = '同步失敗：' + (e && e.message || e); }
       syUi();
     }
     window.syPush = () => { if (!SY.on) return; clearTimeout(SY.timer); SY.timer = setTimeout(syFlush, 1200); };
-    function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; b.style.background = /失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e'; b.title = '班同步：' + SY.st; } }
+    function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; b.style.background = /失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e'; b.title = '班同步：' + SY.st; }  const m = document.getElementById('syncBtn'); if (m) { m.style.outline = SY.on ? '2px solid ' + (/失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e') : 'none'; m.title = '班即時同步：' + SY.st; } }
     window.syStart = async () => {
       if (!SY.team) return; window.syStop(true);
       try {
         SY.st = '連線中…'; SY.on = true; syUi();
-        const fb = await syLoad(); SY.date = String(activeDate); SY.sig = new Map();
+        const fb = await syLoad(); SY.date = String(activeDate); if (SY.sigTeam !== SY.team) { SY.sig = new Map(); SY.sigTeam = SY.team; }
         const myDate = SY.date;
-        SY.unsub = fb.watch(syPath(), (changes, err) => {
+        SY.tsig = new Map(); SY.tord = new Map();
+        const u1 = fb.watch(syPath(), (changes, err) => {
           if (SY.date !== myDate) return;
           if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
           syApply(changes); SY.st = '已同步'; syUi();
           syFlush();                                                       // 連上之後：把本機已有、雲端還沒有的筆跡補傳
         });
+        const u2 = fb.watch(syPath('tasks'), (changes, err) => {
+          if (SY.date !== myDate) return;
+          if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
+          syTaskApply(changes); SY.st = '已同步'; syUi();
+          SY.tReady = true; syTaskFlush(false);                            // 連上之後：把本機有、雲端還沒有的工單補傳
+        });
+        SY.unsub = () => { try { u1(); } catch (e) {} try { u2(); } catch (e) {} };
       } catch (e) { SY.st = '錯誤：' + (e && e.message || e); SY.on = false; syUi(); }
     };
-    window.syStop = (keepTeam) => { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.timer); SY.on = !!keepTeam && !!SY.team; if (!keepTeam) SY.st = '未加入'; };
-    window.syDateChanged = () => { if (SY.team) { SY.sig = new Map(); window.syStart(); } };
+    window.syStop = (keepTeam) => { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.timer); clearTimeout(SY.ttimer); SY.tReady = false; SY.on = !!keepTeam && !!SY.team; if (!keepTeam) SY.st = '未加入'; };
+    window.syDateChanged = () => { if (SY.team) { SY.tsig = new Map(); SY.tord = new Map(); window.syStart(); } };
     window.syJoin = async () => {
       let code = await gqPrompt('輸入班代碼（同班的人輸入一樣的代碼才看得到彼此的畫）。\n要新建一個班就用這個隨機的；至少 6 碼，只能用英數與 -。', SY.team || ('A班-' + Math.random().toString(36).slice(2, 8)));
       if (code === null) return false; code = code.trim().replace(/[^\w一-龥-]/g, '');
@@ -4628,7 +4661,7 @@
     };
     window.syLeave = async () => { if (!(await gqConfirm('退出這個班？本機的畫會保留，但不再和別人同步。', { okText: '退出' }))) return; window.syStop(false); SY.team = ''; syPutLS('tpc_sy_team', ''); syUi(); };
     window.syClean = async () => {
-      const n = await gqPrompt('只保留最近幾天的雲端畫？（含今天；更早的全部從雲端刪除，所有人都會看不到）', '7'); if (n === null) return;
+      const n = await gqPrompt('只保留最近幾天的雲端工單？（含今天；更早的工單全部從雲端刪除，所有人都會看不到；畫圖不受影響）', '7'); if (n === null) return;
       const keep = Math.max(1, Math.floor(Number(n) || 0)); const c = new Date(); c.setDate(c.getDate() - (keep - 1));
       const cut = c.getFullYear() + '-' + String(c.getMonth() + 1).padStart(2, '0') + '-' + String(c.getDate()).padStart(2, '0');
       try {
@@ -4651,6 +4684,68 @@
       document.body.appendChild(ov);
     };
     const ghSayX = (t) => { const m = document.getElementById('bd-msg'); if (m && BD.on) { m.textContent = t; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1500); } };
+
+    // ===== 工單同步：每張工單一個文件 teams/班/days/日期/tasks/{id}，內容 d＝工單 JSON、o＝順序；同班所有人都能新增／修改／刪除／排序（最後寫入者為準）=====
+    SY.tsig = new Map(); SY.tord = new Map(); SY.ttimer = 0; SY.tReady = false; SY.applying = false;
+    const syTaskArr = () => (activeDate === SY.date ? tasks : (monthLogs[SY.date] || []));
+    function syTaskApply(changes) {                                  // 雲端傳來的工單變動 → 合併進那一天的工單
+      const date = SY.date, live = activeDate === date;
+      const arr = live ? tasks.slice() : clone(monthLogs[date] || []);
+      let changed = false;
+      changes.forEach(c => {
+        if (c.local) return;                                         // 自己剛寫出去的回音
+        const i = arr.findIndex(x => x.id === c.id);
+        if (c.type === 'removed') { SY.tsig.delete(c.id); SY.tord.delete(c.id); if (i >= 0) { arr.splice(i, 1); changed = true; } return; }
+        let t; try { t = JSON.parse(c.data.d); } catch (e) { return; }
+        const o = Number(c.data.o) || 0; t.id = c.id;
+        const js = JSON.stringify(t); SY.tsig.set(c.id, js + '|' + o); SY.tord.set(c.id, o);
+        if (i < 0) { arr.push(t); changed = true; } else if (JSON.stringify(arr[i]) !== js) { arr[i] = t; changed = true; }
+      });
+      const pos = new Map(arr.map((x, i) => [x.id, i])), key = (x) => (SY.tord.has(x.id) ? SY.tord.get(x.id) : 1e9 + pos.get(x.id));   // 還沒上傳的本機工單排在雲端已有的後面
+      const sorted = arr.slice().sort((a, b) => (key(a) - key(b)) || (pos.get(a.id) - pos.get(b.id)));
+      if (sorted.some((x, i) => x !== arr[i])) { changed = true; }
+      if (!changed) return;
+      SY.applying = true;
+      try {
+        if (live) {
+          const curId = tasks[currentIndex] && tasks[currentIndex].id;
+          tasks = sorted;
+          const ni = curId ? tasks.findIndex(x => x.id === curId) : -1;
+          currentIndex = ni >= 0 ? ni : Math.min(currentIndex, Math.max(0, tasks.length - 1));
+          saveTasks();
+          renderTasks(false);
+          if (tasks.length > 0) selectTask(currentIndex, false, false);
+        } else {
+          if (sorted.length) monthLogs[date] = sorted; else delete monthLogs[date];
+          persistLogs(); updateDateBar();
+        }
+      } finally { SY.applying = false; }
+    }
+    function syTaskFlush(renum) {                                    // 本機工單 → 雲端；renum＝本機剛改過，順序變了就重新編號
+      SY.ttimer = 0; if (!SY.on || !SY.fb || !SY.team || !SY.tReady) return;
+      const arr = syTaskArr(); let idAdded = false;
+      arr.forEach(t => { if (!t.id) { t.id = syNewId(); idAdded = true; } });
+      if (idAdded && activeDate !== SY.date) persistLogs();
+      const path = syPath('tasks'), jobs = [], cur = new Set();
+      arr.forEach((t, i) => {
+        cur.add(t.id);
+        const js = JSON.stringify(t), known = SY.tsig.has(t.id), o = SY.tord.has(t.id) ? SY.tord.get(t.id) : i;
+        const newO = (known && !renum) ? o : i;
+        const sg = js + '|' + newO;
+        if (SY.tsig.get(t.id) === sg) return;
+        SY.tsig.set(t.id, sg); SY.tord.set(t.id, newO);
+        jobs.push(SY.fb.set(path, t.id, { d: js, o: newO, by: SY.by, ts: Date.now() }));
+      });
+      for (const id of Array.from(SY.tsig.keys())) if (!cur.has(id)) {
+        if (!renum) continue;                                        // 只有本機操作造成的消失才算刪除；雲端回音造成的不算
+        SY.tsig.delete(id); SY.tord.delete(id); jobs.push(SY.fb.del(path, id));
+      }
+      if (!jobs.length) return;
+      SY.fb.set(`teams/${SY.team}/days`, SY.date, { ts: Date.now() }).catch(() => {});
+      Promise.all(jobs).then(() => { SY.st = '已同步'; syUi(); }).catch((e) => { SY.st = '同步失敗：' + (e && e.message || e); syUi(); });
+    }
+    window.syTaskPush = () => { if (!SY.on || SY.applying) return; clearTimeout(SY.ttimer); SY.ttimer = setTimeout(() => syTaskFlush(true), 800); };
+    window.syTaskFlushNow = () => { if (!SY.on || SY.applying || !SY.ttimer) return; clearTimeout(SY.ttimer); syTaskFlush(true); };
     setTimeout(() => { if (SY.team) window.syStart(); }, 3000);
     window.bdUndo = () => { if (BD.mvp) { BD.mvp.sh[BD.mvp.part] = BD.mvp.orig; BD.mvp = null; BD.shapes = BD.hist.pop() || BD.shapes; bdSave(); bdRedrawNow(); return; } if (BD.pend) { if (BD.chainN > 0 && BD.shapes.length) { const r = BD.shapes.pop(); BD.hist.pop(); BD.chainN--; BD.cur = Object.assign({}, r); bdSave(); } else { BD.cur = null; BD.pend = false; } bdRedrawNow(); return; } if (!BD.hist.length) return; BD.sel = null; BD.selObj = null; BD.redo.push(BD.shapes); BD.shapes = BD.hist.pop(); bdSave(); bdRedraw(); };
     window.bdRedo = () => { if (!BD.redo.length) return; BD.sel = null; BD.selObj = null; BD.hist.push(BD.shapes); BD.shapes = BD.redo.pop(); bdSave(); bdRedraw(); };
@@ -4745,7 +4840,7 @@
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
-      try { BD.merge = localStorage.getItem('tpc_bd_merge') === '1'; } catch (e) {} BD.hl = null;
+      BD.merge = false; BD.hl = null;
       BD.key = bdKey();
       try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
