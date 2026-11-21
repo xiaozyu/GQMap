@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v97</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v98</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2150,6 +2150,7 @@
     map.on('move', () => {                      // 滑動中：只要還在已畫好的範圍內就什麼都不做（畫布由系統搬移）
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
       const d = cadVec.drawn;
+      if (d && Math.abs(map.getZoom() - d.z) >= 1e-6 && cadVecScaleOk(d)) return;      // 縮放中由 zoom 事件用 CSS 縮放處理，這裡不重畫
       if (d && Math.abs(map.getZoom() - d.z) < 1e-6) {
         const pb = map.getPixelBounds().min, sz = map.getSize();
         if (pb.x >= d.ox && pb.y >= d.oy && pb.x + sz.x <= d.ox + d.Wc && pb.y + sz.y <= d.oy + d.Hc) {
@@ -2160,9 +2161,17 @@
       cadVecNow();
     });
     map.on('viewreset resize', () => { if (isCadOverlayEnabled && cadVec.canvas) cadVecRedraw(); });
-    map.on('zoom', () => {                      // 縮放：在事件當下「同步」重畫，和底圖同一個畫面更新，不會慢半拍
-      if (isCadOverlayEnabled && cadVec.canvas && !cadVecFailed) cadVecNow();
+    // 縮放（雙指／雙擊／按鈕）：圖資畫布不逐格重畫，而是像底圖一樣用 CSS 放大縮小；手停下（zoomend）才重畫成清晰的 → 開著圖資縮放和沒開一樣順
+    function cadVecScaleOk(d) { const sc = map.getZoomScale(map.getZoom(), d.z); return sc > 0.4 && sc < 2.6; }
+    map.on('zoom', () => {
+      if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
+      const d = cadVec.drawn;
+      if (d && cadVecScaleOk(d)) {
+        try { L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, map.getZoom(), map.getCenter()).min, map.getZoomScale(map.getZoom(), d.z)); return; } catch (err) {}
+      }
+      cadVecNow();
     });
+    map.on('zoomend', () => { if (isCadOverlayEnabled && cadVec.canvas && !cadVecFailed) cadVecNow(); });
     map.on('moveend', () => { if (isCadOverlayEnabled) cadVecUpdate(); });
     map.on('zoomanim', (e) => {
       const d = cadVec.drawn; if (!d || !cadVec.canvas || !isCadOverlayEnabled) return;
