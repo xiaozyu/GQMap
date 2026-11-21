@@ -455,7 +455,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v98</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v105</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2114,6 +2114,7 @@
     } catch (e) {}
     function cadVecNow() { if (cadVec.raf) { cancelAnimationFrame(cadVec.raf); cadVec.raf = 0; } cadVecDraw(); }
     function cadVecUpdate() {                   // 載入畫面附近（含鄰圖預載）會用到的圖幅
+      if (cadVec.retryCall) cadVec.retryCall = false; else cadVec.retry = 0;
       if (!isCadOverlayEnabled) { cadVecRedraw(); return; }
       if (CAD_DESK && !cadPre.on && !cadPre.fin) setTimeout(cadOvPrebuild, 1500);
       if (map.getZoom() < MIN_CAD_ZOOM) { if (map.getZoom() >= OV_MIN && !cadVecFailed) { cadVecEnsureCanvas(); cadOvSchedule(); } cadVecRedraw(); return; }
@@ -2137,6 +2138,14 @@
         for (const k of Array.from(cadVec.tiles.keys())) { if (cadVec.tiles.size <= (CAD_DESK ? 8 : 4)) break; if (!ids.has(k)) cadVec.tiles.delete(k); }   /* 手機最多留 4 張已解析圖幅 */
         if (st && !cadVec.loading.size) st.style.display = 'none';
         cadVecRedraw();
+        if (CAD_DESK) {                    /* 電腦：停下來後若畫面內還有糊的縮圖（沒解析成功），自動重試最多 3 次，直到變清楚 */
+          clearTimeout(cadVec.rt);
+          cadVec.rt = setTimeout(() => {
+            if (!isCadOverlayEnabled || map.getZoom() < MIN_CAD_ZOOM) return;
+            const miss = ts.filter(t => !cadVec.tiles.has(t.id) && !cadVec.loading.has(t.id));
+            if (miss.length && cadVec.retry < 3) { cadVec.retry++; miss.forEach(t => { cadVec.none.delete(t.id); cadWant.delete(t.id); }); cadVec.retryCall = true; cadVecUpdate(); }
+          }, 1200);
+        }
         if (cadVecFailed) cadSchedulePatch(60);
       };
       if (!ts.length) { fin(); return; }
@@ -3537,13 +3546,16 @@
       if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
       el.style.display = 'block';
     }
+    function bdCrossUi() { const b = document.getElementById('board'); if (b) b.classList.toggle('xh', !!BD.cross); const xl = document.getElementById('bd-xl'); if (xl && BD.cross) xl.textContent = BD.centerCode || ''; }
+    window.bdToggleCross = () => { BD.cross = !BD.cross; try { localStorage.setItem('tpc_bdcross', BD.cross ? '1' : '0'); } catch (e) {} bdCrossUi(); };
     function bdStatus() {
       const el = document.getElementById('bd-status'); if (!el) return;
       const names = { none: '工具關閉：手指直接移動／縮放地圖（點左邊工具開始畫）', free: '筆', line: '直線：拉一條直線（右邊可選實線／虛線）', rect: '白底：斜拉出一塊矩形，蓋住下方雜亂圖面（永遠在筆跡下面）',  erase: '橡皮擦：劃過筆跡即擦除（白底只有碰到邊緣才會擦）', select: '選取：點一下選物件（再點同處＝換下一層）｜拖曳移動｜端點圓圈可拉｜文字可縮放旋轉｜左下角可刪除', dim: '量長度：按住 A 拖到 B 放開｜點端點附近可微調', text: '文字：點空白新增（可換行）｜拖曳移動｜縮放｜旋轉｜再點一下改字' };
       let nm = names[BD.tool] || '';
       if (BD.tool === 'dim' && bdOpt.mode === 'cross') nm = BD.mvp ? '搬移中：移動地圖讓十字對準新位置 → 點一下放下（↩ ＝取消）' : BD.pend ? '連續圖釘：移動地圖，十字對準下一點 → 點一下（↩ ＝退回上一點，✔ 完成＝結束）' : '連續圖釘：移動地圖讓十字對準起點 → 點一下定 A，之後每點一下接一段｜十字靠近端點可搬移／刪除';
-      el.textContent = (BD.desk && !BD.hintOff) ? `${BD.centerCode}` : `${BD.centerCode}  ｜ ${nm}`;
+      el.textContent = (!BD.desk || !BD.hintOff) ? `${BD.centerCode}` : `${BD.centerCode}  ｜ ${nm}`;     // 手機／平板只顯示圖號；電腦關掉提示時才補工具說明
       bdHintUi();
+      const xl = document.getElementById('bd-xl'); if (xl && BD.cross) xl.textContent = BD.centerCode || '';
     }
     function bdRedrawNow() {
       bdSyncView();
@@ -3800,8 +3812,8 @@
         #bd-top .bt small { display: none; }
         #bd-top .bt.close { background: rgba(153,27,27,.92); border-color: #fca5a5; }
         #bd-top .bd-vsep { display: none; }
-        #bd-status { position: absolute; left: calc(var(--rail) + 14px); top: 52px; color: #fde047; font: 700 12px var(--font); background: var(--glass); padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-        #board.editing #bd-status, #board.sel #bd-status { display: none; }
+        #bd-status { position: absolute; left: 6px; top: 6px; height: 38px; box-sizing: border-box; display: flex; align-items: center; color: #fde047; font: 800 17px/1 var(--mono); letter-spacing: .5px; background: var(--glass); padding: 0 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
+        #board.sel #bd-status { display: none; }
         #bd-msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); z-index: 3; background: rgba(15,23,42,.94); color: #fff; padding: 12px 20px; border-radius: 14px; border: 1px solid var(--line-2); font-size: 14px; font-weight: 700; display: none; text-align: center; box-shadow: var(--sh-2); }
 
         /* 左下：復原／重作、刪除選取 */
@@ -3825,6 +3837,7 @@
         #bd-done button { color: #fff; background: linear-gradient(180deg, #22c55e, #16a34a); border: 1px solid #86efac; border-radius: 999px; height: 46px; padding: 0 20px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-1); }
         #bd-cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; display: none; pointer-events: none; z-index: 4; }
         #board.xh #bd-cross { display: block; }
+        #bd-xl { position: absolute; left: 12px; top: 12px; white-space: nowrap; font: 800 13px/1 var(--mono); color: #fde047; background: rgba(30,41,59,.92); padding: 5px 8px; border-radius: 7px; border: 1px solid rgba(255,255,255,.25); }
         #bd-cross i { position: absolute; background: #ef4444; box-shadow: 0 0 0 1px rgba(255,255,255,.9); }
         #bd-cross i:nth-child(1) { left: -34px; top: -1px; width: 27px; height: 2px; } #bd-cross i:nth-child(2) { left: 7px; top: -1px; width: 27px; height: 2px; }
         #bd-cross i:nth-child(3) { left: -1px; top: -34px; width: 2px; height: 27px; } #bd-cross i:nth-child(4) { left: -1px; top: 7px; width: 2px; height: 27px; }
@@ -3834,6 +3847,9 @@
         #board .bt[data-k] { position: relative; overflow: visible; }
         #board.kb .bt[data-k]::after { content: attr(data-k); position: absolute; right: -5px; bottom: -6px; z-index: 5; min-width: 17px; padding: 3px 4px; box-sizing: border-box; text-align: center; font: 800 12px/1 var(--mono); color: #f8fafc; background: #0b1220; border: 1px solid rgba(255,255,255,.5); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.5); pointer-events: none; }
         #board.kb .bt.on[data-k]::after { color: #fde047; border-color: #fde047; }
+        #board .bt.close { display: none !important; }   /* 離開畫板：再點一下 ✏️（或電腦按 Esc） */
+        #bd-status { cursor: pointer; }
+        #board.xh #bd-status { border-color: #fde047; box-shadow: 0 0 0 2px rgba(253,224,71,.35); }
         .bd-lenbtn.on { background: var(--blue-d) !important; border-color: #93c5fd !important; color: #fff !important; }
         #bd-ln2 button { color: #e2e8f0; background: var(--glass); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; height: 34px; padding: 0 10px; font-size: 13px; font-weight: 800; cursor: pointer; width: 100%; }
         #bd-colsum { position: absolute; left: 8px; bottom: 72px; z-index: 3; display: none; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 100px); pointer-events: none; }
@@ -3879,8 +3895,8 @@
         <div id="bd-colsum"></div>
         <div id="bd-done" onpointerdown="event.stopPropagation()"><b id="bd-done-t"></b><button onclick="bdChainDone()">✔ 完成</button></div>
         <div id="bd-mg" onpointerdown="event.stopPropagation()"><button onclick="bdMgMove()">✋ 搬移此點</button><button class="dg" onclick="bdMgDel()">🗑 刪除此線</button></div>
-        <div id="bd-cross"><i></i><i></i><i></i><i></i><i></i></div>
-        <div id="bd-status"></div>
+        <div id="bd-cross"><i></i><i></i><i></i><i></i><i></i><b id="bd-xl"></b></div>
+        <div id="bd-status" onclick="bdToggleCross()" title="點一下：顯示／隱藏中心小十字＋圖號座標"></div>
         <button class="bt" id="bd-sdel" onclick="bdSelDel()" title="刪除選取的物件">🗑</button>
         <div id="bd-dimopt"><button id="bd-opt-mode" onclick="bdOptMode()"></button><button id="bd-opt-aim" onclick="bdOptAim()"></button></div>
         <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原，Ctrl+Z）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作，Ctrl+Y）">↪</button><button class="bt" id="bd-pbtn" onclick="bdPanelToggle()" title="顏色／粗細／透明度（開始畫就自動收起）"><i></i></button></div>
@@ -4434,7 +4450,8 @@
       BD.key = bdKey();
       try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
-      bdTool(BD.tool); bdLayout(); bdPenUi(); bdKeyUi();
+      try { BD.cross = localStorage.getItem('tpc_bdcross') === '1'; } catch (e) {}
+      bdTool(BD.tool); bdLayout(); bdPenUi(); bdKeyUi(); bdCrossUi();
       BD.autoClean = false;                                              // 進入畫圖：自動點一下「⤢ 放大」收起上方工單與導航列，畫面全給地圖
       if (!isFullscreenClean) { toggleFullscreenCleanMode(); BD.autoClean = true; setTimeout(() => { try { map.invalidateSize({ animate: false }); bdLayout(); bdRedrawNow(); } catch (e) {} }, 320); }
     };
