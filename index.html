@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v135</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v140</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -486,7 +486,7 @@
       <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)" style="font-weight:900;font-size:22px;">1</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="pinBtnTap()" title="點擊地圖查圖號/新增地標（連按兩下：清除圖上標記）">📍</div>
-      <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="開關即時定位追蹤（連按兩下：停止並清除車子標記）">🚗</div>
+      <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="定位：按一下開啟並飛到我的位置；已開時按一下飛回我的位置；連按兩下停止並清除">🚗</div>
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
         <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
@@ -3667,7 +3667,7 @@
         free: ['✍ 筆', '拖曳畫線', 'H 移動地圖　E 橡皮擦'],
         line: ['╱ 直線', '拖曳拉直線', 'H 移動地圖'],
         rect: ['▭ 白底', '拖曳拉出矩形蓋住雜亂圖面', 'H 移動地圖'],
-        erase: ['🧽 橡皮擦', '拖過筆跡就擦掉（白底只擦邊緣）', 'H 移動地圖'],
+        erase: ['🧽 橡皮擦', '點／拖過＝整條擦掉　長按再拖＝框選擦除　S Pen 側鍵＝慢慢擦', 'H 移動地圖'],
         select: ['☝ 選取', '點選物件　再點同處換下一層', '拖曳移動　Delete 刪除', 'Esc 取消選取'],
         dim: cross ? (BD.mvp ? ['📍 搬移端點', '移動地圖對準新位置　點一下放下', 'Esc 取消搬移'] : BD.pend ? ['📍 連續圖釘', '拖曳平移地圖　點一下定下一點', 'Enter 完成　Ctrl+Z 退回上一點　Esc 結束'] : ['📍 連續圖釘', '紅十字對準起點　點一下定 A', '之後每點一下接一段　十字靠近端點可搬移／刪除'])
                    : ['↔ 量長度', '按住 A 拖到 B 放開', '點端點附近可微調　H 移動地圖'],
@@ -3856,9 +3856,56 @@
       flush();
       return hit ? out : null;
     }
-    function bdEraseAt(pt) {
+    function bdClipRect(p, x0, y0, x1, y1) {               // 把折線在矩形內的部分挖掉，回傳剩下的幾段（沒碰到就 null）
+      const inside = (q) => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1, out = []; let cur = [], hit = false;
+      const lerp = (a, b, t) => { const q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; if (a.length > 2 && b.length > 2) q.push(Math.round((a[2] + (b[2] - a[2]) * t) * 100) / 100); return q; };
+      const flush = () => { if (cur.length >= 2) out.push(cur); cur = []; };
+      if (!p.length) return null;
+      if (inside(p[0])) hit = true; else cur.push(p[0]);
+      for (let i = 1; i < p.length; i++) {
+        const a = p[i - 1], b = p[i], dx = b[0] - a[0], dy = b[1] - a[1]; let t0 = 0, t1 = 1, ok = true;
+        for (const [pk, qk] of [[-dx, a[0] - x0], [dx, x1 - a[0]], [-dy, a[1] - y0], [dy, y1 - a[1]]]) {
+          if (pk === 0) { if (qk < 0) { ok = false; break; } } else { const r = qk / pk; if (pk < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; } else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; } }
+        }
+        if (!ok || t0 >= t1) { if (!inside(b)) cur.push(b); else hit = true; continue; }
+        hit = true;
+        if (t0 > 0) cur.push(lerp(a, b, t0));
+        flush();
+        if (t1 < 1) cur = [lerp(a, b, t1), b];
+      }
+      flush();
+      return hit ? out : null;
+    }
+    function bdBoxErase(A, B) {                              // 框選擦除：框內的筆跡／直線被挖掉（框外保留）；文字、量長度、白底：在框內才刪
+      const x0 = Math.min(A[0], B[0]), x1 = Math.max(A[0], B[0]), y0 = Math.min(A[1], B[1]), y1 = Math.max(A[1], B[1]);
+      const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4), inb = (q) => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1;
+      let ch = false; const out = [];
+      BD.shapes.forEach(s => {
+        const b = bdBox(s); if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) { out.push(s); return; }
+        if (s.t === 'free' || s.t === 'line') {
+          const parts = bdClipRect(s.t === 'free' ? s.p : [s.a, s.b], x0, y0, x1, y1);
+          if (!parts) { out.push(s); return; }
+          ch = true; parts.forEach((pc, i) => { const n = Object.assign({}, s); if (i) n.id = nid(); if (s.t === 'free') n.p = pc; else { n.a = pc[0]; n.b = pc[1]; } out.push(n); });
+        } else if (s.t === 'text') { if (inb(s.a)) ch = true; else out.push(s); }
+        else if (s.t === 'dim') { if (inb(s.a) || inb(s.b)) ch = true; else out.push(s); }
+        else if (s.t === 'rect') { if (inb(s.a) && inb(s.b)) ch = true; else out.push(s); }
+        else out.push(s);
+      });
+      if (ch) { bdPush(); BD.shapes = out; BD.sel = null; BD.selObj = null; bdDropCache(); }
+      return ch;
+    }
+    function bdBoxPrev(E) {
+      const g = bdCtx(BD.ui); g.clearRect(0, 0, BD.W, BD.H);
+      const p1 = bdPx(E.pt), p2 = bdPx(E.cur), x = Math.min(p1[0], p2[0]), y = Math.min(p1[1], p2[1]), w = Math.abs(p2[0] - p1[0]), h = Math.abs(p2[1] - p1[1]);
+      g.save(); g.fillStyle = 'rgba(239,68,68,.12)'; g.strokeStyle = '#ef4444'; g.lineWidth = 1.5; g.setLineDash([6, 4]); g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); g.restore();
+    }
+    function bdTapErase(pt) {                              // 橡皮擦「點一下」：直接刪掉點到的那一條（最上面那個）
+      const h = bdHit(pt), tgt = h && h.sh.t !== 'rect' ? h.sh : null;
+      if (tgt) { bdPush(); BD.shapes = BD.shapes.filter(x => x !== tgt); BD.sel = null; BD.selObj = null; bdDropCache(); bdRedraw(); return; }
+      bdEraseAt(pt);                                       // 白底：沿用原本「碰到邊緣才擦」
+    }
+    function bdEraseAt(pt, part) {                         // part＝true：慢慢擦（只挖掉經過的地方）
       const r = 14 / BD.s / BD.k;          // 約 14 螢幕像素（換成 Mercator 公尺）
-      const part = BD.eraseMode === 'part';
       if (part) {                                              // 慢慢擦：筆跡與直線只挖掉橡皮擦經過的那一小段，剩下的各自留著
         const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
         let ch = false; const out = [];
@@ -4186,6 +4233,7 @@
       const wrap = document.getElementById('bd-wrap'), touches = new Map();
       let pan = null, pinch = null, drawing = false, drawId = null, penId = null; const capIds = new Set();
       const abortDraw = () => {
+        if (BD.ers) { clearTimeout(BD.ers.timer); BD.ers = null; }
         if (!drawing) return;
         drawing = false; drawId = null; BD.erasing = false;
         if (BD.cur) { BD.cur = null; bdPreview(); }
@@ -4312,7 +4360,9 @@
           }
         }
         drawing = true; BD.erasing = false;
-        if (BD.tool === 'erase') { bdEraseAt(pt); return; }
+        if (BD.tool === 'erase') { const E0 = BD.ers = { x: e.clientX, y: e.clientY, pt, moved: false, box: false, cur: null, part: !!BD.tmpPart };
+          E0.timer = setTimeout(() => { if (BD.ers === E0 && !E0.moved) { E0.box = true; E0.cur = pt; try { navigator.vibrate && navigator.vibrate(35); } catch (_) {} const m = document.getElementById('bd-msg'); if (m) { m.textContent = '框選擦除：拖出範圍，放開就擦掉框內的'; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1400); } } }, 450);
+          return; }      // 點一下＝刪整條；拖動＝慢慢擦（放開時才判斷）
         BD.cur = BD.tool === 'line' ? { t: 'line', a: pt, b: pt, c: BD.ln.c, w: BD.ln.w, al: BD.ln.a == null ? 1 : BD.ln.a, dash: !!BD.ln.dash } : BD.tool === 'rect' ? { t: 'rect', a: pt, b: pt, al: BD.rc.a == null ? 1 : BD.rc.a } : BD.tool === 'free' ? { t: 'free', p: [bdPtP(pt, e, true)], c: BD.pen.c, w: BD.pen.w, a: BD.pen.a == null ? 1 : BD.pen.a } : BD.tool === 'dim' ? bdNewDim(pt, pt) : { t: BD.tool, a: pt, b: pt };
         if (BD.tool === 'free' && BD.cur.a >= 1) bdInkSeg(BD.cur, pt, pt); else bdPreview();
       };
@@ -4343,7 +4393,11 @@
         }
         if (drawing) return;
         if (bdCrossOn()) { xtStart(e); return; }
-        if (e.pointerType === 'pen' && ((e.buttons & 2) || (e.buttons & 32) || e.button === 5) && BD.tool !== 'erase') { BD.tmpTool = BD.tool; BD.tool = 'erase'; bdStatus && bdStatus(); }   // S Pen 側鍵／筆尾＝橡皮擦（按住期間）
+        BD.tmpPart = false;
+        if ((e.pointerType === 'pen' && ((e.buttons & 2) || (e.buttons & 32) || e.button === 5)) || (e.pointerType === 'mouse' && (e.buttons & 2))) {            // S Pen 側鍵／滑鼠右鍵＝橡皮擦（按住期間）＝慢慢擦；筆尾＝整條擦
+          BD.tmpPart = !!(e.buttons & 2);
+          if (BD.tool !== 'erase') { BD.tmpTool = BD.tool; BD.tool = 'erase'; bdStatus && bdStatus(); }
+        } else if (BD.tool === 'erase' && e.shiftKey && e.pointerType !== 'touch') BD.tmpPart = true;      // 電腦：選著橡皮擦時按住 Shift 拖＝慢慢擦
         penId = e.pointerId; startDraw(e);
       });
       wrap.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -4394,13 +4448,19 @@
           bdRedraw(); return;
         }
         let evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || []; if (!evs.length) evs = [e];
-        if (BD.tool === 'erase') { evs.forEach(ev => bdEraseAt(bdPtOf(ev))); return; }
+        if (BD.tool === 'erase') {
+          const E = BD.ers; if (!E) return;
+          if (E.box) { E.cur = bdPtOf(e); bdBoxPrev(E); return; }
+          if (!E.moved) { if (Math.hypot(e.clientX - E.x, e.clientY - E.y) < 7) return; E.moved = true; clearTimeout(E.timer); bdEraseAt(E.pt, E.part); }
+          evs.forEach(ev => bdEraseAt(bdPtOf(ev), E.part)); return;
+        }
         if (!BD.cur) return;
         if (BD.cur.t === 'free') { evs.forEach(ev => { const q0 = bdPtOf(ev), q = bdPtP([Math.round(q0[0] * 1000) / 1000, Math.round(q0[1] * 1000) / 1000], ev), last = BD.cur.p[BD.cur.p.length - 1]; BD.cur.p.push(q); if (BD.cur.a >= 1) bdInkSeg(BD.cur, last, q); }); if (BD.cur.a < 1) bdPreview(); }
         else { BD.cur.b = bdPtOf(e); bdPreview(); }
       });
       const up = (e) => {
-        if (BD.tmpTool && e.pointerType === 'pen') { BD.tool = BD.tmpTool; BD.tmpTool = null; try { bdStatus(); } catch (_) {} }
+        BD.tmpPart = false;
+        if (BD.tmpTool && (e.pointerType === 'pen' || e.pointerType === 'mouse')) { BD.tool = BD.tmpTool; BD.tmpTool = null; try { bdStatus(); } catch (_) {} }
         bdAim(null); capIds.delete(e.pointerId); if (e.pointerId === penId) penId = null;
         if (xt && e.pointerId === xt.id) {
           const t = xt; xt = null; touches.delete(e.pointerId); panEnd();
@@ -4418,6 +4478,7 @@
         }
         if (!drawing) return;
         drawing = false; BD.erasing = false;
+        if (BD.ers) { const E = BD.ers; BD.ers = null; clearTimeout(E.timer); if (E.box) { if (e.type !== 'pointercancel' && E.cur) bdBoxErase(E.pt, E.cur); bdRedrawNow(); } else if (!E.moved && e.type !== 'pointercancel') bdTapErase(E.pt); }
         if (BD.mv) {
           const m = BD.mv; BD.mv = null;
           if (m.mode === 'line' && m.moved) {                       // 拖完靠近別的端點 → 吸附釘在一起
@@ -4619,15 +4680,9 @@
       try { localStorage.setItem('tpc_pen', JSON.stringify(BD.pen)); localStorage.setItem('tpc_ln', JSON.stringify(BD.ln)); localStorage.setItem('tpc_rc', JSON.stringify(BD.rc)); localStorage.setItem('tpc_dm', JSON.stringify(BD.dm)); } catch (e) {}
     }
     window.bdPenPop = () => {};
-    BD.eraseMode = (() => { try { return localStorage.getItem('tpc_ermode') === 'part' ? 'part' : 'whole'; } catch (e) { return 'whole'; } })();
-    function bdEraseUi() { const sm = document.querySelector('#bd-rail [data-tool=erase] small'); if (sm) sm.textContent = BD.eraseMode === 'part' ? '慢慢擦' : '擦整條'; }
+    function bdEraseUi() { const sm = document.querySelector('#bd-rail [data-tool=erase] small'); if (sm) sm.textContent = '橡皮擦'; }
     window.bdToolTap = (t) => {
       bdPenPop(false);
-      if (t === 'erase' && BD.tool === 'erase') {                // 橡皮擦已選取時再按＝切換「擦整條／慢慢擦」（要關閉就改選別的工具）
-        BD.eraseMode = BD.eraseMode === 'part' ? 'whole' : 'part'; try { localStorage.setItem('tpc_ermode', BD.eraseMode); } catch (e) {} bdEraseUi();
-        const m = document.getElementById('bd-msg'); if (m) { m.textContent = BD.eraseMode === 'part' ? '橡皮擦：慢慢擦（只擦經過的地方）' : '橡皮擦：擦整條（碰到就整條刪掉）'; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1500); }
-        return;
-      }
       bdTool(BD.tool === t ? 'none' : t);               // 開關：再按一次就關，關掉後手指直接移動地圖
     };
     window.bdSetColor = (c) => {
@@ -5095,7 +5150,13 @@
     }
 
     let lastFix = null;
+    let userFixAt = 0;
+    function flyToUser() {                                      // 平滑飛到我的位置；縮太小（看到整個世界）時自動拉近到 17，已經比較近就維持目前縮放
+      if (!userLatLng) return;
+      try { map.flyTo(userLatLng, Math.max(map.getZoom(), 17), { duration: 0.9 }); } catch (e) { map.setView(userLatLng, Math.max(map.getZoom(), 17)); }
+    }
     function updateLivePosition(pos, forceCenter = false) {
+      userFixAt = Date.now();
       { const la = pos.coords.latitude, ln = pos.coords.longitude, ac = pos.coords.accuracy || 20;     // 幾乎沒動且精度沒變：整個略過（不更新標記、圓、圖號）
         if (!forceCenter && lastFix && userMarker && Math.abs(la - lastFix.la) < 7e-6 && Math.abs(ln - lastFix.ln) < 7e-6 && Math.abs(ac - lastFix.ac) < 3) return;
         lastFix = { la, ln, ac }; }
@@ -5144,9 +5205,7 @@
         userTooltip.on('click', copyCurrentUserCode);
       }
 
-      if (forceCenter && !(typeof BD !== 'undefined' && BD.on)) {
-        map.panTo(userLatLng, { animate: true, duration: 0.4 });
-      }
+      if (forceCenter) flyToUser();
     }
 
     window.toggleLiveTracking = () => {
@@ -5163,8 +5222,8 @@
       btn.innerText = '🔴';
       isFirstFixOfSession = true;
 
-      if (userLatLng && !(typeof BD !== 'undefined' && BD.on)) {
-        map.panTo(userLatLng, { animate: true, duration: 0.4 });
+      if (userLatLng && Date.now() - userFixAt < 15000) {          // 15 秒內才算「剛剛的位置」；比較舊的不要先飛，等新定位回來再飛
+        flyToUser();
         isFirstFixOfSession = false;
       }
 
@@ -5191,6 +5250,7 @@
       lastPinTap = now;
       toggleAddPinMode();
     };
+    /* 🚗：沒開 → 開始定位，拿到位置後自動飛過去；已開 → 按一下飛回我的位置；連按兩下 → 停止並清除標記 */
     window.carBtnTap = () => {
       const now = Date.now();
       if (now - lastCarTap < 400) {
@@ -5202,6 +5262,7 @@
         return;
       }
       lastCarTap = now;
+      if (watchPositionId !== null && userLatLng) { flyToUser(); return; }     // 定位已開：按一下＝飛回我的位置（連按兩下＝停止並清除）
       toggleLiveTracking();
     };
 
