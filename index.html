@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v145</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v147</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -950,7 +950,8 @@
     const map = L.map('leaflet-map', {
       center: [24.2303, 120.5654],
       zoom: 14,
-      maxZoom: 25,
+      maxZoom: 25, minZoom: 5,
+      maxBounds: [[-10, 70], [60, 150]], maxBoundsViscosity: 0.9,      // 縮小只到台灣周邊，不會出現重複的世界
       zoomControl: false,
       wheelDebounceTime: 30, inertiaDeceleration: 3600, bounceAtZoomLimits: false,
       layers: [nlscEMap]
