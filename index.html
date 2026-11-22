@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v147</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v149</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2124,11 +2124,12 @@
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath();
       qd.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.clip();
-      ctx.setTransform(a, b, cc, d, e, f);
+      ctx.setTransform(a, b, cc, d, e, f); let dashOn = false;
       for (const g of it.groups) {
         if (g.fill) { ctx.fill(g.path); continue; }
         ctx.lineWidth = Math.min(lwMax, Math.max(lwMin, g.lw * sc)) / sc;
-        ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; ctx.stroke(g.path);
+        if (g.dash.length || dashOn) { ctx.setLineDash(g.dash); ctx.lineDashOffset = g.phase; dashOn = g.dash.length > 0; }
+        ctx.stroke(g.path);
       }
       ctx.restore(); return true;
     }
@@ -2153,7 +2154,7 @@
       if (!isCadOverlayEnabled || cadVecFailed || (ovMode && (z < OV_MIN || !cadOv.items.size))) { c.style.display = 'none'; cadVec.drawn = null; return; }
       c.style.display = '';
       { const ce = map.getContainer(); if (ce.clientWidth && (ce.clientWidth !== map.getSize().x || ce.clientHeight !== map.getSize().y)) map.invalidateSize({ animate: false }); }   // 尺寸過期保險
-      const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, CAD_DESK ? 2.5 : 2), padX = Math.round(sz.x * 0.25), padY = Math.round(sz.y * 0.25);
+      const sz = map.getSize(), dpr = Math.min(window.devicePixelRatio || 1, CAD_DESK ? 2.5 : 2), padX = Math.round(sz.x * 0.18), padY = Math.round(sz.y * 0.18);
       const Wc = sz.x + 2 * padX, Hc = sz.y + 2 * padY, pw = Math.round(Wc * dpr), ph = Math.round(Hc * dpr);
       if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
       c.style.width = Wc + 'px'; c.style.height = Hc + 'px';
@@ -2172,7 +2173,11 @@
         cadVecPaintTile(ctx, it, P, pw, ph, 0.9 * dpr, 6 * dpr);
         }
       }
-      cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY, bnds: L.latLngBounds(map.containerPointToLatLng([-padX, -padY]), map.containerPointToLatLng([sz.x + padX, sz.y + padY])) };
+      cadVec.drawn = { z, ox, oy, Wc, Hc, padX, padY, okey, bnds: L.latLngBounds(map.containerPointToLatLng([-padX, -padY]), map.containerPointToLatLng([sz.x + padX, sz.y + padY])) };
+    }
+    function cadVecInside() {                   // 目前畫面是否已完整畫在現有畫布內（同縮放、同偏移）→ 是的話不必重畫
+      const d = cadVec.drawn; if (!d || Math.abs(map.getZoom() - d.z) > 1e-6 || d.okey !== cadOffset.dx + ',' + cadOffset.dy) return false;
+      const pb = map.getPixelBounds().min, sz = map.getSize(); return pb.x >= d.ox && pb.y >= d.oy && pb.x + sz.x <= d.ox + d.Wc && pb.y + sz.y <= d.oy + d.Hc;
     }
     function cadVecRedraw() { if (!cadVec.raf) cadVec.raf = requestAnimationFrame(cadVecDraw); }
     // 地圖容器大小改變（版面收合、視窗縮放…）→ 讓 Leaflet 重新量尺寸並重畫 CAD；否則 CAD 畫布會停在舊寬度，右半邊跑不出圖
@@ -2205,7 +2210,7 @@
         const ids = new Set(ts.map(t => t.id));
         for (const k of Array.from(cadVec.tiles.keys())) { if (cadVec.tiles.size <= (CAD_DESK ? 8 : 4)) break; if (!ids.has(k)) cadVec.tiles.delete(k); }   /* 手機最多留 4 張已解析圖幅 */
         if (st && !cadVec.loading.size) st.style.display = 'none';
-        cadVecRedraw();
+        if (need.length) cadVecRedraw();      // 沒有新圖幅就不必重畫
         if (CAD_DESK) {                    /* 電腦：停下來後若畫面內還有糊的縮圖（沒解析成功），自動重試最多 3 次，直到變清楚 */
           clearTimeout(cadVec.rt);
           cadVec.rt = setTimeout(() => {
@@ -2217,8 +2222,8 @@
         if (cadVecFailed) cadSchedulePatch(60);
       };
       if (!ts.length) { fin(); return; }
-      cadVecLoad(ts[0]).then(() => { cadVecRedraw(); return Promise.all(ts.slice(1).map(cadVecLoad)); }).then(fin);
-      cadVecRedraw();
+      cadVecLoad(ts[0]).then(() => { if (need.length) cadVecRedraw(); return Promise.all(ts.slice(1).map(cadVecLoad)); }).then(fin);
+      if (need.length || !cadVecInside()) cadVecRedraw();
     }
     function cadVecOff() {
       if (cadVec.canvas) { cadVec.canvas.style.display = 'none'; cadVec.drawn = null; }
@@ -2227,7 +2232,7 @@
     map.on('move', () => {                      // 滑動中：只要還在已畫好的範圍內就什麼都不做（畫布由系統搬移）
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
       const d = cadVec.drawn;
-      if (d && Math.abs(map.getZoom() - d.z) >= 1e-6 && cadVecScaleOk(d)) return;      // 縮放中由 zoom 事件用 CSS 縮放處理，這裡不重畫
+      if (d && Math.abs(map.getZoom() - d.z) >= 1e-6) { if (!cadVecScaleOk(d)) cadVecThrottle(); return; }      // 縮放中由 zoom 事件用 CSS 縮放處理；縮太多才節流重畫
       if (d && Math.abs(map.getZoom() - d.z) < 1e-6) {
         const pb = map.getPixelBounds().min, sz = map.getSize();
         if (pb.x >= d.ox && pb.y >= d.oy && pb.x + sz.x <= d.ox + d.Wc && pb.y + sz.y <= d.oy + d.Hc) {
@@ -2239,16 +2244,18 @@
     });
     map.on('viewreset resize', () => { if (isCadOverlayEnabled && cadVec.canvas) cadVecRedraw(); });
     // 縮放（雙指／雙擊／按鈕）：圖資畫布不逐格重畫，而是像底圖一樣用 CSS 放大縮小；手停下（zoomend）才重畫成清晰的 → 開著圖資縮放和沒開一樣順
+    let cadVecT = 0;
+    function cadVecThrottle() { const n = performance.now(); if (n - cadVecT > 260) { cadVecT = n; cadVecNow(); } }      // 縮放過程中最多每 0.26 秒完整重畫一次，其餘用 CSS 縮放貼著地圖
     function cadVecScaleOk(d) { const sc = map.getZoomScale(map.getZoom(), d.z); return sc > 0.4 && sc < 2.6; }
     map.on('zoom', () => {
       if (!isCadOverlayEnabled || !cadVec.canvas || cadVecFailed) return;
       const d = cadVec.drawn;
-      if (d && cadVecScaleOk(d)) {
-        try { L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, map.getZoom(), map.getCenter()).min, map.getZoomScale(map.getZoom(), d.z)); return; } catch (err) {}
+      if (d) {
+        try { L.DomUtil.setTransform(cadVec.canvas, map._latLngBoundsToNewLayerBounds(d.bnds, map.getZoom(), map.getCenter()).min, map.getZoomScale(map.getZoom(), d.z)); if (!cadVecScaleOk(d)) cadVecThrottle(); return; } catch (err) {}
       }
       cadVecNow();
     });
-    map.on('zoomend', () => { if (isCadOverlayEnabled && cadVec.canvas && !cadVecFailed) cadVecNow(); });
+    map.on('zoomend', () => { if (isCadOverlayEnabled && cadVec.canvas && !cadVecFailed && !cadVecInside()) cadVecNow(); });
     map.on('moveend', () => { if (isCadOverlayEnabled) cadVecUpdate(); });
     map.on('zoomanim', (e) => {
       const d = cadVec.drawn; if (!d || !cadVec.canvas || !isCadOverlayEnabled) return;
