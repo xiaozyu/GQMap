@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v140</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v143</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -973,7 +973,7 @@
         #layer-pop > div:hover { background: var(--surface-2); }
         #layer-pop > div:last-child { border-bottom: 0; } #veil-row { cursor: default; } #veil-row:hover { background: transparent !important; }
         #layer-pop > div.on { color: #fde047; font-weight: 800; } #layer-pop > div.on::before { content: '✓ '; }
-        #veil-row { padding: 12px 16px 14px; } #veil-row input { width: 100%; min-width: 200px; height: 28px; accent-color: var(--amber); }`;
+        #veil-row { padding: 8px 14px 6px; } #veil-row input[type=range] { width: 100%; min-width: 200px; height: 24px; margin: 0; accent-color: var(--amber); }`;
       document.head.appendChild(css);
       const mc = document.querySelector('.map-container');
       const btn = document.createElement('div'); btn.id = 'layer-btn'; btn.setAttribute('role', 'button'); btn.setAttribute('aria-label', '切換地圖種類'); btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 16.5 9 5 9-5" opacity=".55"/></svg>'; btn.title = '切換地圖種類';
@@ -985,7 +985,7 @@
       });
       const clearRow = document.createElement('div');
       const updCnt = () => {
-        const n = Object.keys(ovLay).filter(k => map.hasLayer(ovLay[k])).length;
+        const n = ovWant.size; try { const c = document.getElementById('ov-chk'); if (c) { c.checked = ovShow; document.getElementById('ov-n').textContent = n ? '(' + n + ')' : ''; } } catch (e) {}
         clearRow.innerHTML = '🗺 只顯示基本地圖<small style="display:block;font-weight:400;color:#94a3b8;margin-top:3px;white-space:normal">關閉全部疊加圖層（目前開 ' + n + ' 個）、底圖濃度 100%、回到台灣通用電子地圖</small>';
         ovHeads.forEach(([h, g, rows]) => { const on = rows.filter(r => r.classList.contains('on')).length; h.textContent = (expanded.has(g) ? '▾ ' : '▸ ') + g + (on ? '　●' + on : ''); rows.forEach(r => { r.style.display = expanded.has(g) ? '' : 'none'; }); });
       };
@@ -996,14 +996,18 @@
         defs.forEach(([, x]) => { if (map.hasLayer(x)) map.removeLayer(x); }); nlscEMap.addTo(map); applyVeil(); refresh(); pop.style.display = 'none';
       });
       const ovHeads = []; let expanded = new Set(['常用']); try { const sv = JSON.parse(localStorage.getItem('tpc_ovg') || 'null'); if (Array.isArray(sv)) expanded = new Set(sv); } catch (e) {}
-      const ovLay = {}, ovRows = [], ovSave = () => { try { localStorage.setItem('tpc_ov', JSON.stringify(Object.keys(ovLay).filter(k => map.hasLayer(ovLay[k])))); } catch (e) {} }, ovHas = (k) => ovLay[k] && map.hasLayer(ovLay[k]);
-      const refresh = () => { rows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l))); ovRows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l))); updCnt(); };
+      const ovLay = {}, ovRows = [], ovWant = new Set(); let ovShow = true; try { ovShow = localStorage.getItem('tpc_ovs') !== '0'; } catch (e) {}
+      const ovSave = () => { try { localStorage.setItem('tpc_ov', JSON.stringify([...ovWant])); localStorage.setItem('tpc_ovs', ovShow ? '1' : '0'); } catch (e) {} }, ovHas = (k) => ovLay[k] && map.hasLayer(ovLay[k]);
+      const ovSync = () => { Object.keys(ovLay).forEach(k => { const w = ovShow && ovWant.has(k), h = map.hasLayer(ovLay[k]); if (w && !h) ovLay[k].addTo(map); else if (!w && h) map.removeLayer(ovLay[k]); }); };
+      const refresh = () => { rows.forEach(([row, l]) => row.classList.toggle('on', map.hasLayer(l))); ovRows.forEach(([row, l]) => row.classList.toggle('on', ovWant.has(l.__id))); updCnt(); };
       const applyVeil = () => { const n = window.cadVeilN; defs.forEach(([, x]) => { try { x.setOpacity(map.hasLayer(x) ? n / 100 : 1); } catch (e) {} }); document.getElementById('leaflet-map').style.background = n < 100 ? '#fff' : ''; };
       btn.addEventListener('click', (e) => { e.stopPropagation(); refresh(); pop.style.display = pop.style.display === 'block' ? 'none' : 'block'; });
       document.addEventListener('pointerdown', (e) => { if (!pop.contains(e.target) && e.target !== btn) pop.style.display = 'none'; }, true);
       // 底圖淡化拉桿：0＝正常底圖，往右越淡，100＝純白只剩台電線（任何底圖都能用）
       const vr = document.createElement('div'); vr.id = 'veil-row';
-      vr.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px">⚡ 底圖濃度 <b id="veil-v" style="color:#fde047">100%</b></div><input id="veil-r" type="range" min="0" max="100" step="1" value="100"><div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-top:2px"><span>淺（只看台電線）</span><span>深（原底圖）</span></div>';
+      vr.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#94a3b8;margin-bottom:2px"><span>⚡ 底圖濃度 <b id="veil-v" style="color:#fde047">100%</b></span><label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:#cbd5e1" title="勾＝顯示下面選的疊加圖層；取消＝全部隱藏（選擇會保留）"><input id="ov-chk" type="checkbox" checked style="width:18px;height:18px;min-width:0;accent-color:#22c55e;margin:0">疊圖<span id="ov-n" style="color:#86efac"></span></label></div><input id="veil-r" type="range" min="0" max="100" step="1" value="100">';
+      vr.querySelector('#ov-chk').addEventListener('change', (e) => { ovShow = e.target.checked; ovSync(); ovSave(); updCnt(); });
+      vr.querySelector('#ov-chk').addEventListener('click', (e) => e.stopPropagation());
       pop.appendChild(vr);
       // 疊加圖層（免費，國土測繪中心圖磚）：可同時開，疊在任何底圖上面
       const ovDefs = [
@@ -1029,19 +1033,19 @@
         }
         const lay = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/' + id + '/default/GoogleMapsCompatible/{z}/{y}/{x}', { maxZoom: 25, maxNativeZoom: 19, zIndex: 4 + i, opacity: 0.9, attribution: '© 國土測繪中心', updateWhenIdle: true, keepBuffer: 1 });
         const row = document.createElement('div'); row.textContent = name;
-        row.addEventListener('click', (e) => { e.stopPropagation(); if (map.hasLayer(lay)) map.removeLayer(lay); else lay.addTo(map); ovLay[id] = lay; ovSave(); row.classList.toggle('on', map.hasLayer(lay)); updCnt(); });
+        lay.__id = id; row.addEventListener('click', (e) => { e.stopPropagation(); if (ovWant.has(id)) ovWant.delete(id); else { ovWant.add(id); ovShow = true; } ovSync(); ovSave(); row.classList.toggle('on', ovWant.has(id)); updCnt(); });
         if (ovMul.includes(id)) lay.on('add', () => { try { lay.getContainer().style.mixBlendMode = 'multiply'; } catch (e) {} });
         ovLay[id] = lay; ovRows.push([row, lay]); pop.insertBefore(row, vr);
         if (curG) curG[2].push(row);
-        if (ovOn.includes(id)) { lay.addTo(map); if (curG) expanded.add(curG[1]); }
-        row.classList.toggle('on', map.hasLayer(lay));
+        if (ovOn.includes(id)) { ovWant.add(id); if (ovShow) lay.addTo(map); if (curG) expanded.add(curG[1]); }
+        row.classList.toggle('on', ovWant.has(id));
       });
       const vin = vr.querySelector('input'), vv = vr.querySelector('#veil-v');
       window.cadSetBase = (n) => {                              // n＝底圖濃度 0~100；100＝原底圖，0＝純白只剩台電線（不會自動開圖資）
         n = Math.max(0, Math.min(100, Math.round(n))); vin.value = n; vv.textContent = n + '%'; window.cadVeilN = n; applyVeil();
       };
       vin.addEventListener('input', () => window.cadSetBase(+vin.value));
-      pop.insertBefore(clearRow, pop.firstChild); pop.insertBefore(vr, pop.firstChild); updCnt();      // 底圖濃度拉桿放到選單最上面
+      pop.insertBefore(vr, pop.firstChild); updCnt();      // 底圖濃度拉桿放到選單最上面
       mc.appendChild(btn); mc.appendChild(pop);
     })();
 
@@ -3812,6 +3816,7 @@
     window.bdOptAim = () => { bdOpt.aim = ({ touch: 'all', all: 'off', off: 'touch' })[bdOpt.aim]; try { localStorage.setItem('tpc_aim', bdOpt.aim); } catch (e) {} bdDimOptUi(); };
 
     function bdPtP(q, e, reset) {                              // S Pen 壓感：筆才有；第三個數＝粗細倍率（輕 0.35 → 重 1.65），略做平滑避免抖動
+      return q;   // 壓感已停用（v142）
       if (!e || e.pointerType !== 'pen' || !(e.pressure > 0)) return q;
       const pr = e.pressure; BD.prS = (reset || BD.prS == null) ? pr : BD.prS * 0.6 + pr * 0.4;
       return [q[0], q[1], Math.round((0.35 + 1.3 * BD.prS) * 100) / 100];
@@ -4401,7 +4406,20 @@
         penId = e.pointerId; startDraw(e);
       });
       wrap.addEventListener('contextmenu', (e) => e.preventDefault());
+      const penDbg = (e) => {
+        if (e.pointerType === 'mouse') return;
+        let d = document.getElementById('pen-dbg');
+        if (!d) { d = document.createElement('div'); d.id = 'pen-dbg'; d.style.cssText = 'position:fixed;left:6px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:99999;background:rgba(0,0,0,.72);color:#0f0;font:11px monospace;padding:2px 6px;border-radius:4px;pointer-events:none'; document.body.appendChild(d); }
+        d.textContent = e.type.replace('pointer', '') + ' ' + e.pointerType + ' btn=' + e.button + ' btns=' + e.buttons + ' tool=' + BD.tool;
+      };
+      wrap.addEventListener('pointerdown', penDbg, true);
+      wrap.addEventListener('pointermove', penDbg, true);
       wrap.addEventListener('pointermove', (e) => {
+        // 側鍵在落筆後才按下：中途切成橡皮擦（捨棄這一筆，改從目前位置擦）
+        if (drawing && drawId === null && e.pointerType === 'pen' && !BD.tmpTool && BD.tool !== 'erase' && (e.buttons & (2 | 32))) {
+          abortDraw(); BD.tmpTool = BD.tool; BD.tool = 'erase'; BD.tmpPart = !!(e.buttons & 2); try { bdStatus(); } catch (_) {}
+          drawId = null; startDraw(e); return;
+        }
         if (xt && e.pointerId === xt.id) {
           panBy(xt.x - e.clientX, xt.y - e.clientY); xt.x = e.clientX; xt.y = e.clientY;
           if (Math.hypot(e.clientX - xt.sx, e.clientY - xt.sy) > 10) xt.ok = false;
@@ -4541,7 +4559,7 @@
         t.addEventListener('pointermove', (e) => { if (on) set(e); });
         t.addEventListener('pointerup', () => { on = false; }); t.addEventListener('pointercancel', () => { on = false; });
       };
-      slider('bd-wtrk', (f) => { bdCfg().w = Math.round((0.1 + f * 7.9) * 10) / 10; bdPenUi(); });
+      slider('bd-wtrk', (f) => { bdCfg().w = Math.round((0.1 + f * f * 49.9) * 10) / 10; bdPenUi(); });
       slider('bd-atrk', (f) => { bdCfg().a = Math.round((0.1 + f * 0.9) * 20) / 20; bdPenUi(); });
       bdPenUi();
       document.getElementById('map-floating-controls').addEventListener('click', (e) => {   // 按右側其他功能（📍🚗⚡…）→ 自動回瀏覽，地圖才點得到
@@ -4671,7 +4689,7 @@
       document.querySelectorAll('.bd-lenbtn').forEach(b => b.classList.toggle('on', !!BD.ln.len));
       const dot = document.getElementById('bd-pen-dot'); if (dot) { dot.style.color = BD.pen.c; dot.style.textShadow = (BD.pen.c === '#111827' || BD.pen.c === '#1e3a8a' || BD.pen.c === '#7f1d1d') ? '0 0 2px #fff' : (BD.pen.c === '#ffffff' || BD.pen.c === '#d1d5db' ? '0 0 2px #000' : 'none'); }
       document.querySelectorAll('#bd-colors .bd-sw').forEach(b => b.classList.toggle('on', b.dataset.c === C.c));
-      const wf = document.querySelector('#bd-wtrk .fil'); if (wf) wf.style.height = (Math.max(0, C.w - 0.1) / 7.9 * 100) + '%';
+      const wf = document.querySelector('#bd-wtrk .fil'); if (wf) wf.style.height = (Math.sqrt(Math.max(0, C.w - 0.1) / 49.9) * 100) + '%';
       const af = document.querySelector('#bd-atrk .fil'); if (af) af.style.height = ((C.a - 0.1) / 0.9 * 100) + '%';
       const wv = document.getElementById('bd-wv'); if (wv) wv.textContent = C.w.toFixed(1) + '×';
       const av = document.getElementById('bd-av'); if (av) av.textContent = Math.round(C.a * 100) + '%';
