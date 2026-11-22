@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v143</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v145</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1040,7 +1040,7 @@
         if (ovOn.includes(id)) { ovWant.add(id); if (ovShow) lay.addTo(map); if (curG) expanded.add(curG[1]); }
         row.classList.toggle('on', ovWant.has(id));
       });
-      const vin = vr.querySelector('input'), vv = vr.querySelector('#veil-v');
+      const vin = vr.querySelector('#veil-r'), vv = vr.querySelector('#veil-v');
       window.cadSetBase = (n) => {                              // n＝底圖濃度 0~100；100＝原底圖，0＝純白只剩台電線（不會自動開圖資）
         n = Math.max(0, Math.min(100, Math.round(n))); vin.value = n; vv.textContent = n + '%'; window.cadVeilN = n; applyVeil();
       };
@@ -4399,27 +4399,14 @@
         if (drawing) return;
         if (bdCrossOn()) { xtStart(e); return; }
         BD.tmpPart = false;
-        if ((e.pointerType === 'pen' && ((e.buttons & 2) || (e.buttons & 32) || e.button === 5)) || (e.pointerType === 'mouse' && (e.buttons & 2))) {            // S Pen 側鍵／滑鼠右鍵＝橡皮擦（按住期間）＝慢慢擦；筆尾＝整條擦
+        if (e.pointerType === 'mouse' && (e.buttons & 2)) {            // S Pen 側鍵／滑鼠右鍵＝橡皮擦（按住期間）＝慢慢擦；筆尾＝整條擦
           BD.tmpPart = !!(e.buttons & 2);
           if (BD.tool !== 'erase') { BD.tmpTool = BD.tool; BD.tool = 'erase'; bdStatus && bdStatus(); }
         } else if (BD.tool === 'erase' && e.shiftKey && e.pointerType !== 'touch') BD.tmpPart = true;      // 電腦：選著橡皮擦時按住 Shift 拖＝慢慢擦
         penId = e.pointerId; startDraw(e);
       });
       wrap.addEventListener('contextmenu', (e) => e.preventDefault());
-      const penDbg = (e) => {
-        if (e.pointerType === 'mouse') return;
-        let d = document.getElementById('pen-dbg');
-        if (!d) { d = document.createElement('div'); d.id = 'pen-dbg'; d.style.cssText = 'position:fixed;left:6px;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:99999;background:rgba(0,0,0,.72);color:#0f0;font:11px monospace;padding:2px 6px;border-radius:4px;pointer-events:none'; document.body.appendChild(d); }
-        d.textContent = e.type.replace('pointer', '') + ' ' + e.pointerType + ' btn=' + e.button + ' btns=' + e.buttons + ' tool=' + BD.tool;
-      };
-      wrap.addEventListener('pointerdown', penDbg, true);
-      wrap.addEventListener('pointermove', penDbg, true);
       wrap.addEventListener('pointermove', (e) => {
-        // 側鍵在落筆後才按下：中途切成橡皮擦（捨棄這一筆，改從目前位置擦）
-        if (drawing && drawId === null && e.pointerType === 'pen' && !BD.tmpTool && BD.tool !== 'erase' && (e.buttons & (2 | 32))) {
-          abortDraw(); BD.tmpTool = BD.tool; BD.tool = 'erase'; BD.tmpPart = !!(e.buttons & 2); try { bdStatus(); } catch (_) {}
-          drawId = null; startDraw(e); return;
-        }
         if (xt && e.pointerId === xt.id) {
           panBy(xt.x - e.clientX, xt.y - e.clientY); xt.x = e.clientX; xt.y = e.clientY;
           if (Math.hypot(e.clientX - xt.sx, e.clientY - xt.sy) > 10) xt.ok = false;
