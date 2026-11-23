@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v149</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v152</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -486,7 +486,7 @@
       <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)" style="font-weight:900;font-size:22px;">1</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="pinBtnTap()" title="點擊地圖查圖號/新增地標（連按兩下：清除圖上標記）">📍</div>
-      <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="定位：按一下開啟並飛到我的位置；已開時按一下飛回我的位置；連按兩下停止並清除">🚗</div>
+      <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="定位：按一下開啟並飛到我的位置；已開且畫面離開我時按一下飛回；畫面已在我的位置時按一下關閉">🚗</div>
       <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
         <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
@@ -4812,32 +4812,40 @@
     }
     window.syPush = () => { if (!SY.on) return; clearTimeout(SY.timer); SY.timer = setTimeout(syFlush, 1200); };
     function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; b.style.background = /失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e'; b.title = '班同步：' + SY.st; }  const m = document.getElementById('syncBtn'); if (m) { m.style.outline = SY.on ? '2px solid ' + (/失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e') : 'none'; m.title = '班即時同步：' + SY.st; } }
-    window.syStart = async () => {
-      if (!SY.team) return; window.syStop(true);
+    // 省讀取量：畫圖的監聽（整個班的全部筆跡）只在打開畫板後才開、而且換日期不重開；換日期只重開「當天工單」的監聽
+    const syWatchBoard = (fb) => {
+      if (SY.unB && SY.bTeam === SY.team) return;
+      try { SY.unB && SY.unB(); } catch (e) {}
+      SY.bTeam = SY.team;
+      SY.unB = fb.watch(syPath(), (changes, err) => {
+        if (SY.bTeam !== SY.team) return;
+        if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
+        syApply(changes); SY.st = '已同步'; syUi();
+        syFlush();
+      });
+    };
+    window.syBoardOn = async () => { SY.boardWanted = true; if (!SY.team) return; try { syWatchBoard(await syLoad()); } catch (e) {} };
+    window.syStart = async (taskOnly) => {
+      if (!SY.team) return; if (taskOnly) { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.ttimer); SY.tReady = false; } else window.syStop(true);
       try {
         SY.st = '連線中…'; SY.on = true; syUi();
         const fb = await syLoad(); SY.date = String(activeDate); if (SY.sigTeam !== SY.team) { SY.sig = new Map(); SY.sigTeam = SY.team; }
         const myDate = SY.date;
         SY.tsig = new Map(); SY.tord = new Map();
-        const u1 = fb.watch(syPath(), (changes, err) => {
-          if (SY.date !== myDate) return;
-          if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
-          syApply(changes); SY.st = '已同步'; syUi();
-          syFlush();                                                       // 連上之後：把本機已有、雲端還沒有的筆跡補傳
-        });
         const u2 = fb.watch(syPath('tasks'), (changes, err) => {
           if (SY.date !== myDate) return;
           if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
           syTaskApply(changes); SY.st = '已同步'; syUi();
           SY.tReady = true; syTaskFlush(false);                            // 連上之後：把本機有、雲端還沒有的工單補傳
         });
-        SY.unsub = () => { try { u1(); } catch (e) {} try { u2(); } catch (e) {} };
+        SY.unsub = () => { try { u2(); } catch (e) {} };
+        if (SY.boardWanted) syWatchBoard(fb);
       } catch (e) { SY.st = '錯誤：' + (e && e.message || e); SY.on = false; syUi(); }
     };
-    window.syStop = (keepTeam) => { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.timer); clearTimeout(SY.ttimer); SY.tReady = false; SY.on = !!keepTeam && !!SY.team; if (!keepTeam) SY.st = '未加入'; };
-    window.syDateChanged = () => { if (SY.team) { SY.tsig = new Map(); SY.tord = new Map(); window.syStart(); } };
+    window.syStop = (keepTeam) => { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; try { SY.unB && SY.unB(); } catch (e) {} SY.unB = null; SY.bTeam = null; clearTimeout(SY.timer); clearTimeout(SY.ttimer); SY.tReady = false; SY.on = !!keepTeam && !!SY.team; if (!keepTeam) SY.st = '未加入'; };
+    window.syDateChanged = () => { if (SY.team) { SY.tsig = new Map(); SY.tord = new Map(); window.syStart(true); } };
     window.syJoin = async () => {
-      let code = await gqPrompt('輸入班代碼（同班的人輸入一樣的代碼才看得到彼此的畫）。\n要新建一個班就用這個隨機的；至少 6 碼，只能用英數與 -。', SY.team || ('A班-' + Math.random().toString(36).slice(2, 8)));
+      let code = await gqPrompt('輸入班代碼（同班的人輸入一樣的代碼才看得到彼此的畫）。\n要新建一個班就用這個隨機的（班代碼＝密碼，別貼在公開群組）；至少 6 碼，只能用英數與 -。', SY.team || ('A-' + Array.from(crypto.getRandomValues(new Uint8Array(16)), b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('')));
       if (code === null) return false; code = code.trim().replace(/[^\w一-龥-]/g, '');
       if (code.length < 6) { await gqAlert('班代碼至少 6 碼'); return false; }
       const nm = await gqPrompt('你的名字（顯示用，例如：政宇）', SY.by); if (nm === null) return false;
@@ -5028,6 +5036,7 @@
       { const c = document.getElementById('map-floating-controls'); if (c) c.classList.remove('bd-open'); const mt = document.getElementById('more-tools'), mb = document.getElementById('moreBtn'); if (mt) mt.style.display = 'none'; if (mb) mb.classList.remove('tracking-active'); }
       if (streetviewframe.style.display === 'block') { alert('街景模式下不能畫圖，請先回到地圖'); return; }
       bdEnsureDom();
+      try { window.syBoardOn && window.syBoardOn(); } catch (e) {}
       BD.on = true; BD.fx = 1; BD.tool = 'none';
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
@@ -5265,18 +5274,17 @@
     };
     /* 🚗：沒開 → 開始定位，拿到位置後自動飛過去；已開 → 按一下飛回我的位置；連按兩下 → 停止並清除標記 */
     window.carBtnTap = () => {
-      const now = Date.now();
-      if (now - lastCarTap < 400) {
-        lastCarTap = 0;
-        if (watchPositionId !== null) toggleLiveTracking();       // 第一下已開啟 → 關掉
-        if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
-        if (userCircle) { map.removeLayer(userCircle); userCircle = null; }
-        userLatLng = null; currentUserCode = '';
-        return;
+      // 單擊邏輯：沒開 → 開始定位並飛過去；已開且畫面不在我的位置 → 飛回我的位置；已開且畫面已在我的位置 → 關閉並清掉標記
+      if (watchPositionId === null) { toggleLiveTracking(); return; }
+      if (userLatLng) {
+        let far = true;
+        try { const c = map.latLngToContainerPoint(userLatLng), s = map.getSize(); far = Math.hypot(c.x - s.x / 2, c.y - s.y / 2) > 70; } catch (e) {}
+        if (far) { flyToUser(); return; }
       }
-      lastCarTap = now;
-      if (watchPositionId !== null && userLatLng) { flyToUser(); return; }     // 定位已開：按一下＝飛回我的位置（連按兩下＝停止並清除）
       toggleLiveTracking();
+      if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+      if (userCircle) { map.removeLayer(userCircle); userCircle = null; }
+      userLatLng = null; currentUserCode = ''; lastFix = null;
     };
 
     document.getElementById('btn-import').onclick = async () => {
