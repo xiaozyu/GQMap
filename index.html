@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v152</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v153</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -950,8 +950,8 @@
     const map = L.map('leaflet-map', {
       center: [24.2303, 120.5654],
       zoom: 14,
-      maxZoom: 25, minZoom: 5,
-      maxBounds: [[-10, 70], [60, 150]], maxBoundsViscosity: 0.9,      // 縮小只到台灣周邊，不會出現重複的世界
+      maxZoom: 25, minZoom: 7,
+      maxBounds: [[17, 112], [29, 128]], maxBoundsViscosity: 0.9,      // 縮小只到台灣周邊，不會出現重複的世界
       zoomControl: false,
       wheelDebounceTime: 30, inertiaDeceleration: 3600, bounceAtZoomLimits: false,
       layers: [nlscEMap]
@@ -4709,6 +4709,9 @@
     window.bdFitAll = (list) => {
       const pts = [];
       (Array.isArray(list) ? list : BD.shapes).forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
+      // 只框台灣範圍內的筆跡：雲端裡有座標跑掉／在國外的雜筆時，不會被拉去印度
+      const inTw = (q) => { if (!isFinite(q[0]) || !isFinite(q[1])) return false; try { const ll = E3857().unproject(L.point(q[0], q[1])); return ll.lat > 17 && ll.lat < 29 && ll.lng > 112 && ll.lng < 128; } catch (e) { return false; } };
+      { const ok = pts.filter(inTw); if (ok.length) { pts.length = 0; ok.forEach(q => pts.push(q)); } }
       if (!pts.length) return;
       const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
       const sw = E3857().unproject(L.point(Math.min(...xs), Math.min(...ys))), ne = E3857().unproject(L.point(Math.max(...xs), Math.max(...ys)));
