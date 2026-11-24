@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v158</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v160</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2360,6 +2360,11 @@
       activeDate = todayKey;
       tasks = clone(monthLogs[todayKey] || []);
     }
+    // 每張工單一開始就有固定 id（避免重開 App 後被當成新工單，與雲端舊文件重複）
+    const gqNewId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+    const gqEnsureIds = (arr) => { let n = 0; (arr || []).forEach(t => { if (t && !t.id) { t.id = gqNewId(); n++; } }); return n; };
+    { let n = gqEnsureIds(tasks); Object.keys(monthLogs).forEach(k => { n += gqEnsureIds(monthLogs[k]); });
+      if (n) { if (monthLogs[activeDate] && tasks.length) monthLogs[activeDate] = clone(tasks); localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs)); } }
     localStorage.setItem('tpc_active_date', activeDate);
     localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
 
@@ -2443,6 +2448,7 @@
 
     // 任何異動都會呼叫：自動存到「目前這一天」，不會碰到其他天
     function saveTasks() {
+      gqEnsureIds(tasks);
       localStorage.setItem('tpc_tasks', JSON.stringify(tasks));
       localStorage.setItem('tpc_active_date', activeDate);
       if (tasks.length > 0) monthLogs[activeDate] = clone(tasks);
@@ -2856,7 +2862,10 @@
           });
           pendingNote = '';
         } else if (line && !timeStr && !isSystemNoiseLine(line)) {
-          if (/[路街巷段號]/.test(line)) {
+          const addrNote = /[路街巷段號]/.test(line) ? cleanAndFixAddress(line) : '';
+          if (addrNote && (tasks.some(t => t.code === '📍地址導航' && t.note === addrNote) || newTasks.some(t => t.code === '📍地址導航' && t.note === addrNote))) {
+            // 同一個地址已經在清單裡 → 略過，重複匯入不會變兩筆
+          } else if (/[路街巷段號]/.test(line)) {
             newTasks.push({
               code: '📍地址導航',
               time: timeStr || timeQueue.shift() || currentTime,
@@ -4964,7 +4973,12 @@
         let t; try { t = JSON.parse(c.data.d); } catch (e) { return; }
         const o = Number(c.data.o) || 0; t.id = c.id;
         const js = JSON.stringify(t); SY.tsig.set(c.id, js + '|' + o); SY.tord.set(c.id, o);
-        if (i < 0) { arr.push(t); changed = true; } else if (JSON.stringify(arr[i]) !== js) { arr[i] = t; changed = true; }
+        if (i < 0) {
+          const strip = (x) => JSON.stringify(Object.assign({}, x, { id: 0 }));
+          const same = arr.findIndex(x => !SY.tord.has(x.id) && strip(x) === strip(t));   // 內容相同、雲端還沒有的本機工單＝同一張，改用雲端 id，不重複新增
+          if (same >= 0) { arr[same] = t; } else arr.push(t);
+          changed = true;
+        } else if (JSON.stringify(arr[i]) !== js) { arr[i] = t; changed = true; }
       });
       const pos = new Map(arr.map((x, i) => [x.id, i])), key = (x) => (SY.tord.has(x.id) ? SY.tord.get(x.id) : 1e9 + pos.get(x.id));   // 還沒上傳的本機工單排在雲端已有的後面
       const sorted = arr.slice().sort((a, b) => (key(a) - key(b)) || (pos.get(a.id) - pos.get(b.id)));
