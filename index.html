@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v153</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v158</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -524,6 +524,7 @@
           <button id="btn-action-copy" class="sheet-btn btn-sheet-copy">📋 複製日記文字</button>
           <button id="btn-action-save" class="sheet-btn btn-sheet-save">📥 複製目前畫面到這天</button>
           <button id="btn-action-del" class="sheet-btn btn-sheet-del">🗑️ 刪除此日紀錄</button>
+          <button class="sheet-btn" style="background:#334155;color:#e2e8f0;" onclick="logsBakPanel()">🛟 找回被刪的紀錄</button>
         </div>
       </div>
     </div>
@@ -2392,9 +2393,53 @@
     const mapBanner = document.getElementById('mapBanner');
     const mapBannerText = document.getElementById('mapBannerText');
 
+    // 刪除前自動備份：任何一天的工單變少／整天消失（清空、雲端同步刪除、手動刪除），先把舊版本存進 tpc_logs_bak（每天最多留 3 份、總共 40 份）
+    let logsSnap = {}; Object.keys(monthLogs).forEach(k => { logsSnap[k] = JSON.stringify(monthLogs[k]); });
+    function logsBackup(date, str) {
+      try {
+        const arr = JSON.parse(localStorage.getItem('tpc_logs_bak') || '[]');
+        if (arr.some(b => b.date === date && b.str === str)) return;
+        arr.push({ ts: Date.now(), date, str });
+        const per = {}; const out = [];
+        for (let i = arr.length - 1; i >= 0; i--) { per[arr[i].date] = (per[arr[i].date] || 0) + 1; if (per[arr[i].date] <= 3) out.unshift(arr[i]); }
+        localStorage.setItem('tpc_logs_bak', JSON.stringify(out.slice(-40)));
+      } catch (e) {}
+    }
     function persistLogs() {
+      Object.keys(logsSnap).forEach(k => {
+        const now = monthLogs[k];
+        let prevLen = 0; try { prevLen = JSON.parse(logsSnap[k]).length; } catch (e) {}
+        if (prevLen > 0 && (!now || now.length < prevLen)) logsBackup(k, logsSnap[k]);
+      });
+      logsSnap = {}; Object.keys(monthLogs).forEach(k => { logsSnap[k] = JSON.stringify(monthLogs[k]); });
       localStorage.setItem('tpc_month_logs', JSON.stringify(monthLogs));
     }
+    window.logsBakList = () => { try { return JSON.parse(localStorage.getItem('tpc_logs_bak') || '[]').reverse(); } catch (e) { return []; } };
+    window.logsBakPanel = () => {
+      const list = window.logsBakList();
+      let m = document.getElementById('logs-bak'); if (m) m.remove();
+      m = document.createElement('div'); m.id = 'logs-bak';
+      m.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;';
+      const rows = list.map((b, i) => { let n = 0, s = ''; try { const a = JSON.parse(b.str); n = a.length; s = a.slice(0, 3).map(t => t.code === '📍地址導航' ? (t.note || '') : t.code).join('、'); } catch (e) {}
+        const d = new Date(b.ts), hm = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        return `<div style="padding:8px 0;border-bottom:1px solid #334155;"><div style="font-size:13px;color:#e2e8f0;">${b.date}・${n} 件 <span style="color:#64748b;font-size:11px;">（${hm} 刪除前）</span></div><div style="font-size:11px;color:#94a3b8;margin:2px 0 6px;">${s.replace(/</g, '&lt;')}${n > 3 ? '…' : ''}</div><button onclick="logsBakRestore(${list.length - 1 - i})" style="background:#0ea5e9;color:#fff;border:0;border-radius:6px;padding:5px 12px;">找回（追加到該天）</button></div>`; }).join('');
+      m.innerHTML = `<div style="background:#1e293b;border-radius:12px;padding:14px;width:min(92vw,420px);max-height:80vh;overflow:auto;"><div style="display:flex;justify-content:space-between;color:#fff;font-weight:700;margin-bottom:6px;"><span>🛟 刪除前備份</span><span style="cursor:pointer" onclick="this.closest('#logs-bak').remove()">✕</span></div>${rows || '<div style="color:#94a3b8;font-size:13px;padding:12px 0;">目前沒有備份（從 v158 開始記錄）</div>'}</div>`;
+      document.body.appendChild(m);
+    };
+    window.logsBakRestore = (idx) => {
+      const arr = (() => { try { return JSON.parse(localStorage.getItem('tpc_logs_bak') || '[]'); } catch (e) { return []; } })();
+      const b = arr[idx]; if (!b) return;
+      let old = []; try { old = JSON.parse(b.str); } catch (e) {}
+      const cur = b.date === activeDate ? tasks : (monthLogs[b.date] || []);
+      const have = new Set(cur.map(t => t.id || (t.code + '|' + t.note)));
+      const add = old.filter(t => !have.has(t.id || (t.code + '|' + t.note)));
+      if (!add.length) { alert('這些工單都還在，不用找回。'); return; }
+      if (b.date === activeDate) { tasks = [...tasks, ...clone(add)]; saveTasks(); renderTasks(true); }
+      else { monthLogs[b.date] = [...cur, ...clone(add)]; persistLogs(); }
+      const m = document.getElementById('logs-bak'); if (m) m.remove();
+      try { renderCalendar(); } catch (e) {}
+      alert(`已找回 ${add.length} 件到 ${b.date}`);
+    };
 
     // 任何異動都會呼叫：自動存到「目前這一天」，不會碰到其他天
     function saveTasks() {
@@ -3595,7 +3640,19 @@
       for (const q of pts) { if (!q) continue; if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }
       b = [x0, y0, x1, y1]; bdBB.set(sh, b); return b;
     }
-    function bdDrawAll(g, list, ex, cull) {                // 白底永遠在最底層，其餘依畫的順序；cull＝只畫畫面附近的（圖多時省很多力）
+    // ===== 依日期分開：每一筆記著畫的日期（dt），畫圖模式可只看某一天；🗑 只清「目前畫面＋目前篩選」且進回收區 =====
+    BD.dayF = null;                                            // null＝全部；'YYYY-MM-DD'＝只看那天；'legacy'＝沒有日期的舊筆跡
+    const bdToday = () => getLocalDateKey();
+    const bdDayOf = (s) => (s && s.dt) || 'legacy';
+    const bdVisDay = (s) => !BD.dayF || bdDayOf(s) === BD.dayF;
+    const bdDayTxt = (d) => d === 'legacy' ? '舊畫圖' : d.replace(/^\d{4}-/, '').replace('-', '/');
+    function bdDayUi() {
+      const b = document.getElementById('bd-day'); if (!b) return;
+      const f = BD.dayF; b.textContent = '📅'; b.title = f ? '目前只看：' + (f === bdToday() ? '今天' : bdDayTxt(f)) + '（點一下切換／看回收區）' : '按日期篩選／回收區'; b.classList.toggle('on', !!f);
+    }
+    const bdStamp = (c) => { c.dt = bdToday(); if (BD.dayF && BD.dayF !== c.dt) { BD.dayF = null; bdDayUi(); } return c; };
+    function bdDrawAll(g, list, ex, cull) {
+      if (BD.dayF) list = list.filter(bdVisDay);                // 白底永遠在最底層，其餘依畫的順序；cull＝只畫畫面附近的（圖多時省很多力）
       ex = ex || [];
       let vx0 = -1e19, vy0 = -1e19, vx1 = 1e19, vy1 = 1e19;
       if (cull) { const a = bdMerc(-300, BD.H + 300), b = bdMerc(BD.W + 300, -300); vx0 = a[0]; vy0 = a[1]; vx1 = b[0]; vy1 = b[1]; }
@@ -3777,7 +3834,7 @@
       const c = BD.cur; c.b = snapEnd(C);
       const a = bdPx(c.a), b = bdPx(c.b);
       if (Math.hypot(a[0] - b[0], a[1] - b[1]) * BD.s <= 6) { bdRedrawNow(); return; }   // 離上一點太近＝忽略
-      bdPush(); BD.shapes.push(c); bdSave(); BD.chainN = (BD.chainN || 0) + 1;
+      bdStamp(c); bdPush(); BD.shapes.push(c); bdSave(); BD.chainN = (BD.chainN || 0) + 1;
       BD.cur = bdNewDim(c.b.slice(), C); BD.pend = true;                         // B 變成下一段的起點
       BD.magSkip = C;
       bdRedrawNow();
@@ -3894,6 +3951,7 @@
       const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4), inb = (q) => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1;
       let ch = false; const out = [];
       BD.shapes.forEach(s => {
+        if (!bdVisDay(s)) { out.push(s); return; }
         const b = bdBox(s); if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) { out.push(s); return; }
         if (s.t === 'free' || s.t === 'line') {
           const parts = bdClipRect(s.t === 'free' ? s.p : [s.a, s.b], x0, y0, x1, y1);
@@ -3923,7 +3981,7 @@
         const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
         let ch = false; const out = [];
         BD.shapes.forEach(s => {
-          if (s.t !== 'free' && s.t !== 'line') { out.push(s); return; }
+          if (!bdVisDay(s) || (s.t !== 'free' && s.t !== 'line')) { out.push(s); return; }
           const b = bdBox(s); if (b[2] < pt[0] - r || b[0] > pt[0] + r || b[3] < pt[1] - r || b[1] > pt[1] + r) { out.push(s); return; }
           const parts = bdClipPoly(s.t === 'free' ? s.p : [s.a, s.b], pt, r);
           if (!parts) { out.push(s); return; }
@@ -3933,6 +3991,7 @@
         if (ch) { if (!BD.erasing) { bdPush(); BD.erasing = true; } BD.shapes = out; BD.sel = null; BD.selObj = null; bdDropCache(); bdRedraw(); }
       }
       const keep = BD.shapes.filter(s => {
+        if (!bdVisDay(s)) return true;
         if (part && (s.t === 'free' || s.t === 'line')) return true;
         if (s.t === 'free') { for (let i = 0; i < s.p.length; i++) { if (Math.hypot(s.p[i][0] - pt[0], s.p[i][1] - pt[1]) < r) return false; if (i && bdDistSeg(pt, s.p[i - 1], s.p[i]) < r) return false; } return true; }
         if (s.t === 'rect') {
@@ -3948,7 +4007,7 @@
     function bdHit(pt) {
       const r = 16 / BD.s / BD.k;
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
-        const sh = BD.shapes[i];
+        const sh = BD.shapes[i]; if (!bdVisDay(sh)) continue;
         if (sh.t === 'text') {
           const fsm = bdTextFs(sh) / BD.k, w = sh.text.length * fsm * 0.62 + r;
           if (pt[0] >= sh.a[0] - r && pt[0] <= sh.a[0] + w && Math.abs(pt[1] - sh.a[1]) <= fsm * 0.7 + r * 0.5) return { sh, part: 'all' };
@@ -3987,7 +4046,7 @@
     }
     function bdTextHit(pt) {
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
-        const sh = BD.shapes[i]; if (sh.t !== 'text') continue;
+        const sh = BD.shapes[i]; if (sh.t !== 'text' || !bdVisDay(sh)) continue;
         const l = bdToLocal(sh, pt), bx = bdTextBox(sh), pad = 8 / BD.s;
         if (Math.abs(l[0]) <= bx.w / 2 + pad && Math.abs(l[1]) <= bx.h / 2 + pad) return sh;
       }
@@ -4094,6 +4153,15 @@
         #bd-top .sp { flex: 1; pointer-events: none; }
         #bd-top .bt { width: 40px; height: 40px; border-radius: 12px; font-size: 17px; }
         #bd-top .bt small { display: none; }
+        #bd-top #bd-day.on { background: #f59e0b; color: #1a1200; border-color: #fff7e0; }
+        #bd-daypanel { position: fixed; inset: 0; z-index: 99990; background: rgba(0,0,0,.55); display: flex; align-items: flex-start; justify-content: center; padding-top: 56px; }
+        #bd-daypanel .dp-box { width: min(420px, 94vw); max-height: 74vh; display: flex; flex-direction: column; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 14px; padding: 10px; gap: 6px; }
+        #bd-daypanel .dp-h, #bd-daypanel .dp-sub { display: flex; justify-content: space-between; align-items: center; font-size: 15px; } #bd-daypanel .dp-sub { font-size: 13px; color: #94a3b8; }
+        #bd-daypanel button { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+        #bd-daypanel .dp-list { overflow: auto; display: flex; flex-direction: column; }
+        #bd-daypanel .dp-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid #1e293b; font-size: 15px; cursor: pointer; } #bd-daypanel .dp-row.on { background: #422006; color: #fde047; } #bd-daypanel .dp-row i { font-style: normal; color: #94a3b8; font-size: 13px; }
+        #bd-daypanel .dp-area { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 8px 10px 26px; border-bottom: 1px solid #1e293b; font-size: 14px; background: #111c33; cursor: pointer; } #bd-daypanel .dp-area i { font-style: normal; color: #94a3b8; font-size: 12px; white-space: nowrap; }
+        #bd-daypanel .dp-empty { padding: 18px; color: #94a3b8; font-size: 13px; } #bd-daypanel .dp-foot { text-align: center; margin-top: 4px; }
         #bd-top .bt.close { background: rgba(153,27,27,.92); border-color: #fca5a5; }
         #bd-top .bd-vsep { display: none; }
         #bd-status { position: absolute; left: 6px; top: 6px; height: 38px; box-sizing: border-box; display: flex; align-items: center; color: #fde047; font: 800 17px/1 var(--mono); letter-spacing: .5px; background: var(--glass); padding: 0 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
@@ -4222,7 +4290,7 @@
           <button class="bt close" onclick="closeBoard()" title="離開畫板（Esc）">✕</button>
           <div class="sp"></div>
           <div class="bd-vsep"></div>
-          <button class="bt bd-lenbtn" onclick="bdToggleLen()" title="顯示／隱藏所有直線的長度">📏</button>
+          <button class="bt" id="bd-day" onclick="bdDayPanel()" title="按日期篩選／回收區（📏 顯示長度在筆的設定面板裡）">📅</button>
           <button class="bt" onclick="bdFitAll()" title="縮放到剛好框住所有筆跡（再按 💾 輸出這個範圍）">⤢</button>
           <div class="bd-vsep"></div>
           <button class="bt" onclick="bdExport('share')" title="分享">📤</button>
@@ -4317,7 +4385,7 @@
           if (BD.sel) { BD.sel = null; bdRedraw(); return; }
           const tmp = { t: 'text', a: pt, text: '', scale: 18 / (BD.k * 3.5), rot: 0, c: BD.pen.c };
           bdTextEdit(tmp, false, (txt) => {
-            if (txt && txt.trim()) { bdPush(); tmp.text = txt.replace(/\s+$/, ''); BD.shapes.push(tmp); BD.sel = tmp; bdSave(); }
+            if (txt && txt.trim()) { bdPush(); tmp.text = txt.replace(/\s+$/, ''); bdStamp(tmp); BD.shapes.push(tmp); BD.sel = tmp; bdSave(); }
           });
           return;
         }
@@ -4523,7 +4591,7 @@
           }
           if (c.t !== 'free') { const a = bdPx(c.a), b = bdPx(c.b); ok = Math.hypot(a[0] - b[0], a[1] - b[1]) * BD.s > 6; }
           else c.p = c.p.map(q => q.length > 2 ? [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000, q[2]] : [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000]);
-          if (ok) { bdPush(); BD.shapes.push(c); bdSave(); }
+          if (ok) { bdStamp(c); bdPush(); BD.shapes.push(c); bdSave(); }
           if (c.t === 'free' && (c.a == null || c.a >= 1)) { if (!ok) bdRedrawNow(); } else bdRedrawNow();
         } else { bdSave(); bdRedrawNow(); }
       };
@@ -4582,7 +4650,7 @@
     function bdHitAll(pt) {                                   // 點到的所有物件，上面的在前；白底最後（它在最底層）
       const r = 18 / BD.k, out = [], rects = [];
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
-        const sh = BD.shapes[i];
+        const sh = BD.shapes[i]; if (!bdVisDay(sh)) continue;
         if (sh.t === 'rect') { const x0 = Math.min(sh.a[0], sh.b[0]) - r * 0.4, x1 = Math.max(sh.a[0], sh.b[0]) + r * 0.4, y0 = Math.min(sh.a[1], sh.b[1]) - r * 0.4, y1 = Math.max(sh.a[1], sh.b[1]) + r * 0.4; if (pt[0] >= x0 && pt[0] <= x1 && pt[1] >= y0 && pt[1] <= y1) rects.push(sh); }
         else if (sh.t === 'text') { const l = bdToLocal(sh, pt), bx = bdTextBox(sh), pad = 10; if (Math.abs(l[0]) <= bx.w / 2 + pad && Math.abs(l[1]) <= bx.h / 2 + pad) out.push(sh); }
         else if (sh.t === 'free') { let hit = sh.p.length === 1 && Math.hypot(sh.p[0][0] - pt[0], sh.p[0][1] - pt[1]) < r; for (let j = 1; j < sh.p.length && !hit; j++) if (bdDistSeg(pt, sh.p[j - 1], sh.p[j]) < r) hit = true; if (hit) out.push(sh); }
@@ -4619,8 +4687,8 @@
         }
         return true;
       };
-      const dims = BD.shapes.filter(x => x.t === 'dim' && segIn(bdPx(x.a), bdPx(x.b)));   // 只算目前畫面看得到的線
-      { const isL = BD.tool === 'line'; bdColSum(isL ? BD.shapes.filter(x => x.t === 'line' && segIn(bdPx(x.a), bdPx(x.b))) : (BD.tool === 'dim' ? dims : []), isL ? '直線' : '量長度', isL ? '#dc2626' : '#2563eb'); }   // 目前工具對應的線，依顏色合計
+      const dims = BD.shapes.filter(x => x.t === 'dim' && bdVisDay(x) && segIn(bdPx(x.a), bdPx(x.b)));   // 只算目前畫面看得到的線
+      { const isL = BD.tool === 'line'; bdColSum(isL ? BD.shapes.filter(x => x.t === 'line' && bdVisDay(x) && segIn(bdPx(x.a), bdPx(x.b))) : (BD.tool === 'dim' ? dims : []), isL ? '直線' : '量長度', isL ? '#dc2626' : '#2563eb'); }   // 目前工具對應的線，依顏色合計
       if (!dims.length) { ic.textContent = '↔'; ic.style.fontSize = '17px'; ic.style.color = '#60a5fa'; lb.textContent = '量長度'; return; }
       const sum = dims.reduce((t, x) => t + Number(bdGround(x.a, x.b).toFixed(1)), 0), txt = sum.toFixed(1);
       ic.textContent = txt; ic.style.color = '#fde047'; ic.style.textShadow = '0 0 2px #000'; ic.style.fontSize = (txt.length > 5 ? 11 : 14) + 'px'; lb.textContent = `畫面${dims.length}條`;
@@ -4708,7 +4776,7 @@
     
     window.bdFitAll = (list) => {
       const pts = [];
-      (Array.isArray(list) ? list : BD.shapes).forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
+      (Array.isArray(list) ? list : BD.shapes.filter(bdVisDay)).forEach(sh => { if (sh.t === 'free') sh.p.forEach(q => pts.push(q)); else { pts.push(sh.a); if (sh.b) pts.push(sh.b); } });
       // 只框台灣範圍內的筆跡：雲端裡有座標跑掉／在國外的雜筆時，不會被拉去印度
       const inTw = (q) => { if (!isFinite(q[0]) || !isFinite(q[1])) return false; try { const ll = E3857().unproject(L.point(q[0], q[1])); return ll.lat > 17 && ll.lat < 29 && ll.lng > 112 && ll.lng < 128; } catch (e) { return false; } };
       { const ok = pts.filter(inTw); if (ok.length) { pts.length = 0; ok.forEach(q => pts.push(q)); } }
@@ -4745,7 +4813,7 @@
         const sh = obj.shapes.slice(0, 5000).filter(ok);
         if (!sh.length) { await gqAlert('檔案裡沒有可匯入的內容'); return; }
         if (!(await gqConfirm(`匯入 ${sh.length} 個物件（原畫日期 ${obj.date || '?'}）到目前這一天？\n會疊加在現有的畫上，不會覆蓋；匯入後可按復原。`, { okText: '匯入' }))) return;
-        bdPush(); BD.sel = null; BD.selObj = null; BD.shapes = BD.shapes.concat(JSON.parse(JSON.stringify(sh)).map(x => { x.imp = 1; return x; })); bdSave();      /* imp＝別人的畫：留在自己的手機上，但不會再被自動上傳成「我的」（避免大家互傳互拷、越存越多份） */
+        bdPush(); BD.sel = null; BD.selObj = null; BD.shapes = BD.shapes.concat(JSON.parse(JSON.stringify(sh)).map(x => { x.imp = 1; x.dt = x.dt || bdToday(); return x; })); bdSave();      /* imp＝別人的畫：留在自己的手機上，但不會再被自動上傳成「我的」（避免大家互傳互拷、越存越多份） */
          bdRedrawNow();
         try { bdFitAll(sh); } catch (e) {}
     };
@@ -4782,6 +4850,7 @@
         set: (path, id, data) => F.setDoc(F.doc(db, path, id), data),
         del: (path, id) => F.deleteDoc(F.doc(db, path, id)),
         list: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => d.id),
+        listDocs: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => ({ id: d.id, data: d.data() })),
       });
     }
     function syApply(changes) {                                     // 雲端傳來的變動 → 合併進這一天的筆跡（畫板開著就即時重畫，沒開就寫回本機）
@@ -4975,12 +5044,99 @@
       const map_ = { v: 'select', p: 'free', l: 'line', r: 'rect', e: 'erase', m: 'dim', t: 'text', h: 'none' }, t = map_[String(k).toLowerCase()];
       if (t) { e.preventDefault(); if (t === 'none') bdTool('none'); else bdToolTap(t); }
     });
-    window.bdClearAll = async () => {                                    // v124：圖是全班共用一張，🗑 只清「目前畫面範圍內」的物件，其他地點不動
+    window.bdClearAll = async () => {                                    // 🗑 只清「目前畫面範圍內＋目前日期篩選」的物件，並放進回收區（📅 清單裡可還原）
       bdSyncView(); const a = bdMerc(0, BD.H), b = bdMerc(BD.W, 0), vx0 = a[0], vy0 = a[1], vx1 = b[0], vy1 = b[1];
-      const hit = BD.shapes.filter(x => { try { const q = bdBox(x); return !(q[2] < vx0 || q[0] > vx1 || q[3] < vy0 || q[1] > vy1); } catch (e) { return false; } });
-      if (!hit.length) { await gqAlert('目前畫面內沒有筆跡'); return; }
-      if (!(await gqConfirm(`清除目前畫面內的 ${hit.length} 個物件？\n畫面外（其他地點）的不會動；全班同步，可按復原找回。`, { danger: true, okText: '清除' }))) return;
+      const hit = BD.shapes.filter(x => { if (!bdVisDay(x)) return false; try { const q = bdBox(x); return !(q[2] < vx0 || q[0] > vx1 || q[3] < vy0 || q[1] > vy1); } catch (e) { return false; } });
+      if (!hit.length) { await gqAlert('目前畫面內沒有筆跡' + (BD.dayF ? '（只計算目前選的日期）' : '')); return; }
+      if (!(await gqConfirm(`清除目前畫面內${BD.dayF ? '「' + (BD.dayF === bdToday() ? '今天' : bdDayTxt(BD.dayF)) + '」' : ''}的 ${hit.length} 個物件？\n其他地點、其他日期的不會動。會放進回收區，📅 清單裡可以還原。`, { danger: true, okText: '清除' }))) return;
+      bdTrashPut(JSON.parse(JSON.stringify(hit)));
       bdPush(); BD.sel = null; BD.selObj = null; const set = new Set(hit); BD.shapes = BD.shapes.filter(x => !set.has(x)); bdSave(); bdRedraw();
+    };
+    const BD_TR = 'tpc_board_trash', bdTrLocal = () => { try { const a = JSON.parse(localStorage.getItem(BD_TR) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+    const bdTrSave = (a) => { try { localStorage.setItem(BD_TR, JSON.stringify(a)); } catch (e) {} };
+    async function bdTrashPut(shapes) {
+      const rec = { id: 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: Date.now(), n: shapes.length, shapes };
+      let a = bdTrLocal(); a.unshift(rec); a = a.filter(r => r.ts > Date.now() - 30 * 864e5).slice(0, 8);
+      while (JSON.stringify(a).length > 1.5e6 && a.length > 1) a.pop();
+      bdTrSave(a);
+      if (SY.team) { try { const d = JSON.stringify(shapes); if (d.length < 900000) { const fb = await syLoad(); await fb.set(`teams/${SY.team}/trash`, rec.id, { d, by: SY.by || '', ts: rec.ts }); } } catch (e) {} }
+    }
+    async function bdTrashList() {
+      const m = new Map(); bdTrLocal().forEach(r => m.set(r.id, r));
+      if (SY.team) { try { const fb = await syLoad(); if (fb.listDocs) (await fb.listDocs(`teams/${SY.team}/trash`)).forEach(x => { if (m.has(x.id)) return; try { const sh = JSON.parse(x.data.d); m.set(x.id, { id: x.id, ts: x.data.ts, n: sh.length, shapes: sh, cloud: 1 }); } catch (e) {} }); } catch (e) {} }
+      return Array.from(m.values()).filter(r => r.ts > Date.now() - 30 * 864e5).sort((x, y) => y.ts - x.ts);
+    }
+    window.bdTrashRestore = async (id) => {
+      const rec = (await bdTrashList()).find(r => r.id === id); if (!rec) return;
+      const have = new Set(BD.shapes.map(s => s && s.id)); const back = rec.shapes.filter(s => !(s.id && have.has(s.id)));
+      bdPush(); BD.shapes = BD.shapes.concat(back); bdSave(); bdRedraw();
+      bdTrSave(bdTrLocal().filter(r => r.id !== id));
+      if (SY.team) { try { (await syLoad()).del(`teams/${SY.team}/trash`, id); } catch (e) {} }
+      const p = document.getElementById('bd-daypanel'); if (p) p.remove();
+      try { const m = document.getElementById('bd-msg'); m.textContent = '已還原 ' + back.length + ' 個物件'; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 2500); } catch (e) {}
+    };
+    // 「一處」＝彼此靠近（外框距離 < 40 公尺）的筆跡算同一區；清單用「幾處」數，不用幾筆
+    function bdAreaGroups(list) {
+      const items = []; list.forEach(s => { try { const b = bdBox(s); if (b.every(isFinite)) items.push({ s, b }); } catch (e) {} });
+      const n = items.length, par = items.map((_, i) => i), find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+      const idx = items.map((_, i) => i).sort((a, b) => items[a].b[0] - items[b].b[0]), gap = 40;
+      for (let ii = 0; ii < n; ii++) { const A = items[idx[ii]].b; for (let jj = ii + 1; jj < n; jj++) { const B = items[idx[jj]].b; if (B[0] > A[2] + gap) break; if (B[1] > A[3] + gap || B[3] < A[1] - gap) continue; const ri = find(idx[ii]), rj = find(idx[jj]); if (ri !== rj) par[rj] = ri; } }
+      const g = new Map(); items.forEach((it, i) => { const r = find(i); (g.get(r) || g.set(r, []).get(r)).push(it); });
+      return Array.from(g.values()).map(a => ({ shapes: a.map(x => x.s), cx: (Math.min(...a.map(x => x.b[0])) + Math.max(...a.map(x => x.b[2]))) / 2, cy: (Math.min(...a.map(x => x.b[1])) + Math.max(...a.map(x => x.b[3]))) / 2 })).sort((x, y) => y.shapes.length - x.shapes.length);
+    }
+    const bdAreas = (list) => bdAreaGroups(list).length;
+    // 一處的名字：附近（200 公尺內）有當天工單就用「圖號＋地址」，沒有就用這個位置所在的圖號
+    function bdAreaName(gr, date) {
+      let ll = null; try { ll = E3857().unproject(L.point(gr.cx, gr.cy)); } catch (e) {} if (!ll) return '（位置不明）';
+      let best = null, bd = 200;
+      try {
+        const arr = String(activeDate) === date ? tasks : (monthLogs[date] || []);
+        arr.forEach(t => { const q = getTaskLatLng(t); if (!q) return; const d = map.distance([ll.lat, ll.lng], [q.lat, q.lng]); if (d < bd) { bd = d; best = t; } });
+      } catch (e) {}
+      const code = (() => { try { return coordToPowerCode(ll.lat, ll.lng); } catch (e) { return ''; } })();
+      if (best) return ((best.code && best.code !== '📍地址導航' ? best.code : code) + ' ' + (best.note || '')).trim().slice(0, 36);
+      return '圖號 ' + code;
+    }
+    BD.dpOpen = null; BD.dpGroups = {};
+    window.bdDayOpen = (key) => { BD.dpOpen = BD.dpOpen === key ? null : key; bdDayPanel(false); };
+    window.bdAreaGo = (key, i) => {
+      const gr = (BD.dpGroups[key] || [])[i]; if (!gr) return;
+      BD.dayF = key === 'all' ? null : key; BD.sel = null; BD.selObj = null; bdDayUi();
+      const p = document.getElementById('bd-daypanel'); if (p) p.remove();
+      bdRedraw(); bdFitAll(gr.shapes);
+    };
+    const ntEscDp = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    window.bdDayPick = (d) => {
+      BD.dayF = d === 'all' ? null : d; BD.sel = null; BD.selObj = null; bdDayUi();
+      const p = document.getElementById('bd-daypanel'); if (p) p.remove();
+      bdRedraw(); if (BD.dayF) { const l = BD.shapes.filter(bdVisDay); if (l.length) bdFitAll(l); }
+    };
+    window.bdDayPanel = async (showTrash) => {
+      let p = document.getElementById('bd-daypanel'); if (p && showTrash === undefined) { p.remove(); return; }
+      if (!p) { p = document.createElement('div'); p.id = 'bd-daypanel'; document.body.appendChild(p); }
+      const g = new Map(); BD.shapes.forEach(s => { const d = bdDayOf(s); (g.get(d) || g.set(d, []).get(d)).push(s); });
+      BD.dpGroups = { all: bdAreaGroups(BD.shapes) }; g.forEach((l, d) => { BD.dpGroups[d] = bdAreaGroups(l); });
+      const days = Array.from(g.keys()).filter(d => d !== 'legacy').sort().reverse(); if (g.has('legacy')) days.push('legacy');
+      const today = bdToday();
+      const row = (key, label) => {
+        const gs = BD.dpGroups[key], open = BD.dpOpen === key, on = (BD.dayF || 'all') === key;
+        let h = `<div class="dp-row${on ? ' on' : ''}" onclick="bdDayOpen('${key}')"><span>${open ? '▾' : '▸'} ${label}</span><i>${gs.length} 處</i></div>`;
+        if (open) {
+          h += `<div class="dp-area" onclick="bdDayPick('${key}')"><span>👁 ${key === 'all' ? '看全部（不移動畫面）' : '只看這一天（飛到全部範圍）'}</span></div>`;
+          h += gs.map((gr, i) => `<div class="dp-area" onclick="bdAreaGo('${key}',${i})"><span>${i + 1}. ${ntEscDp(key === 'all' ? bdAreaName(gr, '') : bdAreaName(gr, key))}</span><i>${gr.shapes.length} 個物件</i></div>`).join('');
+        }
+        return h;
+      };
+      let html = '<div class="dp-box"><div class="dp-h"><b>📅 按日期看</b><button onclick="document.getElementById(\'bd-daypanel\').remove()">✕</button></div>';
+      if (showTrash) {
+        html += '<div class="dp-sub">回收區（30 天內）<button onclick="bdDayPanel(false)">← 返回</button></div><div class="dp-list" id="dp-tr">載入中…</div></div>'; p.innerHTML = html;
+        const list = await bdTrashList(), box = document.getElementById('dp-tr'); if (!box) return;
+        box.innerHTML = list.length ? list.map(r => { const t = new Date(r.ts); return `<div class="dp-row"><span>${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')} 清除的 ${bdAreas(r.shapes)} 處</span><button onclick="bdTrashRestore('${r.id}')">還原</button></div>`; }).join('') : '<div class="dp-empty">回收區是空的</div>';
+        return;
+      }
+      html += '<div class="dp-list">' + row('all', '全部') + days.map(d => row(d, d === 'legacy' ? '舊畫圖（沒有日期）' : bdDayTxt(d) + (d === today ? '　今天' : ''))).join('') + '</div>';
+      html += '<div class="dp-foot"><button onclick="bdDayPanel(true)">🗑 回收區（還原清除的筆跡）</button></div></div>';
+      p.innerHTML = html;
     };
     window.bdExport = async (mode) => {
       const msg = document.getElementById('bd-msg'), say = (t, ms) => { msg.textContent = t; msg.style.display = t ? 'block' : 'none'; if (ms) setTimeout(() => { msg.style.display = 'none'; }, ms); };
@@ -5041,6 +5197,7 @@
       bdEnsureDom();
       try { window.syBoardOn && window.syBoardOn(); } catch (e) {}
       BD.on = true; BD.fx = 1; BD.tool = 'none';
+      BD.dayF = null; try { bdDayUi(); } catch (e) {}
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
