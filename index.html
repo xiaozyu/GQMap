@@ -485,7 +485,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v193</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v194</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -5651,6 +5651,8 @@
     // v167 歷史標點：月曆裡每一天的工單 + 今天的，全部畫成小圓點（同一個桿號合成一點，點開看做過哪幾天）
     // 顏色看最近一次：紅＝一個月內、橘＝半年內、灰＝更早。用 canvas 畫，上千點也不卡
     let histLayer = null, histPts = null;
+    // v194：歷史標點的數字圓、待辦圖釘放在自己的圖層（gqLayers），顯示模式 4「隱藏圖釘」只藏工單圖釘，不會把這些也藏掉
+    try { map.createPane('gqLayers'); map.getPane('gqLayers').style.zIndex = 620; } catch (e) {}
     // 縮小看時合併成「數字圓」（像 Google 地圖的群聚）：畫面切成 64px 的格子，同一格的點合成一個；放大到 16 級以上才逐點顯示
     function histDraw() {
       if (!histLayer || !histPts) return;
@@ -5668,7 +5670,7 @@
         if (arr.length === 1) { one(arr[0]); return; }
         let la = 0, ln = 0, rec = '#94a3b8'; arr.forEach(e => { la += e.ll.lat; ln += e.ll.lng; if (e.col === '#ef4444') rec = '#ef4444'; else if (e.col === '#f59e0b' && rec !== '#ef4444') rec = '#f59e0b'; });
         const c = L.latLng(la / arr.length, ln / arr.length), sz = arr.length < 10 ? 30 : arr.length < 100 ? 36 : 44;
-        const m = L.marker(c, { icon: L.divIcon({ className: '', iconSize: [sz, sz], html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${rec};border:2px solid #0f172a;color:#0f172a;font:800 13px/${sz - 4}px sans-serif;text-align:center;box-shadow:0 0 0 4px rgba(255,255,255,.35)">${arr.length}</div>` }) });
+        const m = L.marker(c, { pane: 'gqLayers', icon: L.divIcon({ className: '', iconSize: [sz, sz], html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${rec};border:2px solid #0f172a;color:#0f172a;font:800 13px/${sz - 4}px sans-serif;text-align:center;box-shadow:0 0 0 4px rgba(255,255,255,.35)">${arr.length}</div>` }) });
         m.on('click', () => map.setView(c, Math.min(z + 2, 18)));    // 點數字圓 → 放大兩級
         histLayer.addLayer(m);
       });
@@ -5812,7 +5814,7 @@
       tdOpen().forEach(t => {
         const near = tdNearTasks(t).length > 0;
         const icon = L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 32], popupAnchor: [0, -28], html: `<div style="width:34px;height:34px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:#f97316;border:2px solid #fff;box-shadow:0 0 0 ${near ? '5px rgba(34,197,94,.8)' : '2px rgba(0,0,0,.35)'},0 3px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:16px">🔧</span></div>` });
-        const m = L.marker([t.lat, t.lng], { icon, zIndexOffset: 500 }); m.bindPopup(() => tdPopup(t), { maxWidth: 300, minWidth: 240 });
+        const m = L.marker([t.lat, t.lng], { icon, zIndexOffset: 500, pane: 'gqLayers' }); m.bindPopup(() => tdPopup(t), { maxWidth: 300, minWidth: 240 });
         m.on('popupopen', () => tdThumbs(t)); TD.layer.addLayer(m);
       });
     }
