@@ -456,6 +456,7 @@
     <div id="leaflet-map"></div>
     <iframe id="streetview-frame" src="about:blank"></iframe>
     <button id="sv-back" onclick="switchViewMode('map')" style="display:none;position:absolute;left:10px;bottom:18px;z-index:1000;height:46px;padding:0 18px;border-radius:23px;border:2px solid #fff;background:#2563eb;color:#fff;font:800 16px/1 sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.45)">🗺 回地圖</button>
+    <div id="sv-mini" style="display:none;position:absolute;left:10px;bottom:132px;z-index:1000;width:160px;height:160px;border-radius:12px;overflow:hidden;border:2px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,.5)"></div>
     <div id="sv-code" title="點一下複製圖號" style="display:none;position:absolute;left:10px;bottom:72px;z-index:1000;padding:6px 12px;border-radius:10px;background:rgba(15,23,42,.88);border:1px solid rgba(255,255,255,.25);color:#fde047;font:800 17px/1.3 monospace;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.45)"></div>
 
     <div id="here-wrap"><div id="here-code" title="畫面中心所在圖號"></div><div id="here-time"></div></div>
@@ -481,7 +482,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v189</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v191</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2664,7 +2665,8 @@
       btnModeMap.classList.toggle('active', mode === 'map');
       btnModeSv.classList.toggle('active', mode === 'sv');
 
-      { const sb = document.getElementById('sv-back'); if (sb) sb.style.display = mode === 'sv' ? 'block' : 'none'; const sc = document.getElementById('sv-code'); if (sc && mode !== 'sv') sc.style.display = 'none'; }   // v175：街景時左下角固定一顆「回地圖」（全螢幕模式看不到上方切換鈕也回得來）
+      { const sb = document.getElementById('sv-back'); if (sb) sb.style.display = mode === 'sv' ? 'block' : 'none'; const sc = document.getElementById('sv-code'); if (sc && mode !== 'sv') sc.style.display = 'none'; const mm = document.getElementById('sv-mini'); if (mm && mode !== 'sv') mm.style.display = 'none'; }
+      if (mode === 'map' && svAt) { try { map.setView([svAt.lat, svAt.lng], Math.max(map.getZoom(), 18), { animate: false }); } catch (e) {} }   // 回地圖＝停在剛剛看街景的地方   // v175：街景時左下角固定一顆「回地圖」（全螢幕模式看不到上方切換鈕也回得來）
       if (mode === 'map') {
         svAt = null;
         streetviewframe.style.display = 'none';
@@ -2738,6 +2740,14 @@
         moved = false; const gg = g, ss = sh; g = null; sh = null;
         const px = e.clientX, py = e.clientY - FOOT;
         const r = map.getContainer().getBoundingClientRect(), mx = px - r.left, my = py - r.top;
+        // v190：像 Google 一樣，拖回按鈕區（右側那一欄）放開＝取消，小人飛回按鈕裡消失
+        const under = document.elementFromPoint(e.clientX, e.clientY), back = !!(under && under.closest && under.closest('#map-floating-controls'));
+        if (back && !cancel) {
+          const br = btn.getBoundingClientRect(); ss.remove();
+          gg.style.transition = 'transform .25s cubic-bezier(.5,0,.75,0), opacity .25s'; gg.style.transformOrigin = '50% 50%';
+          gg.style.transform = `translate(${br.left + br.width / 2 - 33}px,${br.top + br.height / 2 - 50}px) rotate(0deg) scale(.35)`; gg.style.opacity = '.2';
+          setTimeout(() => gg.remove(), 260); return;
+        }
         const ok = !cancel && mx >= 0 && my >= 0 && mx <= r.width && my <= r.height;
         if (!ok) { gg.style.transition = 'opacity .2s'; gg.style.opacity = '0'; ss.remove(); setTimeout(() => gg.remove(), 220); return; }
         // 放下：擺正、往下落到影子上、壓扁一下，再進街景
@@ -2762,9 +2772,23 @@
       el.style.display = 'block';
       el.onclick = () => { try { silentCopy(c); } catch (e) {} const o = el.style.borderColor; el.style.borderColor = '#22c55e'; setTimeout(() => { el.style.borderColor = o; }, 600); };
     }
+    // v191 街景左下角小地圖（像 Google）：工程人員站在看街景的位置；點小地圖別的地方＝小人移過去看那裡的街景
+    let svMini = null, svMiniMk = null;
+    function svMiniShow(lat, lng) {
+      const el = document.getElementById('sv-mini'); if (!el) return;
+      el.style.display = 'block';
+      if (!svMini) {
+        svMini = L.map(el, { zoomControl: false, attributionControl: false, keyboard: false, boxZoom: false });
+        L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 19 }).addTo(svMini);
+        const ic = (document.getElementById('pegBtn') || {}).innerHTML || '🧍';
+        svMiniMk = L.marker([lat, lng], { icon: L.divIcon({ className: '', iconSize: [30, 40], iconAnchor: [15, 38], html: `<div style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.6))">${ic}</div>` }), interactive: false }).addTo(svMini);
+        svMini.on('click', (e) => { svAt = { lat: e.latlng.lat, lng: e.latlng.lng }; updateStreetView(); });
+      }
+      setTimeout(() => { svMini.invalidateSize(); svMini.setView([lat, lng], svMini.getZoom() || 17, { animate: false }); svMiniMk.setLatLng([lat, lng]); }, 30);
+    }
     function updateStreetView() {
-      if (svAt) svCodeShow(svAt.lat, svAt.lng);
-      else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
+      if (svAt) { svCodeShow(svAt.lat, svAt.lng); svMiniShow(svAt.lat, svAt.lng); }
+      else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) { svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); svMiniShow(w0.lat, w0.lng); } else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
       if (svAt) { streetviewframe.src = `https://maps.google.com/maps?layer=c&cbll=${svAt.lat},${svAt.lng}&cbp=12,0,0,0,0&output=svembed`; return; }
       if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) {
         streetviewframe.src = 'about:blank';
