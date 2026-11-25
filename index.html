@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v163</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v166</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -1530,10 +1530,18 @@
     };
     window.importCadFiles = () => document.getElementById('cad-files-input').click();
     window.clearCadStore = async () => {
-      if (!(await gqConfirm('確定清除已匯入的本地圖資？', { danger: true, okText: '清除' }))) return;
+      let ids = [];                                                  // v164：先列出 App 裡存了哪些本地圖資（原檔刪掉也還在這裡）
+      try { const db = await cadDb(); ids = await new Promise((r) => { const q = db.transaction('pdfs').objectStore('pdfs').getAllKeys(); q.onsuccess = () => r((q.result || []).map(String).sort()); q.onerror = () => r([]); }); } catch (e) {}
+      const list = ids.length ? `App 內存有 ${ids.length} 張本地圖資：\n${ids.slice(0, 60).join('、')}${ids.length > 60 ? '…' : ''}\n\n` : 'App 內沒有本地圖資。\n\n';
+      if (!(await gqConfirm(list + '確定清除？（本地圖資＋縮小總覽的縮圖快取一起清掉，之後全部改讀雲端）', { danger: true, okText: '清除' }))) return;
       await idbClear('pdfs'); await idbClear('meta'); await idbClear('tiles');
+      try { for (const k of await caches.keys()) if (/^gq-thumb-/.test(k)) await caches.delete(k); } catch (e) {}   // 縮圖快取以前沒清到 → 舊的歪圖會一直留著
+      try { localStorage.removeItem('tpc_cad_known'); } catch (e) {}
+      try { cadOv.items.forEach(it => { try { it.img.close && it.img.close(); } catch (e) {} }); cadOv.items.clear(); cadOv.known.clear(); cadOv.px = 0; cadOv.indexed = false; cadOv.cache = null; cadOv.gen++; } catch (e) {}
+      try { Object.keys(localStorage).filter(k => /^tpc_cad_tree_v/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
       dropAllCadTiles();
       await refreshCadStatus();
+      if (isCadOverlayEnabled) { try { loadVisibleCadTiles(); cadOvSchedule(); } catch (e) {} }
     };
     ['cad-folder-input', 'cad-files-input'].forEach(id => {
       document.getElementById(id).addEventListener('change', async (e) => {
@@ -3732,7 +3740,11 @@
     BD.dayF = null;                                            // null＝全部；'YYYY-MM-DD'＝只看那天；'legacy'＝沒有日期的舊筆跡
     const bdToday = () => getLocalDateKey();
     const bdDayOf = (s) => (s && s.dt) || 'legacy';
-    const bdVisDay = (s) => !BD.dayF || bdDayOf(s) === BD.dayF;
+    // v165 個人玻璃：每個人畫的像各自一片玻璃，平常全部疊在一起看；BD.who 有值＝只抽出那一片（null＝全部，''＝沒標記的舊筆跡）
+    BD.who = null;
+    const bdMe = () => { try { return SY.by || ''; } catch (e) { return ''; } };
+    const bdWho = (s) => (s && s.ow) || (s && s.id ? '' : bdMe());          // 還沒上傳的新筆跡＝自己
+    const bdVisDay = (s) => (!BD.dayF || bdDayOf(s) === BD.dayF) && (BD.who === null || bdWho(s) === BD.who);
     // v162 擁有權：ow＝畫的人（班同步的名字）。別人畫的不能擦／選／移動；沒有 ow 的舊筆跡、匯入的（imp）照舊大家都能改
     const bdLocked = (s) => { try { return !!(s && s.ow && SY.by && s.ow !== SY.by && !s.imp && !SY.adm); } catch (e) { return false; } };   // SY.adm＝工作管理員（連點版本號 5 下）：可擦除全部
     // 保險：任何操作（含復原／重作、擦除切段）之後，別人的筆跡一律還原成雲端最後的版本
@@ -3758,11 +3770,11 @@
     const bdDayTxt = (d) => d === 'legacy' ? '舊畫圖' : d.replace(/^\d{4}-/, '').replace('-', '/');
     function bdDayUi() {
       const b = document.getElementById('bd-day'); if (!b) return;
-      const f = BD.dayF; b.textContent = '📅'; b.title = f ? '目前只看：' + (f === bdToday() ? '今天' : bdDayTxt(f)) + '（點一下切換／看回收區）' : '按日期篩選／回收區'; b.classList.toggle('on', !!f);
+      const f = BD.dayF, w = BD.who; b.textContent = '📅'; b.title = (f ? '目前只看：' + (f === bdToday() ? '今天' : bdDayTxt(f)) + ' ' : '') + (w !== null ? '只看 ' + (w || '舊筆跡') + ' 的玻璃 ' : '') + ((f || w !== null) ? '（點一下切換／看回收區）' : '按日期／按人篩選／回收區'); b.classList.toggle('on', !!f || w !== null);
     }
-    const bdStamp = (c) => { c.dt = bdToday(); if (BD.dayF && BD.dayF !== c.dt) { BD.dayF = null; bdDayUi(); } return c; };
+    const bdStamp = (c) => { c.dt = bdToday(); if (BD.dayF && BD.dayF !== c.dt) { BD.dayF = null; bdDayUi(); } if (BD.who !== null && BD.who !== bdMe()) { BD.who = null; bdDayUi(); } return c; };   // 抽出別人的玻璃時自己畫 → 回到全部
     function bdDrawAll(g, list, ex, cull) {
-      if (BD.dayF) list = list.filter(bdVisDay);                // 白底永遠在最底層，其餘依畫的順序；cull＝只畫畫面附近的（圖多時省很多力）
+      if (BD.dayF || BD.who !== null) list = list.filter(bdVisDay);                // 白底永遠在最底層，其餘依畫的順序；cull＝只畫畫面附近的（圖多時省很多力）
       ex = ex || [];
       let vx0 = -1e19, vy0 = -1e19, vx1 = 1e19, vy1 = 1e19;
       if (cull) { const a = bdMerc(-300, BD.H + 300), b = bdMerc(BD.W + 300, -300); vx0 = a[0]; vy0 = a[1]; vx1 = b[0]; vy1 = b[1]; }
@@ -5285,6 +5297,10 @@
       const p = document.getElementById('bd-daypanel'); if (p) p.remove();
       bdRedraw(); if (BD.dayF) { const l = BD.shapes.filter(bdVisDay); if (l.length) bdFitAll(l); }
     };
+    window.bdWhoPick = (i) => {
+      BD.who = i < 0 ? null : (BD.whoList || [])[i]; if (BD.who === undefined) BD.who = null;
+      BD.sel = null; BD.selObj = null; bdDayUi(); bdDropCache(); bdRedraw(); bdDayPanel(false);
+    };
     window.bdDayPanel = async (showTrash) => {
       let p = document.getElementById('bd-daypanel'); if (p && showTrash === undefined) { p.remove(); return; }
       if (!p) { p = document.createElement('div'); p.id = 'bd-daypanel'; document.body.appendChild(p); }
@@ -5307,6 +5323,14 @@
         const list = await bdTrashList(), box = document.getElementById('dp-tr'); if (!box) return;
         box.innerHTML = list.length ? list.map(r => { const t = new Date(r.ts); return `<div class="dp-row"><span>${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')} 清除的 ${bdAreas(r.shapes)} 處</span><button onclick="bdTrashRestore('${r.id}')">還原</button></div>`; }).join('') : '<div class="dp-empty">回收區是空的</div>';
         return;
+      }
+      {                                                               // 個人玻璃：點名字只看那個人畫的；「全部疊在一起」回到平常
+        const wc = new Map(); BD.shapes.forEach(x => { const w = bdWho(x); wc.set(w, (wc.get(w) || 0) + 1); });
+        BD.whoList = Array.from(wc.keys()).sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'zh-Hant')));
+        if (BD.whoList.length > 1 || BD.who !== null) {
+          const chip = (on, act, txt) => `<button class="dp-chip${on ? ' on' : ''}" onclick="${act}" style="margin:2px;padding:4px 10px;border-radius:14px;border:1px solid ${on ? '#22c55e' : '#475569'};background:${on ? '#14532d' : 'transparent'};color:inherit;font:inherit">${txt}</button>`;
+          html += '<div class="dp-sub" style="display:block">🪟 個人玻璃　' + chip(BD.who === null, 'bdWhoPick(-1)', '全部疊在一起') + BD.whoList.map((w, i) => chip(BD.who === w, `bdWhoPick(${i})`, ntEscDp(w || '舊筆跡（未標記）') + ' ' + wc.get(w))).join('') + '</div>';
+        }
       }
       html += '<div class="dp-list">' + row('all', '全部') + days.map(d => row(d, d === 'legacy' ? '舊畫圖（沒有日期）' : bdDayTxt(d) + (d === today ? '　今天' : ''))).join('') + '</div>';
       html += '<div class="dp-foot"><button onclick="bdDayPanel(true)">🗑 回收區（還原清除的筆跡）</button></div></div>';
@@ -5371,7 +5395,7 @@
       bdEnsureDom();
       try { window.syBoardOn && window.syBoardOn(); } catch (e) {}
       BD.on = true; BD.fx = 1; BD.tool = 'none';
-      BD.dayF = null; try { bdDayUi(); } catch (e) {}
+      BD.dayF = null; BD.who = null; try { bdDayUi(); } catch (e) {}
       document.body.classList.add('bd-on'); document.getElementById('drawModeBtn').classList.add('tracking-active');
       document.getElementById('board').style.display = 'block';
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
@@ -5397,32 +5421,16 @@
       setTimeout(() => map.invalidateSize(), 100);
     };
     window.measureViaBoard = () => { if (!BD.on) openBoard(); bdTool('dim'); };
-    // 效能小表（連點版本號 5 下開關）：左上角顯示 fps／最長卡頓／記憶體／已解析圖幅，方便回報「哪個操作卡」
+    // v165 連點版本號 5 下：開通／關閉「可擦除所有人筆跡」（不顯示任何面板，只跳一下提示）。重開 App 自動關閉
     (function () {
       const lab = document.getElementById('ver-label'); if (!lab) return;
-      let n = 0, tmr = 0, box = null, raf = 0, last = 0, frames = 0, t0 = 0, worst = 0, lw = 0;
-      function loop(t) {
-        if (last) { const d = t - last; frames++; if (d > worst) worst = d; }
-        last = t;
-        if (!t0) t0 = t;
-        if (t - t0 >= 1000) {
-          const fps = Math.round(frames * 1000 / (t - t0)); lw = Math.max(worst, lw * 0.0); const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : '-';
-          let sh = 0; try { sh = BD.shapes.length; } catch (e) {}
-          box.textContent = `🛠 工作管理員：可擦除所有人的筆跡（再連點 5 下關閉）｜fps ${fps}｜最卡 ${Math.round(worst)}ms｜記憶體 ${mem}｜圖幅 ${cadVec.tiles.size}（快取 ${cadVec.hitN || 0}／解析 ${cadVec.parseN || 0}）｜筆跡 ${sh}｜DOM ${document.getElementsByTagName('*').length}`;
-          frames = 0; worst = 0; t0 = t;
-        }
-        raf = requestAnimationFrame(loop);
-      }
+      let n = 0, tmr = 0;
+      const tip = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:40%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 14px/1.4 sans-serif;pointer-events:none'; document.body.appendChild(d); setTimeout(() => d.remove(), 1400); };
       lab.addEventListener('click', () => {
         clearTimeout(tmr); tmr = setTimeout(() => { n = 0; }, 900); if (++n < 5) return; n = 0;
-        if (box) {
-          cancelAnimationFrame(raf); box.remove(); box = null;
-          try { if (SY.timer || SY.pend || SY.adm) { const was = SY.adm; if (was) { try { bdSave(); } catch (e) {} syFlush().finally(() => { SY.adm = false; try { BD.oth = null; bdGuard(); } catch (e) {} }); return; } } } catch (e) {}   // 關閉前先把管理員做的修改上傳（帶 adm 標記，別人才會接受）
-          return;
-        }
-        try { SY.adm = true; BD.oth = null; } catch (e) {}
-        box = document.createElement('div'); box.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#4ade80;font:700 11px/1.3 monospace;pointer-events:none;max-width:96vw;white-space:normal';
-        document.body.appendChild(box); last = 0; t0 = 0; frames = 0; worst = 0; raf = requestAnimationFrame(loop);
+        if (!SY.adm) { SY.adm = true; try { BD.oth = null; } catch (e) {} tip('已開通'); return; }
+        try { bdSave(); } catch (e) {}
+        syFlush().finally(() => { SY.adm = false; try { BD.oth = null; bdGuard(); } catch (e) {} tip('已關閉'); });   // 先把開通期間的修改上傳（帶 adm 標記，別人才會接受）
       });
     })();
     window.toggleMoreTools = () => {
