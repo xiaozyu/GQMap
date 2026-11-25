@@ -467,7 +467,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v160</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v163</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -707,6 +707,13 @@
       return { x, y };
     }
 
+    // v161 量長度：兩點轉 TWD97（TM2）平面座標算直線距離，再除以該處的尺度因子 → 橢球面上的實際距離（短距離誤差 < 1mm）
+    // 取代 Leaflet map.distance（把地球當圓球，南北向多算約 0.4%、東西向少算約 0.17%）
+    function gqGroundDist(a, b) {
+      const p = wgs84ToTWD97(a.lat, a.lng), q = wgs84ToTWD97(b.lat, b.lng);
+      const E = (p.x + q.x) / 2 - 250000, k = 0.9999 * (1 + E * E / (2 * 6371000 * 6371000));
+      return Math.hypot(q.x - p.x, q.y - p.y) / k;
+    }
     // TWD97 → TWD67：與 twd67ToWGS84 用同一組仿射參數（內政部公式）反推，全台通用
     function twd97ToTWD67(x97, y97) {
       const A = 0.00001549, B = 0.000006521;
@@ -1904,17 +1911,17 @@
       function group(fill) {
         const s = Math.hypot(T[0], T[1]) || 1, w = fill ? 0 : Math.round(lw * s * 1000) / 1000, d = dash.map(v => v * s);
         const key = (fill ? 'f' : 's') + w + '|' + d.join(',') + '|' + phase * s;
-        let g = groups.get(key); if (!g) { g = { fill, lw: w, dash: d, phase: phase * s, path: new Path2D() }; groups.set(key, g); } return g;
+        let g = groups.get(key); if (!g) { g = { fill, lw: w, dash: d, phase: phase * s, path: new Path2D(), t: [], c: [] }; groups.set(key, g); } return g;
       }
       function flush(fill, close) {
-        const g = group(fill), p = g.path; let i = 0;
+        const g = group(fill), p = g.path, gt = g.t, gc = g.c; let i = 0;   // gt/gc：同一份資料另存成數字陣列，給 v161 的向量快取用
         while (i < cur.length) {
           const t = cur[i++];
-          if (t === 0) { p.moveTo(cur[i], cur[i + 1]); i += 2; } else if (t === 1) { p.lineTo(cur[i], cur[i + 1]); i += 2; }
-          else if (t === 2) { p.bezierCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3], cur[i + 4], cur[i + 5]); i += 6; }
-          else if (t === 3) { p.quadraticCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3]); i += 4; } else { p.closePath(); }
+          if (t === 0) { p.moveTo(cur[i], cur[i + 1]); gt.push(0); gc.push(cur[i], cur[i + 1]); i += 2; } else if (t === 1) { p.lineTo(cur[i], cur[i + 1]); gt.push(1); gc.push(cur[i], cur[i + 1]); i += 2; }
+          else if (t === 2) { p.bezierCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3], cur[i + 4], cur[i + 5]); gt.push(2); gc.push(cur[i], cur[i + 1], cur[i + 2], cur[i + 3], cur[i + 4], cur[i + 5]); i += 6; }
+          else if (t === 3) { p.quadraticCurveTo(cur[i], cur[i + 1], cur[i + 2], cur[i + 3]); gt.push(3); gc.push(cur[i], cur[i + 1], cur[i + 2], cur[i + 3]); i += 4; } else { p.closePath(); gt.push(4); }
         }
-        if (close) p.closePath(); n++;
+        if (close) { p.closePath(); gt.push(4); } n++;
       }
       function paint(op) {
         if (op === OPS.stroke) flush(false); else if (op === OPS.closeStroke) flush(false, true);
@@ -1958,11 +1965,80 @@
       }
       return { groups: Array.from(groups.values()), n };
     }
+    // ===== v161 向量快取：cadVecBuild 的結果壓成「指令表＋座標差值」存進 IndexedDB =====
+    // 座標乘 32 取整數（1/32 點，現場約 1 公分以下）再存和前一點的差值，差值多半很小，gzip 後一張約 200KB（原 PDF 約 500KB）
+    const CADV_Q = 32;
+    function cadVecPack(groups) {
+      let nt = 0, nc = 0; for (const g of groups) { nt += g.t.length; nc += g.c.length; }
+      const ty = new Uint8Array(nt), co = new Int32Array(nc); let it = 0, ic = 0, px = 0, py = 0;
+      const meta = groups.map(g => {
+        const gt = g.t, gc = g.c;
+        for (let i = 0; i < gt.length; i++) ty[it++] = gt[i];
+        for (let i = 0; i < gc.length; i += 2) {
+          let x = Math.round(gc[i] * CADV_Q), y = Math.round(gc[i + 1] * CADV_Q);
+          if (!Number.isFinite(x)) x = px; if (!Number.isFinite(y)) y = py;
+          co[ic++] = x - px; co[ic++] = y - py; px = x; py = y;
+        }
+        g.t = null; g.c = null;                                        // 存完就放掉，手機記憶體不重複佔
+        return { fill: g.fill, lw: g.lw, dash: g.dash, phase: g.phase, nt: gt.length };
+      });
+      return { meta, ty, co };
+    }
+    async function cadGz(u8, inflate) {                                // 瀏覽器內建 gzip；不支援就回傳 null（改存未壓縮）
+      if (typeof CompressionStream === 'undefined' || typeof DecompressionStream === 'undefined') return null;
+      const s = new Blob([u8]).stream().pipeThrough(inflate ? new DecompressionStream('gzip') : new CompressionStream('gzip'));
+      return new Uint8Array(await new Response(s).arrayBuffer());
+    }
+    async function cadVecSave(vk, fr, n, pk) {
+      try {
+        let ty = pk.ty, co = pk.co, z = false;
+        const zt = await cadGz(ty), zc = zt && await cadGz(new Uint8Array(co.buffer, co.byteOffset, co.byteLength));
+        if (zt && zc) { ty = zt; co = zc; z = true; }
+        await idbPut('tiles', vk, { v: 1, fr, n, meta: pk.meta, z, ty, co });
+      } catch (e) { console.warn('cadVec save', vk, e); }               // 空間不夠就算了，下次照舊解析 PDF
+    }
+    async function cadVecFromRec(rec) {
+      let ty = rec.ty, co = rec.co;
+      if (rec.z) {
+        ty = await cadGz(ty, true); const cb = await cadGz(co, true);
+        if (!ty || !cb) return null;
+        co = new Int32Array(cb.buffer, cb.byteOffset, cb.byteLength >> 2);
+      }
+      const s = 1 / CADV_Q; let it = 0, ic = 0, x = 0, y = 0, yt = performance.now();
+      const groups = [];
+      for (const m of rec.meta) {
+        const p = new Path2D(), te = it + m.nt;
+        while (it < te) {
+          if ((it & 4095) === 0 && performance.now() - yt > 10) { await new Promise(r => setTimeout(r, 0)); yt = performance.now(); }
+          const t = ty[it++];
+          if (t === 0) { x += co[ic++]; y += co[ic++]; p.moveTo(x * s, y * s); }
+          else if (t === 1) { x += co[ic++]; y += co[ic++]; p.lineTo(x * s, y * s); }
+          else if (t === 2) {
+            x += co[ic++]; y += co[ic++]; const a = x * s, b = y * s; x += co[ic++]; y += co[ic++]; const c = x * s, d = y * s;
+            x += co[ic++]; y += co[ic++]; p.bezierCurveTo(a, b, c, d, x * s, y * s);
+          } else if (t === 3) { x += co[ic++]; y += co[ic++]; const a = x * s, b = y * s; x += co[ic++]; y += co[ic++]; p.quadraticCurveTo(a, b, x * s, y * s); }
+          else p.closePath();
+        }
+        groups.push({ fill: m.fill, lw: m.lw, dash: m.dash, phase: m.phase, path: p });
+      }
+      if (ic !== co.length) return null;                               // 資料對不上（壞掉）→ 改走 PDF
+      return groups;
+    }
     async function cadVecLoad(t) {
       const hit = cadVec.tiles.get(t.id); if (hit) { cadVec.tiles.delete(t.id); cadVec.tiles.set(t.id, hit); return hit; }
       if (cadVec.loading.has(t.id)) return cadVec.loading.get(t.id);
       if ((cadVec.none.get(t.id) || 0) > Date.now()) return null;
       const p = (async () => {
+        const vk = 'vec1|' + t.id + '|' + CAD_CACHE_TAG;              // v161：解析過的向量存在 IndexedDB，下次直接讀，不再經過 pdf.js
+        try {
+          const rec = await idbGet('tiles', vk);
+          const groups = rec && rec.v === 1 ? await cadVecFromRec(rec) : null;
+          if (groups) {
+            const it = { id: t.id, zone: t.zone, x: t.x, y: t.y, fr: rec.fr, groups, cr: null, crKey: '' };
+            cadVec.hitN = (cadVec.hitN || 0) + 1;
+            cadVec.tiles.set(t.id, it); cadOv.known.add(t.id); cadOvSaveSoon(); if (!CAD_DESK) cadOvFree(it); return it;
+          }
+        } catch (e) { console.warn('cadVec cache', t.id, e); }
         const buf = await loadPdfBuffer(t.id);
         if (!buf) { cadVec.none.set(t.id, Date.now() + 60000); return null; }
         let pdf;
@@ -1971,6 +2047,8 @@
           const page = await pdf.getPage(1), vp1 = page.getViewport({ scale: 1 });
           const fr = await pdfFrameOf(page, vp1), v = await cadVecBuild(await page.getOperatorList(), vp1);
           if (!v.n) throw new Error('no vector paths');
+          cadVec.parseN = (cadVec.parseN || 0) + 1;
+          cadVecSave(vk, fr, v.n, cadVecPack(v.groups));               // 背景存，不等它
           const it = { id: t.id, zone: t.zone, x: t.x, y: t.y, fr, groups: v.groups, cr: null, crKey: '' };
           cadVec.tiles.set(t.id, it); cadOv.known.add(t.id); cadOvSaveSoon(); if (!CAD_DESK) cadOvFree(it); return it;
         } catch (e) { console.warn('cadVec parse', t.id, e); cadVecFailed = true; return null; }
@@ -3403,7 +3481,7 @@
       measLine = L.polyline([a, b], { color: '#f97316', weight: 3, dashArray: '6 5', interactive: false }).addTo(map);
       const mid = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
       measLabel = L.tooltip({ permanent: true, direction: 'top', offset: [0, -4], className: 'meas-label', interactive: false })
-        .setLatLng(mid).setContent(fmtDist(map.distance(a, b))).addTo(map);
+        .setLatLng(mid).setContent(fmtDist(gqGroundDist(a, b))).addTo(map);
     }
     function measAddPoint(ll) {
       if (measPts.length >= 2) measClear();
@@ -3581,9 +3659,10 @@
     }
     const bdPx = (p) => [(p[0] - BD.minX) * BD.k, (BD.maxY - p[1]) * BD.k];
     const bdMerc = (x, y) => [BD.minX + x / BD.k, BD.maxY - y / BD.k];
-    const bdGround = (a, b) => map.distance(E3857().unproject(L.point(a[0], a[1])), E3857().unproject(L.point(b[0], b[1])));
+    const bdGround = (a, b) => gqGroundDist(E3857().unproject(L.point(a[0], a[1])), E3857().unproject(L.point(b[0], b[1])));
     const bdFmt = (m) => m.toFixed(1) + 'M';
     function bdSave() {
+      try { bdGuard(); } catch (e) {}
       try { localStorage.setItem(BD.key || bdKey(), JSON.stringify(BD.shapes)); } catch (e) {}
       try { window.syPush && window.syPush(); } catch (e) {}      // 永遠寫回「載入時的那一天」，不會因為換日期而寫進別天
     }
@@ -3592,7 +3671,7 @@
       if (!BD.on) return;
       bdSave();
       BD.key = bdKey();
-      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
+      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; } BD.oth = null; try { bdGuard(); } catch (e) {}
       BD.hist = []; BD.redo = []; BD.cur = null; BD.pend = false; BD.mvp = null; BD.mag = null; BD.sel = null; BD.selObj = null; BD.mv = null; BD.cache = null; BD.hl = null;
       try { bdDropCache(); } catch (e) {}
       bdRedrawNow();
@@ -3654,6 +3733,28 @@
     const bdToday = () => getLocalDateKey();
     const bdDayOf = (s) => (s && s.dt) || 'legacy';
     const bdVisDay = (s) => !BD.dayF || bdDayOf(s) === BD.dayF;
+    // v162 擁有權：ow＝畫的人（班同步的名字）。別人畫的不能擦／選／移動；沒有 ow 的舊筆跡、匯入的（imp）照舊大家都能改
+    const bdLocked = (s) => { try { return !!(s && s.ow && SY.by && s.ow !== SY.by && !s.imp && !SY.adm); } catch (e) { return false; } };   // SY.adm＝工作管理員（連點版本號 5 下）：可擦除全部
+    // 保險：任何操作（含復原／重作、擦除切段）之後，別人的筆跡一律還原成雲端最後的版本
+    function bdGuard() {
+      let by = ''; try { by = SY.by; } catch (e) { return 0; } if (!by) return 0;
+      const ok = by + (SY.adm ? '*' : '');                               // 切換工作管理員 → 以當下畫面為準重建
+      if (!BD.oth || BD.othBy !== ok) { BD.oth = new Map(); BD.othBy = ok; BD.shapes.forEach(x => { if (bdLocked(x) && x.id) BD.oth.set(x.id, JSON.stringify(x)); }); return 0; }
+      const seen = new Set(), out = []; let fixed = 0;
+      for (const x of BD.shapes) {
+        if (!bdLocked(x)) { out.push(x); continue; }
+        const js = x.id && !seen.has(x.id) ? BD.oth.get(x.id) : undefined;
+        if (js === undefined) { fixed++; continue; }                     // 別人名下、雲端沒有的（切段碎片、復原回來的已刪除）→ 拿掉
+        seen.add(x.id);
+        if (JSON.stringify(x) !== js) { out.push(JSON.parse(js)); fixed++; } else out.push(x);
+      }
+      for (const [id, js] of BD.oth) if (!seen.has(id)) { out.push(JSON.parse(js)); fixed++; }   // 被擦掉的 → 放回去
+      if (fixed) {
+        BD.shapes = out; BD.sel = null; BD.selObj = null; try { bdDropCache(); } catch (e) {} bdRedraw();
+        const m = document.getElementById('bd-msg'); if (m) { m.textContent = '別人畫的不能改，已還原'; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1800); }
+      }
+      return fixed;
+    }
     const bdDayTxt = (d) => d === 'legacy' ? '舊畫圖' : d.replace(/^\d{4}-/, '').replace('-', '/');
     function bdDayUi() {
       const b = document.getElementById('bd-day'); if (!b) return;
@@ -3804,7 +3905,7 @@
       if (BD.pend || BD.mvp || !BD.on || BD.tool !== 'dim' || bdOpt.mode !== 'cross') return null;
       const pp = bdPx(bdMerc(BD.W / 2, BD.H / 2)); let bd = 18, hit = null;
       if (BD.magSkip) { const k = bdPx(BD.magSkip); if (Math.hypot(k[0] - pp[0], k[1] - pp[1]) < 8) return null; BD.magSkip = null; }   // 剛放下的點，十字還沒離開前不彈按鈕
-      BD.shapes.forEach(sh => { if (sh.t === 'dim') ['a', 'b'].forEach(part => { const q = bdPx(sh[part]), d = Math.hypot(q[0] - pp[0], q[1] - pp[1]); if (d <= bd) { bd = d; hit = { sh, part }; } }); });
+      BD.shapes.forEach(sh => { if (sh.t === 'dim' && !bdLocked(sh)) ['a', 'b'].forEach(part => { const q = bdPx(sh[part]), d = Math.hypot(q[0] - pp[0], q[1] - pp[1]); if (d <= bd) { bd = d; hit = { sh, part }; } }); });
       return hit;
     }
     function bdMagUi() {
@@ -3960,7 +4061,7 @@
       const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4), inb = (q) => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1;
       let ch = false; const out = [];
       BD.shapes.forEach(s => {
-        if (!bdVisDay(s)) { out.push(s); return; }
+        if (!bdVisDay(s) || bdLocked(s)) { out.push(s); return; }
         const b = bdBox(s); if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) { out.push(s); return; }
         if (s.t === 'free' || s.t === 'line') {
           const parts = bdClipRect(s.t === 'free' ? s.p : [s.a, s.b], x0, y0, x1, y1);
@@ -3990,7 +4091,7 @@
         const nid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
         let ch = false; const out = [];
         BD.shapes.forEach(s => {
-          if (!bdVisDay(s) || (s.t !== 'free' && s.t !== 'line')) { out.push(s); return; }
+          if (!bdVisDay(s) || bdLocked(s) || (s.t !== 'free' && s.t !== 'line')) { out.push(s); return; }
           const b = bdBox(s); if (b[2] < pt[0] - r || b[0] > pt[0] + r || b[3] < pt[1] - r || b[1] > pt[1] + r) { out.push(s); return; }
           const parts = bdClipPoly(s.t === 'free' ? s.p : [s.a, s.b], pt, r);
           if (!parts) { out.push(s); return; }
@@ -4000,7 +4101,7 @@
         if (ch) { if (!BD.erasing) { bdPush(); BD.erasing = true; } BD.shapes = out; BD.sel = null; BD.selObj = null; bdDropCache(); bdRedraw(); }
       }
       const keep = BD.shapes.filter(s => {
-        if (!bdVisDay(s)) return true;
+        if (!bdVisDay(s) || bdLocked(s)) return true;
         if (part && (s.t === 'free' || s.t === 'line')) return true;
         if (s.t === 'free') { for (let i = 0; i < s.p.length; i++) { if (Math.hypot(s.p[i][0] - pt[0], s.p[i][1] - pt[1]) < r) return false; if (i && bdDistSeg(pt, s.p[i - 1], s.p[i]) < r) return false; } return true; }
         if (s.t === 'rect') {
@@ -4016,7 +4117,7 @@
     function bdHit(pt) {
       const r = 16 / BD.s / BD.k;
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
-        const sh = BD.shapes[i]; if (!bdVisDay(sh)) continue;
+        const sh = BD.shapes[i]; if (!bdVisDay(sh) || bdLocked(sh)) continue;
         if (sh.t === 'text') {
           const fsm = bdTextFs(sh) / BD.k, w = sh.text.length * fsm * 0.62 + r;
           if (pt[0] >= sh.a[0] - r && pt[0] <= sh.a[0] + w && Math.abs(pt[1] - sh.a[1]) <= fsm * 0.7 + r * 0.5) return { sh, part: 'all' };
@@ -4659,7 +4760,7 @@
     function bdHitAll(pt) {                                   // 點到的所有物件，上面的在前；白底最後（它在最底層）
       const r = 18 / BD.k, out = [], rects = [];
       for (let i = BD.shapes.length - 1; i >= 0; i--) {
-        const sh = BD.shapes[i]; if (!bdVisDay(sh)) continue;
+        const sh = BD.shapes[i]; if (!bdVisDay(sh) || bdLocked(sh)) continue;
         if (sh.t === 'rect') { const x0 = Math.min(sh.a[0], sh.b[0]) - r * 0.4, x1 = Math.max(sh.a[0], sh.b[0]) + r * 0.4, y0 = Math.min(sh.a[1], sh.b[1]) - r * 0.4, y1 = Math.max(sh.a[1], sh.b[1]) + r * 0.4; if (pt[0] >= x0 && pt[0] <= x1 && pt[1] >= y0 && pt[1] <= y1) rects.push(sh); }
         else if (sh.t === 'text') { const l = bdToLocal(sh, pt), bx = bdTextBox(sh), pad = 10; if (Math.abs(l[0]) <= bx.w / 2 + pad && Math.abs(l[1]) <= bx.h / 2 + pad) out.push(sh); }
         else if (sh.t === 'free') { let hit = sh.p.length === 1 && Math.hypot(sh.p[0][0] - pt[0], sh.p[0][1] - pt[1]) < r; for (let j = 1; j < sh.p.length && !hit; j++) if (bdDistSeg(pt, sh.p[j - 1], sh.p[j]) < r) hit = true; if (hit) out.push(sh); }
@@ -4844,10 +4945,16 @@
     const syPutLS = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
     SY.team = syGet('tpc_sy_team', ''); SY.by = syGet('tpc_sy_by', '');
     const syNewId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+    // v161：SY.sig 改存「內容指紋」（FNV-1a 雜湊＋長度），並存進本機 → 重開 App 不必重讀雲端全部筆跡也知道哪些已同步
+    const syHash = (js) => { let h = 0x811c9dc5; for (let i = 0; i < js.length; i++) { h ^= js.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + '.' + js.length.toString(36); };
+    const syBK = (t) => 'tpc_sy_bsig_' + t, syTK = (t) => 'tpc_sy_bts_' + t;
+    const sySigLoad = (team) => { try { const a = JSON.parse(syGet(syBK(team), '[]')); return new Map(Array.isArray(a) ? a : []); } catch (e) { return new Map(); } };
+    const syEnsureSig = () => { if (SY.sigTeam !== SY.team) { SY.sig = sySigLoad(SY.team); SY.sigTeam = SY.team; SY.bts = Number(syGet(syTK(SY.team), '0')) || 0; } };
+    const sySigSaveSoon = () => { clearTimeout(SY.sigT); const team = SY.sigTeam; if (!team) return; SY.sigT = setTimeout(() => { if (SY.sigTeam !== team) return; syPutLS(syBK(team), JSON.stringify(Array.from(SY.sig))); if (SY.bts) syPutLS(syTK(team), String(SY.bts)); }, 1500); };
     const syPath = (sub) => sub ? `teams/${SY.team}/days/${SY.date}/${sub}` : `teams/${SY.team}/board`;     // 畫圖：全班一張圖（不分日期）；工單：每天一份
     async function syLoad() {
       if (SY.fb) return SY.fb;
-      if (window.__GQ_FB_STUB) return (SY.fb = window.__GQ_FB_STUB);
+      if (window.__GQ_FB_STUB) { const st = window.__GQ_FB_STUB; st.setSt = st.setSt || st.set; st.watchSince = st.watchSince || ((p, s, cb) => st.watch(p, cb)); st.commit = st.commit || ((ops) => Promise.all(ops.map(o => st.set(o.path, o.id, o.data)))); return (SY.fb = st); }
       if (!GQ_FB) throw new Error('尚未設定 Firebase');
       const b = 'https://www.gstatic.com/firebasejs/10.12.2/';
       const [A, Au, F] = await Promise.all([import(b + 'firebase-app.js'), import(b + 'firebase-auth.js'), import(b + 'firebase-firestore.js')]);
@@ -4856,6 +4963,10 @@
       await Au.signInAnonymously(auth);
       return (SY.fb = {
         watch: (path, cb) => F.onSnapshot(F.collection(db, path), (snap) => cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data(), local: c.doc.metadata.hasPendingWrites }))), (err) => cb(null, err)),
+        // v161：只監聽「伺服器時間 st 晚於 since」的文件 → 重開 App 只讀新變動，不再整班全部重讀
+        watchSince: (path, since, cb) => F.onSnapshot(F.query(F.collection(db, path), F.where('st', '>', F.Timestamp.fromMillis(since))), (snap) => cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data(), local: c.doc.metadata.hasPendingWrites }))), (err) => cb(null, err)),
+        commit: async (ops) => { for (let i = 0; i < ops.length; i += 450) { const b = F.writeBatch(db); ops.slice(i, i + 450).forEach(o => b.set(F.doc(db, o.path, o.id), Object.assign({}, o.data, { st: F.serverTimestamp() }))); await b.commit(); } },   // v162：一次打包送出（最多 450 筆一包）
+        setSt: (path, id, data) => F.setDoc(F.doc(db, path, id), Object.assign({}, data, { st: F.serverTimestamp() })),   // 附上伺服器時間（不受各手機時鐘不準影響）
         set: (path, id, data) => F.setDoc(F.doc(db, path, id), data),
         del: (path, id) => F.deleteDoc(F.doc(db, path, id)),
         list: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => d.id),
@@ -4865,52 +4976,100 @@
     function syApply(changes) {                                     // 雲端傳來的變動 → 合併進這一天的筆跡（畫板開著就即時重畫，沒開就寫回本機）
       const key = bdKey(), live = BD.on && BD.key === key;
       let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
-      let changed = false;
+      let changed = false, rePush = false;
       changes.forEach(c => {
         if (c.local) return;                                         // 自己剛寫出去的回音，略過
+        { const st = c.data && c.data.st && c.data.st.toMillis ? c.data.st.toMillis() : 0; if (st > (SY.bts || 0)) SY.bts = st; }   // 記住看過的最新伺服器時間
         const i = arr.findIndex(x => x.id === c.id);
-        if (c.type === 'removed') { SY.sig.delete(c.id); if (i >= 0) { if (BD.selObj === arr[i]) { BD.selObj = null; BD.sel = null; } arr.splice(i, 1); changed = true; } return; }
+        if (i >= 0 && SY.by && arr[i].ow === SY.by && !arr[i].imp && (c.type === 'removed' || !c.data || (c.data.by !== SY.by && !c.data.adm))) { SY.sig.delete(c.id); rePush = true; return; }   // v162：別人改／刪我畫的 → 不接受，稍後把我的版本傳回去
+        if (live && BD.oth) { if (c.type === 'removed' || (c.data && c.data.del)) BD.oth.delete(c.id); }
+        if (c.type === 'removed' || (c.data && c.data.del)) { SY.sig.delete(c.id); if (i >= 0) { if (BD.selObj === arr[i]) { BD.selObj = null; BD.sel = null; } arr.splice(i, 1); changed = true; } return; }   // del＝刪除標記（v161 起刪除不真的刪文件，增量監聽才收得到）
         let sh; try { sh = JSON.parse(c.data.d); } catch (e) { return; }
-        sh.id = c.id; const js = JSON.stringify(sh); SY.sig.set(c.id, js);
+        sh.id = c.id; const js = JSON.stringify(sh); SY.sig.set(c.id, syHash(js));
+        if (live && BD.oth && bdLocked(sh)) BD.oth.set(c.id, js);
         if (i < 0) { arr.push(sh); changed = true; } else if (JSON.stringify(arr[i]) !== js) { arr[i] = sh; changed = true; }
       });
+      sySigSaveSoon();
+      if (rePush) window.syPush();
       if (!changed) return;
       syPutLS(key, JSON.stringify(arr));
       if (live) { bdDropCache(); bdRedraw(); }
     }
-    async function syFlush() {                                       // 本機的變動 → 雲端（新增／修改的筆跡、被刪掉的筆跡）
-      SY.timer = 0; if (!SY.on || !SY.fb || !SY.team) return;
-      const key = bdKey(), live = BD.on && BD.key === key;
-      let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } }
-      const cur = new Map(); let idAdded = false; arr.forEach(sh => { if (!sh.id) { sh.id = syNewId(); idAdded = true; } cur.set(sh.id, JSON.stringify(sh)); });
-      if (idAdded && !live) syPutLS(key, JSON.stringify(arr));
-      const jobs = [];
-      for (const [id, js] of cur) if (SY.sig.get(id) !== js) { SY.sig.set(id, js); jobs.push(SY.fb.set(syPath(), id, { d: js, by: SY.by, ts: Date.now() })); }
-      for (const id of Array.from(SY.sig.keys())) if (!cur.has(id)) { SY.sig.delete(id); jobs.push(SY.fb.del(syPath(), id)); }
-      if (!jobs.length) return;
-      try { await Promise.all(jobs); SY.st = '已同步'; } catch (e) { SY.st = '同步失敗：' + (e && e.message || e); }
+    // v162 手繪線簡化（Douglas–Peucker）：偏離「頭尾連線」不到 eps 公尺的點刪掉，遞迴處理；形狀一樣，點數少很多
+    function bdRdp(p, eps) {
+      if (!Array.isArray(p) || p.length < 3) return p;
+      const keep = new Uint8Array(p.length), st = [[0, p.length - 1]]; keep[0] = keep[p.length - 1] = 1;
+      while (st.length) {
+        const [a, b] = st.pop(); let md = 0, mi = -1;
+        for (let i = a + 1; i < b; i++) { const d = bdDistSeg(p[i], p[a], p[b]); if (d > md) { md = d; mi = i; } }
+        if (md > eps) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+      }
+      return p.filter((_, i) => keep[i]);
+    }
+    const syBoardArr = () => { const key = bdKey(), live = BD.on && BD.key === key; let arr; if (live) arr = BD.shapes; else { try { arr = JSON.parse(syGet(key, '[]')); } catch (e) { arr = []; } } return { key, live, arr }; };
+    function syPendCount() {                                          // 還沒上傳的筆數（新畫的、改過的、刪掉的）
+      if (!SY.on || !SY.team) return 0;
+      const { arr } = syBoardArr(), ids = new Set(); let n = 0;
+      arr.forEach(sh => { if (!sh.id) { n++; return; } ids.add(sh.id); if (SY.sig.get(sh.id) !== syHash(JSON.stringify(sh))) n++; });
+      for (const id of SY.sig.keys()) if (!ids.has(id)) n++;
+      return n;
+    }
+    async function syFlush() {                                       // 本機的變動 → 雲端（新增／修改的筆跡、被刪掉的筆跡），一次打包
+      clearTimeout(SY.timer); SY.timer = 0; if (!SY.on || !SY.fb || !SY.team) return;
+      const { key, live, arr } = syBoardArr();
+      const cur = new Map(); let touched = false;
+      arr.forEach(sh => {
+        if (!sh.id) {                                                // 新畫的：給 id、標上畫的人；手繪線先簡化（約 4 公分內的抖動點去掉）
+          sh.id = syNewId(); touched = true;
+          if (SY.by && !sh.imp) sh.ow = SY.by;
+          if (sh.t === 'free' && Array.isArray(sh.p) && sh.p.length > 6) sh.p = bdRdp(sh.p, 0.04);
+        }
+        cur.set(sh.id, JSON.stringify(sh));
+      });
+      if (touched) syPutLS(key, JSON.stringify(arr));
+      const ops = [], path = syPath();
+      for (const [id, js] of cur) { const h = syHash(js); if (SY.sig.get(id) !== h) { SY.sig.set(id, h); ops.push({ path, id, data: Object.assign({ d: js, by: SY.by, ts: Date.now() }, SY.adm ? { adm: 1 } : {}) }); } }
+      for (const id of Array.from(SY.sig.keys())) if (!cur.has(id)) { SY.sig.delete(id); ops.push({ path, id, data: Object.assign({ del: 1, by: SY.by, ts: Date.now() }, SY.adm ? { adm: 1 } : {}) }); }   // 刪除＝寫刪除標記
+      SY.pend = 0;
+      if (!ops.length) { syUi(); return; }
+      sySigSaveSoon(); SY.st = '上傳中…'; syUi();
+      try { await SY.fb.commit(ops); SY.st = '已同步'; } catch (e) { SY.st = '同步失敗：' + (e && e.message || e); }
       syUi();
     }
-    window.syPush = () => { if (!SY.on) return; clearTimeout(SY.timer); SY.timer = setTimeout(syFlush, 1200); };
-    function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; b.style.background = /失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e'; b.title = '班同步：' + SY.st; }  const m = document.getElementById('syncBtn'); if (m) { m.style.outline = SY.on ? '2px solid ' + (/失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e') : 'none'; m.title = '班即時同步：' + SY.st; } }
+    // v162 收工上傳：畫的時候只存手機，停手 60 秒／關畫板／App 切到背景，才一次上傳
+    const SY_IDLE = 60000;
+    window.syPush = () => {
+      if (!SY.on) return; clearTimeout(SY.timer); SY.timer = setTimeout(syFlush, SY_IDLE);
+      clearTimeout(SY.pT); SY.pT = setTimeout(() => { SY.pend = syPendCount(); syUi(); }, 400);
+    };
+    window.syFlushNow = () => { if (!SY.on || !SY.fb) return; if (SY.timer || SY.pend) syFlush(); };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) { try { window.syFlushNow(); } catch (e) {} } });
+    window.addEventListener('pagehide', () => { try { window.syFlushNow(); } catch (e) {} });
+    function syUi() { const b = document.getElementById('bd-syncdot'); if (b) { b.style.display = SY.on ? '' : 'none'; const bad = /失敗|離線|錯誤/.test(SY.st), pn = SY.pend || 0; b.style.background = bad ? '#ef4444' : (pn ? '#f59e0b' : '#22c55e'); b.textContent = pn && !bad ? (pn > 99 ? '99+' : String(pn)) : ''; Object.assign(b.style, pn && !bad ? { width: 'auto', height: '14px', minWidth: '14px', padding: '0 3px', borderRadius: '7px', font: '700 9px/14px sans-serif', color: '#111', fontStyle: 'normal', top: '0', right: '0' } : { width: '9px', height: '9px', minWidth: '', padding: '0', borderRadius: '50%', top: '3px', right: '3px' }); b.title = '班同步：' + SY.st + (pn ? '（' + pn + ' 筆待上傳，關畫板或切出 App 時自動上傳）' : ''); }  const m = document.getElementById('syncBtn'); if (m) { m.style.outline = SY.on ? '2px solid ' + (/失敗|離線|錯誤/.test(SY.st) ? '#ef4444' : '#22c55e') : 'none'; m.title = '班即時同步：' + SY.st; } }
     // 省讀取量：畫圖的監聽（整個班的全部筆跡）只在打開畫板後才開、而且換日期不重開；換日期只重開「當天工單」的監聽
     const syWatchBoard = (fb) => {
       if (SY.unB && SY.bTeam === SY.team) return;
       try { SY.unB && SY.unB(); } catch (e) {}
-      SY.bTeam = SY.team;
-      SY.unB = fb.watch(syPath(), (changes, err) => {
+      SY.bTeam = SY.team; syEnsureSig();
+      const since = Number(syGet(syTK(SY.team), '0')) || 0;              // 上次看到的最新伺服器時間；沒有＝第一次 → 整班讀一次
+      let firstB = true;
+      const cbB = (changes, err) => {
         if (SY.bTeam !== SY.team) return;
-        if (err) { SY.st = '離線／錯誤：' + (err.message || err); syUi(); return; }
-        syApply(changes); SY.st = '已同步'; syUi();
-        syFlush();
-      });
+        if (err) {
+          if (since > 0 && !SY.bFull) { SY.bFull = true; try { SY.unB && SY.unB(); } catch (e) {} SY.unB = fb.watch(syPath(), cbB); return; }   // 增量查詢失敗 → 退回整班監聽（舊做法）
+          SY.st = '離線／錯誤：' + (err.message || err); syUi(); return;
+        }
+        syApply(changes); if (!/上傳中/.test(SY.st)) SY.st = '已同步';
+        if (firstB) { firstB = false; syFlush(); } else syUi();          // 只有剛連上時補傳一次；之後照「收工上傳」的時機
+      };
+      SY.unB = since > 0 ? fb.watchSince(syPath(), since - 5 * 60000, cbB) : fb.watch(syPath(), cbB);   // 往前多抓 5 分鐘當保險
     };
     window.syBoardOn = async () => { SY.boardWanted = true; if (!SY.team) return; try { syWatchBoard(await syLoad()); } catch (e) {} };
     window.syStart = async (taskOnly) => {
       if (!SY.team) return; if (taskOnly) { try { SY.unsub && SY.unsub(); } catch (e) {} SY.unsub = null; clearTimeout(SY.ttimer); SY.tReady = false; } else window.syStop(true);
       try {
         SY.st = '連線中…'; SY.on = true; syUi();
-        const fb = await syLoad(); SY.date = String(activeDate); if (SY.sigTeam !== SY.team) { SY.sig = new Map(); SY.sigTeam = SY.team; }
+        const fb = await syLoad(); SY.date = String(activeDate); syEnsureSig();
         const myDate = SY.date;
         SY.tsig = new Map(); SY.tord = new Map();
         const u2 = fb.watch(syPath('tasks'), (changes, err) => {
@@ -4951,9 +5110,10 @@
       const joined = !!SY.team;
       ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>👥 班即時同步</span><button class="gq-x" data-k="c">✕</button></div><div class="gq-msg">' +
         (joined ? `班代碼：<b style="color:#fde047;font-family:var(--mono)">${SY.team.replace(/[<>&]/g, '')}</b>\n你：${SY.by.replace(/[<>&]/g, '')}\n狀態：${String(SY.st).replace(/[<>&]/g, '')}\n\n同班的人輸入同一個班代碼，今天的畫就會即時同步。` : '還沒加入任何班。加入後，你畫的圖會即時出現在同班的手機與電腦。') +
-        '</div><div class="gq-actions" style="flex-direction:column">' + (joined ? '<button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
+        '</div><div class="gq-actions" style="flex-direction:column">' + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
       ov.addEventListener('click', async (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target !== ov && !k) return; ov.remove();
-        if (k === 'jn') await syJoin(); else if (k === 'lv') await syLeave(); else if (k === 'cl') await syClean();
+        if (k === 'up') { try { bdSave(); } catch (er) {} await syFlush(); ghSayX(/失敗/.test(SY.st) ? SY.st : '已上傳'); }
+        else if (k === 'jn') await syJoin(); else if (k === 'lv') await syLeave(); else if (k === 'cl') await syClean();
         else if (k === 'cp') { try { await navigator.clipboard.writeText(SY.team); ghSayX('已複製班代碼'); } catch (er) {} } });
       document.body.appendChild(ov);
     };
@@ -5060,7 +5220,7 @@
     });
     window.bdClearAll = async () => {                                    // 🗑 只清「目前畫面範圍內＋目前日期篩選」的物件，並放進回收區（📅 清單裡可還原）
       bdSyncView(); const a = bdMerc(0, BD.H), b = bdMerc(BD.W, 0), vx0 = a[0], vy0 = a[1], vx1 = b[0], vy1 = b[1];
-      const hit = BD.shapes.filter(x => { if (!bdVisDay(x)) return false; try { const q = bdBox(x); return !(q[2] < vx0 || q[0] > vx1 || q[3] < vy0 || q[1] > vy1); } catch (e) { return false; } });
+      const hit = BD.shapes.filter(x => { if (!bdVisDay(x) || bdLocked(x)) return false; try { const q = bdBox(x); return !(q[2] < vx0 || q[0] > vx1 || q[3] < vy0 || q[1] > vy1); } catch (e) { return false; } });
       if (!hit.length) { await gqAlert('目前畫面內沒有筆跡' + (BD.dayF ? '（只計算目前選的日期）' : '')); return; }
       if (!(await gqConfirm(`清除目前畫面內${BD.dayF ? '「' + (BD.dayF === bdToday() ? '今天' : bdDayTxt(BD.dayF)) + '」' : ''}的 ${hit.length} 個物件？\n其他地點、其他日期的不會動。會放進回收區，📅 清單裡可以還原。`, { danger: true, okText: '清除' }))) return;
       bdTrashPut(JSON.parse(JSON.stringify(hit)));
@@ -5217,7 +5377,7 @@
       BD.zs = map.options.zoomSnap; map.options.zoomSnap = 0;           // 允許雙指縮放停在任意倍率
       BD.merge = false; BD.hl = null;
       BD.key = bdKey();
-      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; }
+      try { BD.shapes = JSON.parse(localStorage.getItem(BD.key) || '[]'); } catch (e) { BD.shapes = []; } BD.oth = null; try { bdGuard(); } catch (e) {}
       BD.hist = []; BD.redo = []; BD.cur = null; BD.sel = null; BD.cache = null;
       try { BD.cross = localStorage.getItem('tpc_bdcross') === '1'; } catch (e) {}
       bdTool(BD.tool); bdLayout(); bdPenUi(); bdKeyUi(); bdCrossUi();
@@ -5225,6 +5385,7 @@
       if (!isFullscreenClean) { toggleFullscreenCleanMode(); BD.autoClean = true; setTimeout(() => { try { map.invalidateSize({ animate: false }); bdLayout(); bdRedrawNow(); } catch (e) {} }, 320); }
     };
     window.closeBoard = () => {
+      try { bdSave(); window.syFlushNow && window.syFlushNow(); } catch (e) {}       // v162：關畫板＝上傳
       if (BD.autoClean && isFullscreenClean) { toggleFullscreenCleanMode(); setTimeout(() => { try { map.invalidateSize({ animate: false }); } catch (e) {} }, 320); }
       BD.autoClean = false;
       BD.on = false; BD.cur = null; BD.sel = null; bdDropCache();
@@ -5247,14 +5408,19 @@
         if (t - t0 >= 1000) {
           const fps = Math.round(frames * 1000 / (t - t0)); lw = Math.max(worst, lw * 0.0); const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : '-';
           let sh = 0; try { sh = BD.shapes.length; } catch (e) {}
-          box.textContent = `fps ${fps}｜最卡 ${Math.round(worst)}ms｜記憶體 ${mem}｜圖幅 ${cadVec.tiles.size}｜筆跡 ${sh}｜DOM ${document.getElementsByTagName('*').length}`;
+          box.textContent = `🛠 工作管理員：可擦除所有人的筆跡（再連點 5 下關閉）｜fps ${fps}｜最卡 ${Math.round(worst)}ms｜記憶體 ${mem}｜圖幅 ${cadVec.tiles.size}（快取 ${cadVec.hitN || 0}／解析 ${cadVec.parseN || 0}）｜筆跡 ${sh}｜DOM ${document.getElementsByTagName('*').length}`;
           frames = 0; worst = 0; t0 = t;
         }
         raf = requestAnimationFrame(loop);
       }
       lab.addEventListener('click', () => {
         clearTimeout(tmr); tmr = setTimeout(() => { n = 0; }, 900); if (++n < 5) return; n = 0;
-        if (box) { cancelAnimationFrame(raf); box.remove(); box = null; return; }
+        if (box) {
+          cancelAnimationFrame(raf); box.remove(); box = null;
+          try { if (SY.timer || SY.pend || SY.adm) { const was = SY.adm; if (was) { try { bdSave(); } catch (e) {} syFlush().finally(() => { SY.adm = false; try { BD.oth = null; bdGuard(); } catch (e) {} }); return; } } } catch (e) {}   // 關閉前先把管理員做的修改上傳（帶 adm 標記，別人才會接受）
+          return;
+        }
+        try { SY.adm = true; BD.oth = null; } catch (e) {}
         box = document.createElement('div'); box.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99999;padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.75);color:#4ade80;font:700 11px/1.3 monospace;pointer-events:none;max-width:96vw;white-space:normal';
         document.body.appendChild(box); last = 0; t0 = 0; frames = 0; worst = 0; raf = requestAnimationFrame(loop);
       });
