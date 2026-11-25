@@ -477,7 +477,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v178</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v181</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2639,7 +2639,21 @@
     document.getElementById('btn-back-today').onclick = () => switchActiveDate(todayKey);
     document.getElementById('date-bar-text').onclick = () => document.getElementById('btn-month').click();
 
-    function switchViewMode(mode) {
+    // v179 安卓「返回鍵」：進街景／畫圖／修改工單時先記一筆瀏覽紀錄，按返回＝關掉那一層回到地圖主畫面，不會直接退出 App
+    const gqBack = { stack: [], skip: 0 };
+    window.gqBackPush = (name, fn) => { if (gqBack.stack.some(x => x.name === name)) return; gqBack.stack.push({ name, fn }); try { history.pushState({ gq: name }, ''); } catch (e) {} };
+    window.gqBackDone = (name) => {                                  // 用畫面上的按鈕關掉的 → 把那筆紀錄收回，免得之後按返回沒反應
+      const i = gqBack.stack.map(x => x.name).lastIndexOf(name); if (i < 0) return;
+      gqBack.stack.splice(i, 1); gqBack.skip++; try { history.back(); } catch (e) { gqBack.skip--; }
+    };
+    window.addEventListener('popstate', () => {
+      if (gqBack.skip > 0) { gqBack.skip--; return; }
+      const it = gqBack.stack.pop(); if (it) { try { it.fn(); } catch (e) {} }
+    });
+    function switchViewMode(mode, fromBack) {
+      const prevMode = currentViewMode;
+      if (mode === 'sv' && prevMode !== 'sv') gqBackPush('sv', () => switchViewMode('map', true));
+      if (mode !== 'sv' && prevMode === 'sv' && !fromBack) gqBackDone('sv');
       currentViewMode = mode;
       btnModeMap.classList.toggle('active', mode === 'map');
       btnModeSv.classList.toggle('active', mode === 'sv');
@@ -3287,7 +3301,8 @@
       return modal;
     }
 
-    function closeEditModal() {
+    function closeEditModal(fromBack) {
+      if (fromBack !== true) gqBackDone('edit');
       const modal = document.getElementById('task-edit-modal');
       if (modal) modal.style.display = 'none';
       editingTaskIndex = null;
@@ -3323,6 +3338,7 @@
       }
 
       modal.style.display = 'flex';
+      gqBackPush('edit', () => closeEditModal(true));
       try { modal._ndUi && modal._ndUi(); } catch (e) {}
       setTimeout(() => {
         editInputEl.focus();
@@ -5236,7 +5252,7 @@
       const joined = !!SY.team;
       ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>👥 班即時同步</span><button class="gq-x" data-k="c">✕</button></div><div class="gq-msg">' +
         (joined ? `班代碼：<b style="color:#fde047;font-family:var(--mono)">${SY.team.replace(/[<>&]/g, '')}</b>\n你：${SY.by.replace(/[<>&]/g, '')}\n狀態：${String(SY.st).replace(/[<>&]/g, '')}\n\n同班的人輸入同一個班代碼，今天的畫就會即時同步。` : '還沒加入任何班。加入後，你畫的圖會即時出現在同班的手機與電腦。') +
-        '</div><div class="gq-actions" style="flex-direction:column">' + (joined && SY.adm ? '<button class="gq-btn" data-k="lgu" style="background:#0e7490">☁ 備份這支手機的月紀錄（開發人員）</button><button class="gq-btn" data-k="lgd" style="background:#0e7490">⬇ 合併全班的月紀錄備份（開發人員）</button>' : '') + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
+        '</div><div class="gq-actions" style="flex-direction:column">' + (joined && SY.adm ? '<button class="gq-btn" data-k="lgu" style="background:#0e7490">☁ 備份這支手機的月紀錄（開通人員）</button>' : '') + (joined ? '<button class="gq-btn" data-k="lgd" style="background:#0e7490">⬇ 合併班上的月紀錄備份</button>' : '') + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
       ov.addEventListener('click', async (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target !== ov && !k) return; ov.remove();
         if (k === 'up') { try { bdSave(); } catch (er) {} await syFlush(); ghSayX(/失敗/.test(SY.st) ? SY.st : '已上傳'); }
         else if (k === 'lgu') await syLogsUp(); else if (k === 'lgd') await syLogsDown();
@@ -5247,6 +5263,11 @@
     // v170 月紀錄備份（開發人員開通後才看得到）：
     // ☁ 上傳：這支手機的出工月曆，一個月一個文件 teams/班/logs/{名字}__{YYYY-MM}，重複上傳＝覆蓋自己那份
     // ⬇ 合併：讀全班每個人的備份，只「加上」本機沒有的工單（同 id 或同桿號＋地址視為同一張），不刪不改本機原有的
+    // v180 刪除紀錄（墓碑）：在歷史標點刪掉的工單記在本機，之後合併備份不會再被加回來；開通人員備份時一起上傳，大家合併時也會跳過
+    const histDelGet = () => { try { return new Set(JSON.parse(localStorage.getItem('tpc_hist_del') || '[]')); } catch (e) { return new Set(); } };
+    const histDelPut = (set) => { try { localStorage.setItem('tpc_hist_del', JSON.stringify(Array.from(set).slice(-20000))); } catch (e) {} };
+    const histTKey = (date, t) => date + '|' + (t.id || ((t.code || '') + '|' + (t.note || '')));
+    const histTKey2 = (date, t) => date + '|' + (t.code || '') + '|' + (t.note || '');
     const syLogKey = () => String(SY.by || 'noname').replace(/[\/.#\[\]\s]/g, '_');
     async function syLogsUp() {
       if (!SY.team) return;
@@ -5256,7 +5277,8 @@
       for (const m of Object.keys(months).sort()) {
         const d = JSON.stringify(months[m]); if (d.length > 900000) { big.push(m); continue; }
         const cnt = Object.values(months[m]).reduce((a, x) => a + (x || []).length, 0);
-        try { await fb.set(`teams/${SY.team}/logs`, syLogKey() + '__' + m, { d, by: SY.by || '', m, n: cnt, ts: Date.now() }); ok++; n += cnt; } catch (e) { await gqAlert('備份失敗：' + (e && e.message || e)); return; }
+        const del = JSON.stringify(Array.from(histDelGet()).filter(k => k.slice(0, 7) === m));
+        try { await fb.set(`teams/${SY.team}/logs`, syLogKey() + '__' + m, { d, del, by: SY.by || '', m, n: cnt, ts: Date.now() }); ok++; n += cnt; } catch (e) { await gqAlert('備份失敗：' + (e && e.message || e)); return; }
       }
       await gqAlert(`☁ 已備份 ${ok} 個月、共 ${n} 件工單到班上${big.length ? `\n（${big.join('、')} 太大沒傳）` : ''}`);
     }
@@ -5267,12 +5289,13 @@
       const who = Array.from(new Set(docs.map(x => x.data.by || '?')));
       if (!(await gqConfirm(`班上有 ${who.join('、')} 的備份（${docs.length} 個月份）。\n只會加上本機沒有的工單，不會刪改本機原有的。確定合併？`, { okText: '合併' }))) return;
       let add = 0, days = 0; const key = (t) => t.id || (t.code + '|' + t.note), key2 = (t) => (t.code || '') + '|' + (t.note || '');
+      const dead = histDelGet(); docs.forEach(x => { try { JSON.parse(x.data.del || '[]').forEach(k => dead.add(k)); } catch (e) {} });   // 本機刪過的＋開通人員刪過的都跳過
       docs.forEach(x => {
         let mo = {}; try { mo = JSON.parse(x.data.d) || {}; } catch (e) { return; }
         Object.keys(mo).forEach(date => {
           const cur = date === activeDate ? tasks : (monthLogs[date] || []);
           const h1 = new Set(cur.map(key)), h2 = new Set(cur.map(key2));
-          const more = (mo[date] || []).filter(t => t && !h1.has(key(t)) && !h2.has(key2(t)));
+          const more = (mo[date] || []).filter(t => t && !h1.has(key(t)) && !h2.has(key2(t)) && !dead.has(histTKey(date, t)) && !dead.has(histTKey2(date, t)));
           if (!more.length) return;
           days++; add += more.length;
           if (date === activeDate) tasks = [...tasks, ...clone(more)]; else monthLogs[date] = [...cur, ...clone(more)];
@@ -5546,6 +5569,7 @@
       { const c = document.getElementById('map-floating-controls'); if (c) c.classList.remove('bd-open'); const mt = document.getElementById('more-tools'), mb = document.getElementById('moreBtn'); if (mt) mt.style.display = 'none'; if (mb) mb.classList.remove('tracking-active'); }
       if (streetviewframe.style.display === 'block') { alert('街景模式下不能畫圖，請先回到地圖'); return; }
       bdEnsureDom();
+      gqBackPush('board', () => closeBoard(true));
       try { window.syBoardOn && window.syBoardOn(); } catch (e) {}
       BD.on = true; BD.fx = 1; BD.tool = 'none';
       BD.dayF = null; BD.who = null; try { bdDayUi(); } catch (e) {}
@@ -5561,7 +5585,8 @@
       BD.autoClean = false;                                              // 進入畫圖：自動點一下「⤢ 放大」收起上方工單與導航列，畫面全給地圖
       if (!isFullscreenClean) { toggleFullscreenCleanMode(); BD.autoClean = true; setTimeout(() => { try { map.invalidateSize({ animate: false }); bdLayout(); bdRedrawNow(); } catch (e) {} }, 320); }
     };
-    window.closeBoard = () => {
+    window.closeBoard = (fromBack) => {
+      if (fromBack !== true) gqBackDone('board');
       try { bdSave(); window.syFlushNow && window.syFlushNow(); } catch (e) {}       // v162：關畫板＝上傳
       if (BD.autoClean && isFullscreenClean) { toggleFullscreenCleanMode(); setTimeout(() => { try { map.invalidateSize({ animate: false }); } catch (e) {} }, 320); }
       BD.autoClean = false;
@@ -5634,8 +5659,24 @@
       const btn = (c, bg, t) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:7px;border:none;border-radius:6px;background:${bg};color:#fff;font-weight:700">${t}</button>`;
       return `<div style="min-width:220px"><div><b>${it.length > 1 ? `去過 ${it.length} 次` : '去過 1 次'}</b>　最近 ${ago <= 0 ? '今天' : ago + ' 天前'}</div>` + rows +
         btn(`openSvAt(${e.ll.lat},${e.ll.lng})`, '#0e7490', '📷 看街景') +
-        (near ? btn(`histBoardGo(${e.ll.lat},${e.ll.lng})`, '#15803d', `✏️ 看這裡的畫圖（${near} 筆）`) : '') + `</div>`;
+        (near ? btn(`histBoardGo(${e.ll.lat},${e.ll.lng})`, '#15803d', `✏️ 看這裡的畫圖（${near} 筆）`) : '') +
+        (it.some(i => i.date !== activeDate) ? btn(`histDelPt(${histPts.indexOf(e)})`, '#7f1d1d', '🗑 刪除這個點（只刪這支手機）') : '') + `</div>`;
     }
+    window.histDelPt = async (i) => {                                  // 刪掉這個點的所有過去紀錄（今天的工單不動，要刪請到工單列表）
+      const e = histPts && histPts[i]; if (!e) return;
+      const old = e.items.filter(x => x.date !== activeDate); if (!old.length) return;
+      map.closePopup();
+      if (!(await gqConfirm(`刪除這個點的 ${old.length} 筆紀錄？\n${esc0(e.code)}\n\n只刪這支手機的出工月曆${SY.adm ? '；之後按「☁ 備份」會把刪除一起傳上雲端，大家合併時也會跳過' : '，不影響別人'}。`, { danger: true, okText: '刪除' }))) return;
+      const dead = histDelGet(); let n = 0;
+      old.forEach(x => {
+        const arr = monthLogs[x.date]; if (!arr) return;
+        const keep = arr.filter(t => { const hit = (x.id && t.id === x.id) || (!x.id && (t.code || '') === x.rc && (t.note || '') === x.note); if (hit) { dead.add(histTKey(x.date, t)); dead.add(histTKey2(x.date, t)); n++; } return !hit; });
+        if (keep.length) monthLogs[x.date] = keep; else delete monthLogs[x.date];
+      });
+      histDelPut(dead); persistLogs(); try { renderCalendar(); } catch (er) {}
+      toggleHistPts(); toggleHistPts();                               // 重畫歷史標點
+    };
+    const esc0 = (x) => String(x).replace(/[<>&]/g, '');
     window.toggleHistPts = () => {
       const btn = document.getElementById('histBtn');
       const tip = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 13px/1.5 sans-serif;pointer-events:none;text-align:center;white-space:pre-line'; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); };
@@ -5645,7 +5686,7 @@
         if (!t) return; const ll = getTaskLatLng(t); if (!ll) return;
         const k = t.code && t.code !== '📍地址導航' ? t.code : ll.lat.toFixed(5) + ',' + ll.lng.toFixed(5);
         let e = g.get(k); if (!e) { e = { ll, code: t.code && t.code !== '📍地址導航' ? t.code : '📍地址', items: [] }; g.set(k, e); }
-        e.items.push({ date, note: t.note || '', time: t.time || '', nd: !!t.isND, no: t._no || 0, of: t._of || 0, code: t.code && t.code !== '📍地址導航' ? t.code : '' });
+        e.items.push({ date, note: t.note || '', time: t.time || '', nd: !!t.isND, no: t._no || 0, of: t._of || 0, code: t.code && t.code !== '📍地址導航' ? t.code : '', id: t.id || '', rc: t.code || '' });
       };
       const addDay = (d, arr) => (arr || []).forEach((t, i) => { if (!t) return; const x = Object.assign({}, t, { _no: i + 1, _of: arr.length }); add(d, x); });
       Object.keys(monthLogs).forEach(d => { if (d !== activeDate) addDay(d, monthLogs[d]); });
@@ -5692,6 +5733,16 @@
       toggleAddPinMode();
       dropPinAt(e.latlng.lat, e.latlng.lng);
     });
+    // v181：圖釘直接加入工單（不用再按「匯入」貼上）。位置用圖釘的精確點，地址帶入路名
+    window.pinToTask = async (lat, lng, code, road) => {
+      map.closePopup();
+      if (tasks.some(t => t.code === code)) { if (!(await gqConfirm(`${code} 已經在工單裡了，還要再加一張嗎？`, { okText: '再加一張' }))) return; }
+      const ok = await processAndSaveTaskInput(code.slice(1), null, code[0]);
+      if (!ok) { alert('加入失敗：圖號無法解析'); return; }
+      const t = tasks[tasks.length - 1];
+      if (t && t.code === code) { t.lat = lat; t.lng = lng; if (!t.note && road) t.note = road; saveTasks(); renderTasks(false); }
+      if (inspectMarker) { map.removeLayer(inspectMarker); inspectMarker = null; }
+    };
     window.clearInspectPin = () => { map.closePopup(); if (inspectMarker) { map.removeLayer(inspectMarker); inspectMarker = null; } };
     // v169：普通模式下在地圖上長按約 0.55 秒 = 在那裡放圖釘（查圖號、已複製）；電腦用右鍵
     (function () {
@@ -5739,6 +5790,7 @@
         ${road ? `路名: <b>${road}</b><br>` : ''}
         圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
         <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
+        <button onclick="pinToTask(${lat}, ${lng}, '${code}', '${(road || '').replace(/['"\\<>]/g, '')}')" style="background:#16a34a;padding:9px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;font-size:15px;">➕ 加入${activeDate === todayKey ? '今天' : '這天'}的工單</button>
         <button onclick="openSvAt(${lat}, ${lng})" style="background:#0e7490;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📷 看這裡的街景</button>
         <button onclick="clearInspectPin()" style="background:#475569;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">✕ 清除這個圖釘</button>
         <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
