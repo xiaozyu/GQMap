@@ -189,7 +189,7 @@
     .hide-all-case-labels .case-label-large { display: none !important; }
     .hide-all-markers .leaflet-marker-pane { display: none !important; }
 
-    .floating-controls { position: absolute; bottom: 18px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 900; }
+    .floating-controls { position: absolute; bottom: 18px; right: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 900; max-height: calc(100% - 78px); flex-wrap: wrap-reverse; align-content: flex-end; }   /* v168：高度不夠就自動往左排第二欄（平板轉向、按鈕變多都不會疊到上方工具列） */
     .float-btn {
       background: var(--glass); color: var(--text); border: 1px solid rgba(255,255,255,.16);
 
@@ -197,6 +197,14 @@
       font-size: 20px; font-weight: 700; box-shadow: var(--sh-1); cursor: pointer; transition: transform .08s, background .15s, box-shadow .15s;
     }
     .float-btn:active { transform: scale(.93); }
+    /* v176 街景小人（工程人員）：手腳各自繞關節擺動 */
+    .pg-legL, .pg-legR, .pg-armL, .pg-armR { transform-box: fill-box; }
+    .pg-legL, .pg-legR { transform-origin: 50% 0; } .pg-armL { transform-origin: 100% 100%; } .pg-armR { transform-origin: 0 100%; }
+    #peg-ghost { position: fixed; z-index: 99999; left: 0; top: 0; width: 66px; height: 99px; pointer-events: none; transform-origin: 50% 6px; filter: drop-shadow(0 6px 5px rgba(0,0,0,.35)); will-change: transform; }
+    #peg-shadow { position: fixed; z-index: 99998; width: 34px; height: 12px; margin: -6px 0 0 -17px; border-radius: 50%; background: rgba(0,0,0,.35); box-shadow: 0 0 0 3px rgba(37,99,235,.55); pointer-events: none; }
+    /* v175 ⋯ 展開＝在 ⋯ 左邊橫排一列（常用的離 ⋯ 最近），右邊那欄常駐按鈕完全不動；放不下就往上多排一列 */
+    #more-tools { position: absolute; right: calc(100% + 10px); bottom: 0; flex-direction: row-reverse; flex-wrap: wrap-reverse; gap: 10px; width: max-content; max-width: calc(100vw - 96px); }
+    body.bd-on #more-tools { position: static; flex-direction: column; flex-wrap: nowrap; width: auto; max-width: none; gap: inherit; }   /* 畫圖時維持原本「全部展開成一欄」 */
     .float-btn.tracking-active { background: var(--green-d); color: #fff; border-color: #bbf7d0; box-shadow: 0 0 0 4px rgba(34,197,94,.3), var(--sh-1); }
     .float-btn.pin-mode-active { background: #9333ea; color: #fff; border-color: #e9d5ff; box-shadow: 0 0 0 4px rgba(168,85,247,.3), var(--sh-1); }
     .float-btn.sort-mode-active { background: var(--red-d); color: #fff; border-color: #fecaca; box-shadow: 0 0 0 4px rgba(239,68,68,.3), var(--sh-1); }
@@ -443,6 +451,8 @@
   <div class="map-container">
     <div id="leaflet-map"></div>
     <iframe id="streetview-frame" src="about:blank"></iframe>
+    <button id="sv-back" onclick="switchViewMode('map')" style="display:none;position:absolute;left:10px;bottom:18px;z-index:1000;height:46px;padding:0 18px;border-radius:23px;border:2px solid #fff;background:#2563eb;color:#fff;font:800 16px/1 sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.45)">🗺 回地圖</button>
+    <div id="sv-code" title="點一下複製圖號" style="display:none;position:absolute;left:10px;bottom:72px;z-index:1000;padding:6px 12px;border-radius:10px;background:rgba(15,23,42,.88);border:1px solid rgba(255,255,255,.25);color:#fde047;font:800 17px/1.3 monospace;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.45)"></div>
 
     <div id="here-wrap"><div id="here-code" title="畫面中心所在圖號"></div><div id="here-time"></div></div>
     <div id="here-cross"><span id="here-cross-label"></span></div>
@@ -467,7 +477,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v166</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v178</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -478,19 +488,21 @@
     </div>
 
     <div id="map-floating-controls" class="floating-controls">
-      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-        </svg>
-      </div>
       <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)" style="font-weight:900;font-size:22px;">1</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
-      <div class="float-btn" id="addPinBtn" onclick="pinBtnTap()" title="點擊地圖查圖號/新增地標（連按兩下：清除圖上標記）">📍</div>
+      <div class="float-btn" id="addPinBtn" onclick="pinBtnTap()" style="display:none" title="（v169 起改成：地圖上長按 = 放圖釘）">📍</div>
       <div class="float-btn" id="trackingBtn" onclick="carBtnTap()" title="定位：按一下開啟並飛到我的位置；已開且畫面離開我時按一下飛回；畫面已在我的位置時按一下關閉">🚗</div>
-      <div id="more-tools" style="display:none;flex-direction:column;gap:inherit;">
-        <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
-        <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
+      <div id="more-tools" style="display:none">
         <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
+        <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
+        <div class="float-btn" id="histBtn" onclick="toggleHistPts()" title="歷史標點：顯示以前做過的全部工單位置">🗂</div>
+        <div class="float-btn" id="pegBtn" title="街景小人：按住拖到地圖上放開，就看那裡的街景" style="touch-action:none"><svg viewBox="-2 2 44 60" width="30" height="40" style="pointer-events:none"><g class="pg-legL"><rect x="13.5" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="12" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-legR"><rect x="21" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="20" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-armL"><g transform="rotate(-28 9 24)"><rect x="6" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="8.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><g class="pg-armR"><g transform="rotate(28 31 24)"><rect x="29" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="31.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><rect x="11" y="21" width="18" height="21" rx="4" fill="#1e40af"/><path d="M11 24Q11 21 14 21L26 21Q29 21 29 24L29 39L11 39Z" fill="#f97316"/><rect x="11" y="29" width="18" height="2.2" fill="#e5e7eb"/><rect x="11" y="34" width="18" height="2.2" fill="#e5e7eb"/><rect x="19" y="21" width="2" height="18" fill="#1e40af"/><rect x="11" y="38.5" width="18" height="3" fill="#78350f"/><rect x="23.5" y="38" width="4" height="5" rx="1" fill="#9ca3af"/><circle cx="20" cy="14" r="6.5" fill="#f2c9a0"/><circle class="pg-eye" cx="17.8" cy="14.3" r="0.9" fill="#1f2937"/><circle class="pg-eye" cx="22.2" cy="14.3" r="0.9" fill="#1f2937"/><path class="pg-mouth" d="M17.8 17Q20 18.6 22.2 17" stroke="#7c2d12" stroke-width="0.9" fill="none" stroke-linecap="round"/><path d="M12.6 12Q12.8 4.2 20 4Q27.2 4.2 27.4 12Z" fill="#facc15"/><rect x="11" y="11" width="18" height="2.4" rx="1.2" fill="#eab308"/><rect x="19" y="4.4" width="2" height="7" rx="1" fill="#fde047"/></svg></div>
+        <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
+        <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </div>
       </div>
       <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
     </div>
@@ -2632,7 +2644,9 @@
       btnModeMap.classList.toggle('active', mode === 'map');
       btnModeSv.classList.toggle('active', mode === 'sv');
 
+      { const sb = document.getElementById('sv-back'); if (sb) sb.style.display = mode === 'sv' ? 'block' : 'none'; const sc = document.getElementById('sv-code'); if (sc && mode !== 'sv') sc.style.display = 'none'; }   // v175：街景時左下角固定一顆「回地圖」（全螢幕模式看不到上方切換鈕也回得來）
       if (mode === 'map') {
+        svAt = null;
         streetviewframe.style.display = 'none';
         leafletMapEl.style.display = 'block';
         mapFloatingControls.style.display = 'flex';
@@ -2656,7 +2670,82 @@
     btnModeMap.onclick = () => switchViewMode('map');
     btnModeSv.onclick = () => switchViewMode('sv');
 
+    // v171 街景小人：從 ⋯ 裡把 🧍 拖到地圖上放開 → 看那一點的街景（按「地圖」回來）
+    let svAt = null;
+    window.openSvAt = (lat, lng) => { map.closePopup(); svAt = { lat, lng }; switchViewMode('sv'); };
+    (function () {
+      const btn = document.getElementById('pegBtn'); if (!btn) return;
+      const SVG = '<svg viewBox="-2 2 44 60" width="66" height="99"><g class="pg-legL"><rect x="13.5" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="12" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-legR"><rect x="21" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="20" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-armL"><g transform="rotate(-28 9 24)"><rect x="6" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="8.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><g class="pg-armR"><g transform="rotate(28 31 24)"><rect x="29" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="31.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><rect x="11" y="21" width="18" height="21" rx="4" fill="#1e40af"/><path d="M11 24Q11 21 14 21L26 21Q29 21 29 24L29 39L11 39Z" fill="#f97316"/><rect x="11" y="29" width="18" height="2.2" fill="#e5e7eb"/><rect x="11" y="34" width="18" height="2.2" fill="#e5e7eb"/><rect x="19" y="21" width="2" height="18" fill="#1e40af"/><rect x="11" y="38.5" width="18" height="3" fill="#78350f"/><rect x="23.5" y="38" width="4" height="5" rx="1" fill="#9ca3af"/><circle cx="20" cy="14" r="6.5" fill="#f2c9a0"/><circle class="pg-eye" cx="17.8" cy="14.3" r="0.9" fill="#1f2937"/><circle class="pg-eye" cx="22.2" cy="14.3" r="0.9" fill="#1f2937"/><path class="pg-mouth" d="M17.8 17Q20 18.6 22.2 17" stroke="#7c2d12" stroke-width="0.9" fill="none" stroke-linecap="round"/><path d="M12.6 12Q12.8 4.2 20 4Q27.2 4.2 27.4 12Z" fill="#facc15"/><rect x="11" y="11" width="18" height="2.4" rx="1.2" fill="#eab308"/><rect x="19" y="4.4" width="2" height="7" rx="1" fill="#fde047"/></svg>';
+      const tipMsg = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:30%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 14px/1.4 sans-serif;pointer-events:none'; document.body.appendChild(d); setTimeout(() => d.remove(), 1600); };
+      // 物理：小人抓著安全帽頂端吊在手指上方；手指往右甩 → 身體往左盪（彈簧＋阻尼），速度越快手腳踢得越大
+      const LIFT = 130, FOOT = 26;                                   // 安全帽頂在手指上方 130px；落點（影子）在手指上方 26px，手指不會擋到
+      let g = null, sh = null, raf = 0, sx = 0, sy = 0, x = 0, y = 0, lx = 0, vx = 0, th = 0, om = 0, t0 = 0, moved = false, parts = null;
+      const place = () => {
+        g.style.transform = `translate(${x - 33}px,${y - LIFT}px) rotate(${th}deg)`;
+        sh.style.left = x + 'px'; sh.style.top = (y - FOOT) + 'px';
+      };
+      const loop = (t) => {
+        if (!g) return;
+        const dv = x - lx; lx = x; vx = vx * 0.7 + dv * 0.3;
+        const target = Math.max(-75, Math.min(75, vx * 5));          // 往右移 → 順時針（腳往左甩）
+        om += (target - th) * 0.09; om *= 0.88; th = Math.max(-95, Math.min(95, th + om));
+        const sp = Math.min(1, Math.abs(vx) / 12 + Math.abs(om) / 10), k = (t - t0) / 1000;
+        const kick = Math.sin(k * 18) * (8 + 32 * sp), wave = Math.sin(k * 14 + 1) * (6 + 26 * sp);
+        parts.legL.style.transform = `rotate(${kick}deg)`; parts.legR.style.transform = `rotate(${-kick}deg)`;
+        parts.armL.style.transform = `rotate(${-wave}deg)`; parts.armR.style.transform = `rotate(${wave}deg)`;
+        place(); raf = requestAnimationFrame(loop);
+      };
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch (er) {}
+        sx = x = lx = e.clientX; sy = y = e.clientY; vx = th = om = 0; moved = false;
+      });
+      btn.addEventListener('pointermove', (e) => {
+        if (!(e.buttons || e.pressure)) return;
+        x = e.clientX; y = e.clientY;
+        if (!moved && Math.hypot(x - sx, y - sy) > 8) {
+          moved = true;
+          sh = document.createElement('div'); sh.id = 'peg-shadow'; document.body.appendChild(sh);
+          g = document.createElement('div'); g.id = 'peg-ghost'; g.innerHTML = SVG; document.body.appendChild(g);
+          parts = { legL: g.querySelector('.pg-legL'), legR: g.querySelector('.pg-legR'), armL: g.querySelector('.pg-armL'), armR: g.querySelector('.pg-armR') };
+          om = (x - sx) > 0 ? 6 : -6;                                 // 剛被抓起來先晃一下
+          t0 = performance.now(); place(); raf = requestAnimationFrame(loop);
+          try { navigator.vibrate && navigator.vibrate(15); } catch (er) {}
+        }
+      });
+      const end = (e, cancel) => {
+        cancelAnimationFrame(raf);
+        if (!moved) { if (!cancel) tipMsg('按住工程人員拖到地圖上放開'); return; }
+        moved = false; const gg = g, ss = sh; g = null; sh = null;
+        const px = e.clientX, py = e.clientY - FOOT;
+        const r = map.getContainer().getBoundingClientRect(), mx = px - r.left, my = py - r.top;
+        const ok = !cancel && mx >= 0 && my >= 0 && mx <= r.width && my <= r.height;
+        if (!ok) { gg.style.transition = 'opacity .2s'; gg.style.opacity = '0'; ss.remove(); setTimeout(() => gg.remove(), 220); return; }
+        // 放下：擺正、往下落到影子上、壓扁一下，再進街景
+        gg.style.transition = 'transform .16s cubic-bezier(.5,0,1,1)';
+        gg.style.transform = `translate(${px - 33}px,${py - 93}px) rotate(0deg)`;
+        setTimeout(() => { gg.style.transition = 'transform .1s'; gg.style.transformOrigin = '50% 100%'; gg.style.transform = `translate(${px - 33}px,${py - 93}px) scale(1.15,.82)`; }, 160);
+        setTimeout(() => {
+          gg.remove(); ss.remove();
+          const ll = map.containerPointToLatLng([mx, my]);
+          try { toggleMoreTools(); } catch (er) {}
+          openSvAt(ll.lat, ll.lng);
+        }, 300);
+      };
+      btn.addEventListener('pointerup', (e) => end(e, false));
+      btn.addEventListener('pointercancel', (e) => end(e, true));
+    })();
+    function svCodeShow(lat, lng, code) {                             // v177：街景左下角顯示小人放下那一點的圖號（點一下複製）
+      const el = document.getElementById('sv-code'); if (!el) return;
+      let c = code; try { c = c || coordToPowerCode(lat, lng); } catch (e) {}
+      if (!c) { el.style.display = 'none'; return; }
+      el.innerHTML = `🧍 ${c}<div style="font:600 11px/1.2 sans-serif;color:#cbd5e1">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>`;
+      el.style.display = 'block';
+      el.onclick = () => { try { silentCopy(c); } catch (e) {} const o = el.style.borderColor; el.style.borderColor = '#22c55e'; setTimeout(() => { el.style.borderColor = o; }, 600); };
+    }
     function updateStreetView() {
+      if (svAt) svCodeShow(svAt.lat, svAt.lng);
+      else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
+      if (svAt) { streetviewframe.src = `https://maps.google.com/maps?layer=c&cbll=${svAt.lat},${svAt.lng}&cbp=12,0,0,0,0&output=svembed`; return; }
       if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) {
         streetviewframe.src = 'about:blank';
         return;
@@ -3163,6 +3252,7 @@
               <div class="manual-input-bar" style="margin:0">
                 <span id="edit-prefix-badge" class="prefix-badge">G</span>
                 <input type="text" id="edit-modal-line-input" class="manual-input" placeholder="如: 3850HE23 或 永寧路185巷11號" autocomplete="off" autocorrect="off" spellcheck="false">
+                <button type="button" id="edit-nd-btn" title="ND 案件（按一下切換）" style="flex:none;height:30px;min-width:58px;margin-left:4px;padding:0 8px;border-radius:6px;border:2px solid #64748b;background:transparent;color:#94a3b8;font:900 14px/1 sans-serif;cursor:pointer">☐ ND</button>
               </div>
             </div>
             <div class="gq-actions">
@@ -3177,6 +3267,16 @@
         const editBadgeEl = document.getElementById('edit-prefix-badge');
         bindPrefixInputBehavior(editInputEl, editBadgeEl);
 
+        // v178 ND 打勾鈕：跟輸入框裡的「ND」兩個字雙向同步（按鈕加／拿掉 ND；手打 ND 按鈕也會自己打勾）
+        const ndBtn = document.getElementById('edit-nd-btn'), ndRe = /(^|\s)ND(?=\s|$)/i;
+        const ndUi = () => { const on = ndRe.test(editInputEl.value); ndBtn.textContent = (on ? '☑' : '☐') + ' ND'; ndBtn.style.background = on ? '#dc2626' : 'transparent'; ndBtn.style.borderColor = on ? '#fca5a5' : '#64748b'; ndBtn.style.color = on ? '#fff' : '#94a3b8'; };
+        ndBtn.onclick = () => {
+          const v = editInputEl.value;
+          editInputEl.value = ndRe.test(v) ? v.replace(/(^|\s)ND(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim() : (v.trim() + ' ND').trim();
+          ndUi();
+        };
+        editInputEl.addEventListener('input', ndUi);
+        modal._ndUi = ndUi;
         document.getElementById('modal-close-x').onclick = closeEditModal;
         document.getElementById('modal-btn-cancel').onclick = closeEditModal;
         document.getElementById('modal-btn-save').onclick = saveEditModalData;
@@ -3223,6 +3323,7 @@
       }
 
       modal.style.display = 'flex';
+      try { modal._ndUi && modal._ndUi(); } catch (e) {}
       setTimeout(() => {
         editInputEl.focus();
         editInputEl.select();
@@ -3887,6 +3988,7 @@
     }
     function bdRedrawNow() {
       bdSyncView();
+      if (BD.anim || BD.ink.style.transition) { BD.anim = false; BD.ink.style.transition = ''; BD.ui.style.transition = ''; }   // 先拿掉過渡，不然歸位會「慢慢滑回去」
       if (BD.shifted) { BD.shifted = false; BD.ink.style.transform = ''; BD.ui.style.transform = ''; }
       BD.dz = BD.z; { const mn = map.getPixelBounds().min; BD.dmn = { x: mn.x, y: mn.y }; }
       if (BD.mvp) BD.mvp.sh[BD.mvp.part] = bdMerc(BD.W / 2, BD.H / 2);
@@ -4725,6 +4827,7 @@
       // 畫圖時移動地圖：平移＝直接把畫布「搬」過去（零重畫，和底圖同步），停下來才重畫一次；縮放＝逐格重畫但先不更新各種小面板
       map.on('move zoom', () => {
         if (!BD.on) return;
+        if (BD.anim) { BD.anim = false; BD.ink.style.transition = ''; BD.ui.style.transition = ''; }   // 動畫結束 → 拿掉過渡，之後照常
         BD.moving = true;
         const sc = BD.dmn ? Math.pow(2, map.getZoom() - BD.dz) : 1;
         if (!BD.dmn || (!BD.pinching && !BD.panDirty && (BD.edit || BD.mv || BD.cur || BD.pend || BD.mvp || BD.cache || sc > 3 || sc < 0.33))) { bdRedraw(); return; }
@@ -4734,6 +4837,17 @@
         BD.ink.style.transform = tf; BD.ui.style.transform = tf; BD.shifted = true;
       });
       map.on('moveend zoomend', () => { if (BD.on && BD.moving) { BD.moving = false; bdRedraw(); } });
+      // v174：滾輪／雙擊／按鈕縮放時 Leaflet 會播 0.25 秒動畫，期間不發 zoom 事件 → 筆跡原本要等動畫播完才跳過去。
+      // 改成動畫一開始（zoomanim）就算出「縮放後」的位置，用同樣的 0.25 秒過渡一起動，跟圖釘、底圖同步
+      map.on('zoomanim', (e) => {
+        if (!BD.on || !BD.dmn || BD.cur || BD.edit || BD.mv || BD.mvp || BD.pend) return;
+        const sc = Math.pow(2, e.zoom - BD.dz); if (sc > 8 || sc < 0.125) return;
+        const mn = map.getPixelBounds(e.center, e.zoom).min;          // 縮放後畫面左上角（跟 Leaflet 自己算的一樣）
+        const tf = `translate3d(${sc * BD.dmn.x - mn.x}px,${sc * BD.dmn.y - mn.y}px,0) scale(${sc})`, tr = 'transform .25s cubic-bezier(0,0,0.25,1)';
+        BD.ink.style.transformOrigin = '0 0'; BD.ui.style.transformOrigin = '0 0';
+        BD.ink.style.transition = tr; BD.ui.style.transition = tr;
+        BD.ink.style.transform = tf; BD.ui.style.transform = tf; BD.shifted = true; BD.anim = true; BD.moving = true;
+      });
       try { let rt = 0; new ResizeObserver(() => { if (!BD.on) return; clearTimeout(rt); rt = setTimeout(bdLayout, 120); }).observe(document.getElementById('leaflet-map')); } catch (e) {}
       const colors = document.getElementById('bd-colors');
       BD_COLORS.forEach(c => { const b = document.createElement('button'); b.className = 'bd-sw'; b.dataset.c = c; b.style.background = c; b.onclick = () => bdSetColor(c); colors.appendChild(b); });
@@ -5122,13 +5236,52 @@
       const joined = !!SY.team;
       ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>👥 班即時同步</span><button class="gq-x" data-k="c">✕</button></div><div class="gq-msg">' +
         (joined ? `班代碼：<b style="color:#fde047;font-family:var(--mono)">${SY.team.replace(/[<>&]/g, '')}</b>\n你：${SY.by.replace(/[<>&]/g, '')}\n狀態：${String(SY.st).replace(/[<>&]/g, '')}\n\n同班的人輸入同一個班代碼，今天的畫就會即時同步。` : '還沒加入任何班。加入後，你畫的圖會即時出現在同班的手機與電腦。') +
-        '</div><div class="gq-actions" style="flex-direction:column">' + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
+        '</div><div class="gq-actions" style="flex-direction:column">' + (joined && SY.adm ? '<button class="gq-btn" data-k="lgu" style="background:#0e7490">☁ 備份這支手機的月紀錄（開發人員）</button><button class="gq-btn" data-k="lgd" style="background:#0e7490">⬇ 合併全班的月紀錄備份（開發人員）</button>' : '') + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
       ov.addEventListener('click', async (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target !== ov && !k) return; ov.remove();
         if (k === 'up') { try { bdSave(); } catch (er) {} await syFlush(); ghSayX(/失敗/.test(SY.st) ? SY.st : '已上傳'); }
+        else if (k === 'lgu') await syLogsUp(); else if (k === 'lgd') await syLogsDown();
         else if (k === 'jn') await syJoin(); else if (k === 'lv') await syLeave(); else if (k === 'cl') await syClean();
         else if (k === 'cp') { try { await navigator.clipboard.writeText(SY.team); ghSayX('已複製班代碼'); } catch (er) {} } });
       document.body.appendChild(ov);
     };
+    // v170 月紀錄備份（開發人員開通後才看得到）：
+    // ☁ 上傳：這支手機的出工月曆，一個月一個文件 teams/班/logs/{名字}__{YYYY-MM}，重複上傳＝覆蓋自己那份
+    // ⬇ 合併：讀全班每個人的備份，只「加上」本機沒有的工單（同 id 或同桿號＋地址視為同一張），不刪不改本機原有的
+    const syLogKey = () => String(SY.by || 'noname').replace(/[\/.#\[\]\s]/g, '_');
+    async function syLogsUp() {
+      if (!SY.team) return;
+      const all = Object.assign({}, monthLogs); if (tasks.length) all[activeDate] = tasks;
+      const months = {}; Object.keys(all).forEach(d => { const m = d.slice(0, 7); (months[m] = months[m] || {})[d] = all[d]; });
+      const fb = await syLoad(); let ok = 0, n = 0, big = [];
+      for (const m of Object.keys(months).sort()) {
+        const d = JSON.stringify(months[m]); if (d.length > 900000) { big.push(m); continue; }
+        const cnt = Object.values(months[m]).reduce((a, x) => a + (x || []).length, 0);
+        try { await fb.set(`teams/${SY.team}/logs`, syLogKey() + '__' + m, { d, by: SY.by || '', m, n: cnt, ts: Date.now() }); ok++; n += cnt; } catch (e) { await gqAlert('備份失敗：' + (e && e.message || e)); return; }
+      }
+      await gqAlert(`☁ 已備份 ${ok} 個月、共 ${n} 件工單到班上${big.length ? `\n（${big.join('、')} 太大沒傳）` : ''}`);
+    }
+    async function syLogsDown() {
+      if (!SY.team) return;
+      let docs = []; try { docs = await (await syLoad()).listDocs(`teams/${SY.team}/logs`); } catch (e) { await gqAlert('讀取備份失敗：' + (e && e.message || e)); return; }
+      if (!docs.length) { await gqAlert('班上還沒有人備份月紀錄'); return; }
+      const who = Array.from(new Set(docs.map(x => x.data.by || '?')));
+      if (!(await gqConfirm(`班上有 ${who.join('、')} 的備份（${docs.length} 個月份）。\n只會加上本機沒有的工單，不會刪改本機原有的。確定合併？`, { okText: '合併' }))) return;
+      let add = 0, days = 0; const key = (t) => t.id || (t.code + '|' + t.note), key2 = (t) => (t.code || '') + '|' + (t.note || '');
+      docs.forEach(x => {
+        let mo = {}; try { mo = JSON.parse(x.data.d) || {}; } catch (e) { return; }
+        Object.keys(mo).forEach(date => {
+          const cur = date === activeDate ? tasks : (monthLogs[date] || []);
+          const h1 = new Set(cur.map(key)), h2 = new Set(cur.map(key2));
+          const more = (mo[date] || []).filter(t => t && !h1.has(key(t)) && !h2.has(key2(t)));
+          if (!more.length) return;
+          days++; add += more.length;
+          if (date === activeDate) tasks = [...tasks, ...clone(more)]; else monthLogs[date] = [...cur, ...clone(more)];
+        });
+      });
+      if (!add) { await gqAlert('本機已經都有了，不用合併'); return; }
+      persistLogs(); saveTasks(); renderTasks(true); try { renderCalendar(); } catch (e) {}
+      await gqAlert(`⬇ 已合併 ${add} 件工單（${days} 天）`);
+    }
     const ghSayX = (t) => { const m = document.getElementById('bd-msg'); if (m && BD.on) { m.textContent = t; m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 1500); } };
 
     // ===== 工單同步：每張工單一個文件 teams/班/days/日期/tasks/{id}，內容 d＝工單 JSON、o＝順序；同班所有人都能新增／修改／刪除／排序（最後寫入者為準）=====
@@ -5433,6 +5586,96 @@
         syFlush().finally(() => { SY.adm = false; try { BD.oth = null; bdGuard(); } catch (e) {} tip('已關閉'); });   // 先把開通期間的修改上傳（帶 adm 標記，別人才會接受）
       });
     })();
+    // v167 歷史標點：月曆裡每一天的工單 + 今天的，全部畫成小圓點（同一個桿號合成一點，點開看做過哪幾天）
+    // 顏色看最近一次：紅＝一個月內、橘＝半年內、灰＝更早。用 canvas 畫，上千點也不卡
+    let histLayer = null, histPts = null;
+    // 縮小看時合併成「數字圓」（像 Google 地圖的群聚）：畫面切成 64px 的格子，同一格的點合成一個；放大到 16 級以上才逐點顯示
+    function histDraw() {
+      if (!histLayer || !histPts) return;
+      histLayer.clearLayers();
+      const z = map.getZoom(), rd = histLayer._rd, esc = histLayer._esc;
+      const one = (e) => {
+        const m = L.circleMarker([e.ll.lat, e.ll.lng], { renderer: rd, radius: 7, color: '#0f172a', weight: 1.5, fillColor: e.col, fillOpacity: 0.95 });
+        m.bindPopup(() => histPopup(e), { maxWidth: 300 });           // 點開才組內容（順便算附近有沒有畫圖）
+        histLayer.addLayer(m);
+      };
+      if (z >= 16) { histPts.forEach(one); return; }
+      const cell = 64, cells = new Map();
+      histPts.forEach(e => { const p = map.project([e.ll.lat, e.ll.lng], z), k = Math.floor(p.x / cell) + ':' + Math.floor(p.y / cell); (cells.get(k) || cells.set(k, []).get(k)).push(e); });
+      cells.forEach(arr => {
+        if (arr.length === 1) { one(arr[0]); return; }
+        let la = 0, ln = 0, rec = '#94a3b8'; arr.forEach(e => { la += e.ll.lat; ln += e.ll.lng; if (e.col === '#ef4444') rec = '#ef4444'; else if (e.col === '#f59e0b' && rec !== '#ef4444') rec = '#f59e0b'; });
+        const c = L.latLng(la / arr.length, ln / arr.length), sz = arr.length < 10 ? 30 : arr.length < 100 ? 36 : 44;
+        const m = L.marker(c, { icon: L.divIcon({ className: '', iconSize: [sz, sz], html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${rec};border:2px solid #0f172a;color:#0f172a;font:800 13px/${sz - 4}px sans-serif;text-align:center;box-shadow:0 0 0 4px rgba(255,255,255,.35)">${arr.length}</div>` }) });
+        m.on('click', () => map.setView(c, Math.min(z + 2, 18)));    // 點數字圓 → 放大兩級
+        histLayer.addLayer(m);
+      });
+    }
+    const histWk = (d) => '日一二三四五六'[new Date(d + 'T00:00:00').getDay()];
+    function histNearShapes(lat, lng, R) {                            // 這一點附近（R 公尺內）畫過的筆跡
+      let arr = []; try { arr = BD.on ? BD.shapes : JSON.parse(localStorage.getItem(bdKey()) || '[]'); } catch (e) { arr = []; }
+      const out = [];
+      arr.forEach(sh => { try { const b = bdBox(sh), c = E3857().unproject(L.point((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)); if (map.distance(c, [lat, lng]) <= R) out.push(sh); } catch (er) {} });
+      return out;
+    }
+    window.histBoardGo = (lat, lng) => {
+      map.closePopup(); if (!BD.on) openBoard();
+      setTimeout(() => { try { const l = histNearShapes(lat, lng, 40); if (l.length) bdFitAll(l); } catch (e) {} }, 400);
+    };
+    function histPopup(e) {
+      const esc = histLayer._esc, it = e.items, last = it[0].date;
+      const ago = Math.round((Date.now() - new Date(last + 'T00:00:00').getTime()) / 864e5);
+      const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}（${histWk(d)}）`;
+      const rows = it.slice(0, 8).map(i => `<div style="padding:3px 0;border-top:1px solid rgba(148,163,184,.25)">` +
+        `<b>${md(i.date)}</b>${i.date.slice(0, 4) !== String(new Date().getFullYear()) ? ' ' + i.date.slice(0, 4) : ''}　${esc(i.time || '')}${i.of ? `　當天第 ${i.no}/${i.of} 件` : ''}${i.nd ? '　<b style="color:#f59e0b">ND</b>' : ''}` +
+        (i.code ? `<br><span style="font-family:monospace">${esc(i.code)}</span>` : '') + (i.note ? `<br>${esc(i.note.slice(0, 40))}` : '') + `</div>`).join('') +
+        (it.length > 8 ? `<div style="opacity:.7">…還有 ${it.length - 8} 次</div>` : '');
+      const near = histNearShapes(e.ll.lat, e.ll.lng, 40).length;
+      const btn = (c, bg, t) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:7px;border:none;border-radius:6px;background:${bg};color:#fff;font-weight:700">${t}</button>`;
+      return `<div style="min-width:220px"><div><b>${it.length > 1 ? `去過 ${it.length} 次` : '去過 1 次'}</b>　最近 ${ago <= 0 ? '今天' : ago + ' 天前'}</div>` + rows +
+        btn(`openSvAt(${e.ll.lat},${e.ll.lng})`, '#0e7490', '📷 看街景') +
+        (near ? btn(`histBoardGo(${e.ll.lat},${e.ll.lng})`, '#15803d', `✏️ 看這裡的畫圖（${near} 筆）`) : '') + `</div>`;
+    }
+    window.toggleHistPts = () => {
+      const btn = document.getElementById('histBtn');
+      const tip = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 13px/1.5 sans-serif;pointer-events:none;text-align:center;white-space:pre-line'; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); };
+      if (histLayer) { map.off('zoomend', histDraw); map.removeLayer(histLayer); histLayer = null; histPts = null; btn.classList.remove('tracking-active'); return; }
+      const g = new Map();
+      const add = (date, t) => {
+        if (!t) return; const ll = getTaskLatLng(t); if (!ll) return;
+        const k = t.code && t.code !== '📍地址導航' ? t.code : ll.lat.toFixed(5) + ',' + ll.lng.toFixed(5);
+        let e = g.get(k); if (!e) { e = { ll, code: t.code && t.code !== '📍地址導航' ? t.code : '📍地址', items: [] }; g.set(k, e); }
+        e.items.push({ date, note: t.note || '', time: t.time || '', nd: !!t.isND, no: t._no || 0, of: t._of || 0, code: t.code && t.code !== '📍地址導航' ? t.code : '' });
+      };
+      const addDay = (d, arr) => (arr || []).forEach((t, i) => { if (!t) return; const x = Object.assign({}, t, { _no: i + 1, _of: arr.length }); add(d, x); });
+      Object.keys(monthLogs).forEach(d => { if (d !== activeDate) addDay(d, monthLogs[d]); });
+      addDay(activeDate, tasks);
+      if (!g.size) { tip('還沒有做過的工單位置'); return; }
+      const now = Date.now();
+      // 同一個地方只算一點：15 公尺內的合併（不同桿號、地址導航打在同一戶都會併成一點）
+      const R = 15, cellD = 0.00015, cells = new Map(), merged = [];
+      g.forEach(e => {
+        const cx = Math.floor(e.ll.lng / cellD), cy = Math.floor(e.ll.lat / cellD); let hit = null;
+        for (let dx = -1; dx <= 1 && !hit; dx++) for (let dy = -1; dy <= 1 && !hit; dy++) (cells.get((cx + dx) + ':' + (cy + dy)) || []).forEach(m => { if (!hit && map.distance(m.ll, e.ll) <= R) hit = m; });
+        if (hit) { hit.items.push(...e.items); if (hit.code !== e.code && !hit.code.includes(e.code)) hit.code += '／' + e.code; return; }
+        const m = { ll: e.ll, code: e.code, items: e.items.slice() }; merged.push(m);
+        const k = cx + ':' + cy; (cells.get(k) || cells.set(k, []).get(k)).push(m);
+      });
+      merged.forEach(m => { const seen = new Set(); m.items = m.items.filter(i => { const k = i.date + '|' + i.code + '|' + i.note; if (seen.has(k)) return false; seen.add(k); return true; }); if (m.code.length > 40) m.code = m.code.slice(0, 40) + '…'; });
+      histPts = merged; histPts.forEach(e => {
+        e.items.sort((a, b) => b.date.localeCompare(a.date));
+        const age = (now - new Date(e.items[0].date + 'T00:00:00').getTime()) / 864e5;
+        e.col = age < 31 ? '#ef4444' : age < 183 ? '#f59e0b' : '#94a3b8';
+      });
+      histLayer = L.layerGroup(); histLayer._rd = L.canvas({ padding: 0.3 });
+      histLayer._esc = (x) => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      histLayer.addTo(map); histDraw(); map.on('zoomend', histDraw); btn.classList.add('tracking-active');
+      tip(`🗂 歷史標點 ${histPts.length} 處（${Object.keys(monthLogs).length} 天）\n紅＝一個月內　橘＝半年內　灰＝更早\n縮小時合成數字圓，點一下放大；再按 🗂 關閉`);
+    };
+    document.getElementById('more-tools').addEventListener('click', (e) => {   // 非畫圖時：點了列裡的功能就自動收起（🧍 拖完自己會收）
+      if (document.body.classList.contains('bd-on') || !e.target.closest('[onclick]')) return;
+      setTimeout(() => { document.getElementById('more-tools').style.display = 'none'; document.getElementById('moreBtn').classList.remove('tracking-active'); }, 0);
+    });
     window.toggleMoreTools = () => {
       const el = document.getElementById('more-tools');
       if (document.body.classList.contains('bd-on')) {                    // 畫圖中：⋯ ＝ 全部展開／全部收起
@@ -5444,10 +5687,32 @@
       document.getElementById('moreBtn').classList.toggle('tracking-active', open);
     };
 
-    map.on('click', async (e) => {
+    map.on('click', (e) => {
       if (!isAddPinMode) return;
       toggleAddPinMode();
-      const { lat, lng } = e.latlng;
+      dropPinAt(e.latlng.lat, e.latlng.lng);
+    });
+    window.clearInspectPin = () => { map.closePopup(); if (inspectMarker) { map.removeLayer(inspectMarker); inspectMarker = null; } };
+    // v169：普通模式下在地圖上長按約 0.55 秒 = 在那裡放圖釘（查圖號、已複製）；電腦用右鍵
+    (function () {
+      const el = map.getContainer(); let t = 0, sx = 0, sy = 0, lastTouch = 0;
+      const busy = () => { try { return BD.on || measureOn || isTapSortMode || pickTaskIdx !== null || isAddPinMode || streetviewframe.style.display === 'block'; } catch (e) { return false; } };
+      const cancel = () => { clearTimeout(t); t = 0; };
+      const fire = () => { cancel(); const r = el.getBoundingClientRect(), ll = map.containerPointToLatLng([sx - r.left, sy - r.top]); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {} dropPinAt(ll.lat, ll.lng); };
+      el.addEventListener('touchstart', (e) => {
+        cancel(); lastTouch = Date.now();
+        if (e.touches.length !== 1 || busy() || (e.target.closest && e.target.closest('.leaflet-marker-icon,.leaflet-popup,.leaflet-control,.leaflet-tooltip,button'))) return;
+        sx = e.touches[0].clientX; sy = e.touches[0].clientY; t = setTimeout(fire, 550);
+      }, { passive: true });
+      el.addEventListener('touchmove', (e) => { if (!t) return; const q = e.touches[0]; if (e.touches.length !== 1 || Math.hypot(q.clientX - sx, q.clientY - sy) > 10) cancel(); }, { passive: true });
+      el.addEventListener('touchend', cancel, { passive: true }); el.addEventListener('touchcancel', cancel, { passive: true });
+      el.addEventListener('contextmenu', (e) => e.preventDefault());       // 擋掉瀏覽器長按選單
+      map.on('contextmenu', (e) => {
+        if (Date.now() - lastTouch < 1500) { if (t) fire(); return; }       // 手機長按：瀏覽器自己也會發一次，合併成一次
+        if (busy()) return; dropPinAt(e.latlng.lat, e.latlng.lng);         // 電腦右鍵
+      });
+    })();
+    async function dropPinAt(lat, lng) {
       const code = coordToPowerCode(lat, lng);
       silentCopy(code);
 
@@ -5474,9 +5739,11 @@
         ${road ? `路名: <b>${road}</b><br>` : ''}
         圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
         <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
+        <button onclick="openSvAt(${lat}, ${lng})" style="background:#0e7490;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📷 看這裡的街景</button>
+        <button onclick="clearInspectPin()" style="background:#475569;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">✕ 清除這個圖釘</button>
         <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
       `).openPopup();
-    });
+    }
 
     window.triggerRouteAndLocate = (targetLat, targetLng) => {
       map.closePopup();
