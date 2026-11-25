@@ -188,6 +188,10 @@
     .map-container { position: relative; flex: 1; width: 100%; height: 100%; background: #000; border-top: 1px solid var(--line-2); overflow: hidden; }
     #leaflet-map { width: 100%; height: 100%; z-index: 1; }
     iframe#streetview-frame { width: 100%; height: 100%; border: none; display: none; }
+    /* v193 街景＝上下分割（像手機版 Google 地圖）：上面街景、下面地圖，工程人員站在地圖上，可以拖、也可以點地圖別處讓他走過去 */
+    .sv-split iframe#streetview-frame { position: absolute; left: 0; top: 0; height: 58%; z-index: 2; }
+    .sv-split #leaflet-map { position: absolute; left: 0; right: 0; top: 58%; bottom: 0; height: auto !important; border-top: 3px solid #0e7490; box-sizing: border-box; }
+    .sv-split #sv-code { bottom: auto !important; top: calc(58% + 10px); }
     .hide-all-case-labels .case-label-large { display: none !important; }
     .hide-all-markers .leaflet-marker-pane { display: none !important; }
 
@@ -456,7 +460,6 @@
     <div id="leaflet-map"></div>
     <iframe id="streetview-frame" src="about:blank"></iframe>
     <button id="sv-back" onclick="switchViewMode('map')" style="display:none;position:absolute;left:10px;bottom:18px;z-index:1000;height:46px;padding:0 18px;border-radius:23px;border:2px solid #fff;background:#2563eb;color:#fff;font:800 16px/1 sans-serif;box-shadow:0 3px 10px rgba(0,0,0,.45)">🗺 回地圖</button>
-    <div id="sv-mini" style="display:none;position:absolute;left:10px;bottom:132px;z-index:1000;width:160px;height:160px;border-radius:12px;overflow:hidden;border:2px solid #fff;box-shadow:0 3px 12px rgba(0,0,0,.5)"></div>
     <div id="sv-code" title="點一下複製圖號" style="display:none;position:absolute;left:10px;bottom:72px;z-index:1000;padding:6px 12px;border-radius:10px;background:rgba(15,23,42,.88);border:1px solid rgba(255,255,255,.25);color:#fde047;font:800 17px/1.3 monospace;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.45)"></div>
 
     <div id="here-wrap"><div id="here-code" title="畫面中心所在圖號"></div><div id="here-time"></div></div>
@@ -482,7 +485,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v191</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v193</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -493,6 +496,11 @@
     </div>
 
     <div id="map-floating-controls" class="floating-controls">
+      <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+      </div>
       <div class="float-btn disp-mode-1" id="focusTaskBtn" onclick="cycleDisplayMode()" title="4階段切換：1.僅工單 2.加顯示據點 3.純圖釘(隱藏文字) 4.純地圖/圖資(隱藏所有圖釘)" style="font-weight:900;font-size:22px;">1</div>
       <div class="float-btn" id="cadOverlayBtn" onclick="toggleCadOverlayMode()" title="疊加台電 115年圖資 (PDF)">⚡</div>
       <div class="float-btn" id="addPinBtn" onclick="pinBtnTap()" style="display:none" title="（v169 起改成：地圖上長按 = 放圖釘）">📍</div>
@@ -504,11 +512,6 @@
         <div class="float-btn" id="pegBtn" title="街景小人：按住拖到地圖上放開，就看那裡的街景" style="touch-action:none"><svg viewBox="-2 2 44 60" width="30" height="40" style="pointer-events:none"><g class="pg-legL"><rect x="13.5" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="12" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-legR"><rect x="21" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="20" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-armL"><g transform="rotate(-28 9 24)"><rect x="6" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="8.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><g class="pg-armR"><g transform="rotate(28 31 24)"><rect x="29" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="31.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><rect x="11" y="21" width="18" height="21" rx="4" fill="#1e40af"/><path d="M11 24Q11 21 14 21L26 21Q29 21 29 24L29 39L11 39Z" fill="#f97316"/><rect x="11" y="29" width="18" height="2.2" fill="#e5e7eb"/><rect x="11" y="34" width="18" height="2.2" fill="#e5e7eb"/><rect x="19" y="21" width="2" height="18" fill="#1e40af"/><rect x="11" y="38.5" width="18" height="3" fill="#78350f"/><rect x="23.5" y="38" width="4" height="5" rx="1" fill="#9ca3af"/><circle cx="20" cy="14" r="6.5" fill="#f2c9a0"/><circle class="pg-eye" cx="17.8" cy="14.3" r="0.9" fill="#1f2937"/><circle class="pg-eye" cx="22.2" cy="14.3" r="0.9" fill="#1f2937"/><path class="pg-mouth" d="M17.8 17Q20 18.6 22.2 17" stroke="#7c2d12" stroke-width="0.9" fill="none" stroke-linecap="round"/><path d="M12.6 12Q12.8 4.2 20 4Q27.2 4.2 27.4 12Z" fill="#facc15"/><rect x="11" y="11" width="18" height="2.4" rx="1.2" fill="#eab308"/><rect x="19" y="4.4" width="2" height="7" rx="1" fill="#fde047"/></svg></div>
         <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
-        <div class="float-btn" id="cleanModeBtn" onclick="toggleFullscreenCleanMode()" title="全螢幕清淨模式 (四角框擴展)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-          </svg>
-        </div>
       </div>
       <div class="float-btn" id="moreBtn" onclick="toggleMoreTools()" title="更多工具：手動排序／量距離／畫圖">⋯</div>
     </div>
@@ -2665,10 +2668,12 @@
       btnModeMap.classList.toggle('active', mode === 'map');
       btnModeSv.classList.toggle('active', mode === 'sv');
 
-      { const sb = document.getElementById('sv-back'); if (sb) sb.style.display = mode === 'sv' ? 'block' : 'none'; const sc = document.getElementById('sv-code'); if (sc && mode !== 'sv') sc.style.display = 'none'; const mm = document.getElementById('sv-mini'); if (mm && mode !== 'sv') mm.style.display = 'none'; }
+      { const sb = document.getElementById('sv-back'); if (sb) sb.style.display = mode === 'sv' ? 'block' : 'none'; const sc = document.getElementById('sv-code'); if (sc && mode !== 'sv') sc.style.display = 'none'; }
+      const fromSvAt = mode === 'map' && prevMode === 'sv' && !!svAt;
       if (mode === 'map' && svAt) { try { map.setView([svAt.lat, svAt.lng], Math.max(map.getZoom(), 18), { animate: false }); } catch (e) {} }   // 回地圖＝停在剛剛看街景的地方   // v175：街景時左下角固定一顆「回地圖」（全螢幕模式看不到上方切換鈕也回得來）
       if (mode === 'map') {
-        svAt = null;
+        svAt = null; svWorkerHide();
+        document.querySelector('.map-container').classList.remove('sv-split');
         streetviewframe.style.display = 'none';
         leafletMapEl.style.display = 'block';
         mapFloatingControls.style.display = 'flex';
@@ -2676,10 +2681,11 @@
         if (isCadOverlayEnabled) document.getElementById('cad-calib-box').style.display = 'flex';
         setTimeout(() => map.invalidateSize(), 50);
         if (typeof BD !== 'undefined' && BD.on) { const bo = document.getElementById('board'); if (bo) bo.style.display = 'block'; setTimeout(() => { try { bdLayout(); } catch (e) {} }, 120); }   // 回到地圖：畫板跟著回來
-        focusCurrentTaskOnMap();
+        if (!fromSvAt) focusCurrentTaskOnMap();                       // 從工程人員的位置回來 → 留在那裡，不跳回工單
       } else {
         if (typeof BD !== 'undefined' && BD.on) { const bo = document.getElementById('board'); if (bo) bo.style.display = 'none'; }   // 街景沒有地圖可對位：畫板先收起來（不然寬度變 0，上排按鈕全擠在左邊）
-        leafletMapEl.style.display = 'none';
+        leafletMapEl.style.display = 'block';                         // v193：地圖不藏，縮到下半部
+        document.querySelector('.map-container').classList.add('sv-split');
         mapFloatingControls.style.display = 'none';
         { const hw = document.getElementById('here-wrap'), hc = document.getElementById('here-cross'); if (hw) hw.style.visibility = 'hidden'; if (hc) hc.style.visibility = 'hidden'; }
         document.getElementById('cad-calib-box').style.display = 'none';
@@ -2772,23 +2778,22 @@
       el.style.display = 'block';
       el.onclick = () => { try { silentCopy(c); } catch (e) {} const o = el.style.borderColor; el.style.borderColor = '#22c55e'; setTimeout(() => { el.style.borderColor = o; }, 600); };
     }
-    // v191 街景左下角小地圖（像 Google）：工程人員站在看街景的位置；點小地圖別的地方＝小人移過去看那裡的街景
-    let svMini = null, svMiniMk = null;
-    function svMiniShow(lat, lng) {
-      const el = document.getElementById('sv-mini'); if (!el) return;
-      el.style.display = 'block';
-      if (!svMini) {
-        svMini = L.map(el, { zoomControl: false, attributionControl: false, keyboard: false, boxZoom: false });
-        L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 19 }).addTo(svMini);
-        const ic = (document.getElementById('pegBtn') || {}).innerHTML || '🧍';
-        svMiniMk = L.marker([lat, lng], { icon: L.divIcon({ className: '', iconSize: [30, 40], iconAnchor: [15, 38], html: `<div style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.6))">${ic}</div>` }), interactive: false }).addTo(svMini);
-        svMini.on('click', (e) => { svAt = { lat: e.latlng.lat, lng: e.latlng.lng }; updateStreetView(); });
+    // v193 地圖上的工程人員：拖到哪、或點地圖哪裡，街景就換到那裡（回地圖時收回）
+    let svWorker = null;
+    function svWorkerShow(lat, lng) {
+      const ic = (document.getElementById('pegBtn') || {}).innerHTML || '🧍';
+      if (!svWorker) {
+        svWorker = L.marker([lat, lng], { draggable: true, zIndexOffset: 2000, icon: L.divIcon({ className: '', iconSize: [30, 40], iconAnchor: [15, 38], html: `<div style="filter:drop-shadow(0 3px 3px rgba(0,0,0,.6));cursor:grab">${ic}</div>` }) });
+        svWorker.on('dragend', () => { const p = svWorker.getLatLng(); svAt = { lat: p.lat, lng: p.lng }; updateStreetView(); });
       }
-      setTimeout(() => { svMini.invalidateSize(); svMini.setView([lat, lng], svMini.getZoom() || 17, { animate: false }); svMiniMk.setLatLng([lat, lng]); }, 30);
+      svWorker.setLatLng([lat, lng]); if (!map.hasLayer(svWorker)) svWorker.addTo(map);
+      setTimeout(() => { map.invalidateSize({ animate: false }); if (!map.getBounds().pad(-0.15).contains([lat, lng])) map.panTo([lat, lng], { animate: true }); }, 60);
     }
+    function svWorkerHide() { if (svWorker && map.hasLayer(svWorker)) map.removeLayer(svWorker); }
+    map.on('click', (e) => { if (currentViewMode !== 'sv') return; svAt = { lat: e.latlng.lat, lng: e.latlng.lng }; updateStreetView(); });   // 街景時點下半部地圖＝走過去
     function updateStreetView() {
-      if (svAt) { svCodeShow(svAt.lat, svAt.lng); svMiniShow(svAt.lat, svAt.lng); }
-      else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) { svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); svMiniShow(w0.lat, w0.lng); } else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
+      if (svAt) { svCodeShow(svAt.lat, svAt.lng); svWorkerShow(svAt.lat, svAt.lng); }
+      else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) { svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); svWorkerShow(w0.lat, w0.lng); } else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
       if (svAt) { streetviewframe.src = `https://maps.google.com/maps?layer=c&cbll=${svAt.lat},${svAt.lng}&cbp=12,0,0,0,0&output=svembed`; return; }
       if (tasks.length === 0 || currentIndex < 0 || currentIndex >= tasks.length) {
         streetviewframe.src = 'about:blank';
