@@ -477,7 +477,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v184</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v185</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -5741,8 +5741,9 @@
       c.width = c.height = 0; return url;
     }
     // ---- 雲端 ----
-    async function tdCloudPut(t) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todos`, t.id, { d: JSON.stringify(t), by: SY.by || '', ts: Date.now() }); } catch (e) { console.warn('todo up', e); } }
-    async function tdCloudPhotoPut(pid, url) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todophotos`, pid, { d: url, by: SY.by || '' }); } catch (e) { console.warn('todo photo up', e); } }
+    const tdErr = (what, e) => { console.warn(what, e); TD.err = what + '：' + ((e && (e.code || e.message)) || e); tdTip('⚠ 待辦同步失敗\n' + TD.err); };   // v185：失敗要讓人看得到（原本只寫在主控台）
+    async function tdCloudPut(t) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todos`, t.id, { d: JSON.stringify(t), by: SY.by || '', ts: Date.now() }); } catch (e) { tdErr('上傳待辦', e); } }
+    async function tdCloudPhotoPut(pid, url) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todophotos`, pid, { d: url, by: SY.by || '' }); } catch (e) { tdErr('上傳照片', e); } }
     async function tdPhoto(pid) {                                      // 先找本機，沒有再去雲端拿（拿到存本機）
       let u = null; try { u = await tdGet('photos', pid); } catch (e) {}
       if (u || !SY.team) return u;
@@ -5753,8 +5754,13 @@
       if (TD.watching || !SY.team) return; TD.watching = true;
       try {
         const fb = await syLoad();
+        let first = true;
         fb.watch(`teams/${SY.team}/todos`, (ch, err) => {
-          if (err || !ch) return; let n = 0;
+          if (err || !ch) { TD.watching = false; tdErr('接收待辦', err); return; } let n = 0;
+          if (first) {                                                 // 第一次收到雲端清單：本機有、雲端沒有的（加入班之前記的、上次沒傳成功的）→ 補傳
+            first = false; const cloud = new Set(ch.map(c => c.id));
+            TD.list.forEach((t, id) => { if (!cloud.has(id)) { tdCloudPut(t); (t.photos || []).forEach(pid => tdGet('photos', pid).then(u => { if (u) tdCloudPhotoPut(pid, u); }).catch(() => {})); } });
+          }
           ch.forEach(c => { if (c.local) return; if (c.type === 'removed') { TD.list.delete(c.id); tdDel('todos', c.id).catch(() => {}); n++; return; } let t; try { t = JSON.parse(c.data.d); } catch (e) { return; } const old = TD.list.get(c.id); if (old && (old.ut || 0) > (t.ut || 0)) return; TD.list.set(c.id, t); tdPut('todos', c.id, t).catch(() => {}); n++; });
           if (n) { tdBadge(); tdDraw(); todoCheckSoon(); }
         });
@@ -5804,8 +5810,8 @@
       const btn = document.getElementById('todoBtn');
       if (TD.layer) { map.removeLayer(TD.layer); TD.layer = null; btn.classList.remove('tracking-active'); return; }
       TD.layer = L.layerGroup().addTo(map); btn.classList.add('tracking-active'); tdDraw(); tdWatch();
-      const n = tdOpen().length;
-      tdTip(n ? `🔧 待辦地圖：${n} 個還沒處理\n綠圈＝今天工單就在附近` : '🔧 待辦地圖：目前沒有待辦\n長按地圖放圖釘 →「📌 加入待辦」');
+      const n = tdOpen().length, st = !SY.team ? '\n⚠ 還沒加入班：只存在這支手機' : (TD.err ? '\n⚠ ' + TD.err : '\n班同步：' + (TD.watching ? '連線中' : '未連線'));
+      tdTip((n ? `🔧 待辦地圖：${n} 個還沒處理\n綠圈＝今天工單就在附近` : '🔧 待辦地圖：目前沒有待辦\n長按地圖放圖釘 →「📌 加入待辦」') + st);
     };
     const tdTip = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 13px/1.5 sans-serif;pointer-events:none;text-align:center;white-space:pre-line'; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); };
     // ---- 新增／編輯視窗 ----
