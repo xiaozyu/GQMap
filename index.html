@@ -190,7 +190,7 @@
     iframe#streetview-frame { width: 100%; height: 100%; border: none; display: none; }
     /* v193 街景＝上下分割（像手機版 Google 地圖）：上面街景、下面地圖，工程人員站在地圖上，可以拖、也可以點地圖別處讓他走過去 */
     .sv-split iframe#streetview-frame { position: absolute; left: 0; top: 0; height: 58%; z-index: 2; }
-    .sv-split #leaflet-map { position: absolute; left: 0; right: 0; top: 58%; bottom: 0; height: auto !important; border-top: 3px solid #0e7490; box-sizing: border-box; }
+    .sv-split #leaflet-map { position: absolute !important; left: 0; right: 0; top: 58%; bottom: 0; width: auto !important; height: auto !important; border-top: 3px solid #0e7490; box-sizing: border-box; }   /* v195：!important — Leaflet 會在地圖上直接寫 position:relative，不加會把地圖擠成 0 高（下半部變黑條） */
     .sv-split #sv-code { bottom: auto !important; top: calc(58% + 10px); }
     .hide-all-case-labels .case-label-large { display: none !important; }
     .hide-all-markers .leaflet-marker-pane { display: none !important; }
@@ -485,7 +485,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v194</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v196</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2672,8 +2672,7 @@
       const fromSvAt = mode === 'map' && prevMode === 'sv' && !!svAt;
       if (mode === 'map' && svAt) { try { map.setView([svAt.lat, svAt.lng], Math.max(map.getZoom(), 18), { animate: false }); } catch (e) {} }   // 回地圖＝停在剛剛看街景的地方   // v175：街景時左下角固定一顆「回地圖」（全螢幕模式看不到上方切換鈕也回得來）
       if (mode === 'map') {
-        svAt = null; svWorkerHide();
-        document.querySelector('.map-container').classList.remove('sv-split');
+        svAt = null;
         streetviewframe.style.display = 'none';
         leafletMapEl.style.display = 'block';
         mapFloatingControls.style.display = 'flex';
@@ -2684,8 +2683,7 @@
         if (!fromSvAt) focusCurrentTaskOnMap();                       // 從工程人員的位置回來 → 留在那裡，不跳回工單
       } else {
         if (typeof BD !== 'undefined' && BD.on) { const bo = document.getElementById('board'); if (bo) bo.style.display = 'none'; }   // 街景沒有地圖可對位：畫板先收起來（不然寬度變 0，上排按鈕全擠在左邊）
-        leafletMapEl.style.display = 'block';                         // v193：地圖不藏，縮到下半部
-        document.querySelector('.map-container').classList.add('sv-split');
+        leafletMapEl.style.display = 'none';
         mapFloatingControls.style.display = 'none';
         { const hw = document.getElementById('here-wrap'), hc = document.getElementById('here-cross'); if (hw) hw.style.visibility = 'hidden'; if (hc) hc.style.visibility = 'hidden'; }
         document.getElementById('cad-calib-box').style.display = 'none';
@@ -2778,19 +2776,24 @@
       el.style.display = 'block';
       el.onclick = () => { try { silentCopy(c); } catch (e) {} const o = el.style.borderColor; el.style.borderColor = '#22c55e'; setTimeout(() => { el.style.borderColor = o; }, 600); };
     }
-    // v193 地圖上的工程人員：拖到哪、或點地圖哪裡，街景就換到那裡（回地圖時收回）
+    // v196 工程人員放下後留在地圖上（像圖釘）：點他＝看那裡的街景；拖到別處放開＝看新位置的街景；拖回右側按鈕區＝收回
     let svWorker = null;
     function svWorkerShow(lat, lng) {
       const ic = (document.getElementById('pegBtn') || {}).innerHTML || '🧍';
       if (!svWorker) {
-        svWorker = L.marker([lat, lng], { draggable: true, zIndexOffset: 2000, icon: L.divIcon({ className: '', iconSize: [30, 40], iconAnchor: [15, 38], html: `<div style="filter:drop-shadow(0 3px 3px rgba(0,0,0,.6));cursor:grab">${ic}</div>` }) });
-        svWorker.on('dragend', () => { const p = svWorker.getLatLng(); svAt = { lat: p.lat, lng: p.lng }; updateStreetView(); });
+        svWorker = L.marker([lat, lng], { draggable: true, zIndexOffset: 2000, pane: 'gqLayers', icon: L.divIcon({ className: '', iconSize: [30, 40], iconAnchor: [15, 38], html: `<div style="filter:drop-shadow(0 3px 3px rgba(0,0,0,.6));cursor:grab">${ic}</div>` }) });
+        svWorker.on('click', () => { const p = svWorker.getLatLng(); openSvAt(p.lat, p.lng); });
+        svWorker.on('dragend', () => {
+          const p = svWorker.getLatLng(), cp = map.latLngToContainerPoint(p), r = map.getContainer().getBoundingClientRect();
+          const el = svWorker.getElement(); if (el) el.style.visibility = 'hidden';
+          const under = document.elementFromPoint(r.left + cp.x, r.top + cp.y - 20); if (el) el.style.visibility = '';
+          if (under && under.closest && under.closest('#map-floating-controls')) { svWorkerHide(); return; }   // 拖回按鈕區＝收回
+          openSvAt(p.lat, p.lng);
+        });
       }
       svWorker.setLatLng([lat, lng]); if (!map.hasLayer(svWorker)) svWorker.addTo(map);
-      setTimeout(() => { map.invalidateSize({ animate: false }); if (!map.getBounds().pad(-0.15).contains([lat, lng])) map.panTo([lat, lng], { animate: true }); }, 60);
     }
     function svWorkerHide() { if (svWorker && map.hasLayer(svWorker)) map.removeLayer(svWorker); }
-    map.on('click', (e) => { if (currentViewMode !== 'sv') return; svAt = { lat: e.latlng.lat, lng: e.latlng.lng }; updateStreetView(); });   // 街景時點下半部地圖＝走過去
     function updateStreetView() {
       if (svAt) { svCodeShow(svAt.lat, svAt.lng); svWorkerShow(svAt.lat, svAt.lng); }
       else { const t0 = tasks[currentIndex], w0 = t0 && getTaskLatLng(t0); if (w0) { svCodeShow(w0.lat, w0.lng, t0.code && t0.code !== '📍地址導航' ? t0.code : ''); svWorkerShow(w0.lat, w0.lng); } else { const el = document.getElementById('sv-code'); if (el) el.style.display = 'none'; } }
