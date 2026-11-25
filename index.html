@@ -477,7 +477,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v181</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v184</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -495,6 +495,7 @@
       <div id="more-tools" style="display:none">
         <div class="float-btn" id="drawModeBtn" onclick="openBoard()" title="畫圖：展開繪圖工具，直接畫在目前地圖上">✏️</div>
         <div class="float-btn" id="syncBtn" onclick="syOpen()" title="班即時同步：工單與畫圖">👥</div>
+        <div class="float-btn" id="todoBtn" onclick="toggleTodoMap()" title="待辦地圖：欠修的電桿／電線（照片＋說明），去施工時提醒、做完註銷">📌</div>
         <div class="float-btn" id="histBtn" onclick="toggleHistPts()" title="歷史標點：顯示以前做過的全部工單位置">🗂</div>
         <div class="float-btn" id="pegBtn" title="街景小人：按住拖到地圖上放開，就看那裡的街景" style="touch-action:none"><svg viewBox="-2 2 44 60" width="30" height="40" style="pointer-events:none"><g class="pg-legL"><rect x="13.5" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="12" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-legR"><rect x="21" y="40" width="5.5" height="17" rx="2.5" fill="#1e3a8a"/><rect x="20" y="55" width="8" height="5" rx="2" fill="#3f2a14"/></g><g class="pg-armL"><g transform="rotate(-28 9 24)"><rect x="6" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="8.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><g class="pg-armR"><g transform="rotate(28 31 24)"><rect x="29" y="10" width="5" height="16" rx="2.5" fill="#1e40af"/><circle cx="31.5" cy="10" r="2.6" fill="#f2c9a0"/></g></g><rect x="11" y="21" width="18" height="21" rx="4" fill="#1e40af"/><path d="M11 24Q11 21 14 21L26 21Q29 21 29 24L29 39L11 39Z" fill="#f97316"/><rect x="11" y="29" width="18" height="2.2" fill="#e5e7eb"/><rect x="11" y="34" width="18" height="2.2" fill="#e5e7eb"/><rect x="19" y="21" width="2" height="18" fill="#1e40af"/><rect x="11" y="38.5" width="18" height="3" fill="#78350f"/><rect x="23.5" y="38" width="4" height="5" rx="1" fill="#9ca3af"/><circle cx="20" cy="14" r="6.5" fill="#f2c9a0"/><circle class="pg-eye" cx="17.8" cy="14.3" r="0.9" fill="#1f2937"/><circle class="pg-eye" cx="22.2" cy="14.3" r="0.9" fill="#1f2937"/><path class="pg-mouth" d="M17.8 17Q20 18.6 22.2 17" stroke="#7c2d12" stroke-width="0.9" fill="none" stroke-linecap="round"/><path d="M12.6 12Q12.8 4.2 20 4Q27.2 4.2 27.4 12Z" fill="#facc15"/><rect x="11" y="11" width="18" height="2.4" rx="1.2" fill="#eab308"/><rect x="19" y="4.4" width="2" height="7" rx="1" fill="#fde047"/></svg></div>
         <div class="float-btn" id="tapSortBtn" onclick="toggleTapSortMode()" title="點選圖釘手動排序">👆</div>
@@ -2554,6 +2555,7 @@
       persistLogs();
       updateDateBar();
       if (window.syTaskPush) window.syTaskPush();
+      try { window.todoCheckSoon && window.todoCheckSoon(); } catch (e) {}
     }
 
     const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
@@ -5112,6 +5114,7 @@
         set: (path, id, data) => F.setDoc(F.doc(db, path, id), data),
         del: (path, id) => F.deleteDoc(F.doc(db, path, id)),
         list: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => d.id),
+        get: async (path, id) => { const d = await F.getDoc(F.doc(db, path, id)); return d.exists() ? d.data() : null; },
         listDocs: async (path) => (await F.getDocs(F.collection(db, path))).docs.map(d => ({ id: d.id, data: d.data() })),
       });
     }
@@ -5657,10 +5660,11 @@
         (it.length > 8 ? `<div style="opacity:.7">…還有 ${it.length - 8} 次</div>` : '');
       const near = histNearShapes(e.ll.lat, e.ll.lng, 40).length;
       const btn = (c, bg, t) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:7px;border:none;border-radius:6px;background:${bg};color:#fff;font-weight:700">${t}</button>`;
-      return `<div style="min-width:220px"><div><b>${it.length > 1 ? `去過 ${it.length} 次` : '去過 1 次'}</b>　最近 ${ago <= 0 ? '今天' : ago + ' 天前'}</div>` + rows +
-        btn(`openSvAt(${e.ll.lat},${e.ll.lng})`, '#0e7490', '📷 看街景') +
+      // v182：刪除改成最上面的小字按鈕（不顯眼、不容易誤按）；最主要的「看街景」放大放在最下面、手指最好按的位置
+      const del = it.some(i => i.date !== activeDate) ? `<button onclick="histDelPt(${histPts.indexOf(e)})" style="float:right;margin:-2px 18px 0 0;padding:1px 7px;border:1px solid #cbd5e1;border-radius:9px;background:transparent;color:#94a3b8;font:600 11px/1.5 sans-serif">🗑 刪除</button>` : '';
+      return `<div style="min-width:220px">${del}<div><b>${it.length > 1 ? `去過 ${it.length} 次` : '去過 1 次'}</b>　最近 ${ago <= 0 ? '今天' : ago + ' 天前'}</div>` + rows +
         (near ? btn(`histBoardGo(${e.ll.lat},${e.ll.lng})`, '#15803d', `✏️ 看這裡的畫圖（${near} 筆）`) : '') +
-        (it.some(i => i.date !== activeDate) ? btn(`histDelPt(${histPts.indexOf(e)})`, '#7f1d1d', '🗑 刪除這個點（只刪這支手機）') : '') + `</div>`;
+        `<button onclick="openSvAt(${e.ll.lat},${e.ll.lng})" style="margin-top:8px;width:100%;padding:12px;border:none;border-radius:8px;background:#0e7490;color:#fff;font:800 16px/1 sans-serif">📷 看街景</button>` + `</div>`;
     }
     window.histDelPt = async (i) => {                                  // 刪掉這個點的所有過去紀錄（今天的工單不動，要刪請到工單列表）
       const e = histPts && histPts[i]; if (!e) return;
@@ -5713,6 +5717,172 @@
       histLayer.addTo(map); histDraw(); map.on('zoomend', histDraw); btn.classList.add('tracking-active');
       tip(`🗂 歷史標點 ${histPts.length} 處（${Object.keys(monthLogs).length} 天）\n紅＝一個月內　橘＝半年內　灰＝更早\n縮小時合成數字圓，點一下放大；再按 🗂 關閉`);
     };
+    // ===== v183 待辦地圖：看到欠修的電桿／電線 → 記下圖號位置＋照片＋說明；去施工時提醒，做完註銷 =====
+    // 本機存在 IndexedDB（gq_todo：todos／photos）；有加入班就同步到 teams/班/todos（文字）、teams/班/todophotos（照片，壓縮成約 200KB）
+    const TD = { list: new Map(), layer: null, db: null, watching: false, editing: null, newPhotos: [], told: new Set() };
+    function tdDb() {
+      if (TD.db) return Promise.resolve(TD.db);
+      return new Promise((res, rej) => { const q = indexedDB.open('gq_todo', 1); q.onupgradeneeded = () => { const d = q.result; if (!d.objectStoreNames.contains('todos')) d.createObjectStore('todos'); if (!d.objectStoreNames.contains('photos')) d.createObjectStore('photos'); }; q.onsuccess = () => { TD.db = q.result; res(TD.db); }; q.onerror = () => rej(q.error); });
+    }
+    const tdTx = async (store, mode, fn) => { const d = await tdDb(); return new Promise((res, rej) => { const t = d.transaction(store, mode), st = t.objectStore(store); const r = fn(st); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); };
+    const tdPut = (store, k, v) => tdTx(store, 'readwrite', st => st.put(v, k));
+    const tdGet = (store, k) => tdTx(store, 'readonly', st => st.get(k));
+    const tdDel = (store, k) => tdTx(store, 'readwrite', st => st.delete(k));
+    async function tdLoad() { try { const d = await tdDb(); await new Promise(res => { const c = d.transaction('todos').objectStore('todos').openCursor(); c.onsuccess = () => { const cur = c.result; if (cur) { TD.list.set(cur.key, cur.value); cur.continue(); } else res(); }; c.onerror = () => res(); }); } catch (e) {} }
+    const tdEsc = (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const tdOpen = () => Array.from(TD.list.values()).filter(t => !t.done && !t.del);
+    function tdBadge() { const b = document.getElementById('todoBtn'); if (!b) return; const n = tdOpen().length; b.dataset.n = n; b.innerHTML = '📌' + (n ? `<i style="position:absolute;right:-3px;top:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#f97316;color:#fff;font:800 10px/16px sans-serif;font-style:normal;text-align:center">${n > 99 ? '99+' : n}</i>` : ''); b.style.position = 'relative'; }
+    // 照片壓縮：最長邊 1280px、JPEG 0.6（手機 4000 萬畫素的照片也只剩約 200KB）
+    async function tdShrink(file) {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
+      const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); try { bmp.close(); } catch (e) {}
+      let q = 0.6, url = c.toDataURL('image/jpeg', q); while (url.length > 700000 && q > 0.3) { q -= 0.1; url = c.toDataURL('image/jpeg', q); }
+      c.width = c.height = 0; return url;
+    }
+    // ---- 雲端 ----
+    async function tdCloudPut(t) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todos`, t.id, { d: JSON.stringify(t), by: SY.by || '', ts: Date.now() }); } catch (e) { console.warn('todo up', e); } }
+    async function tdCloudPhotoPut(pid, url) { if (!SY.team) return; try { const fb = await syLoad(); await fb.set(`teams/${SY.team}/todophotos`, pid, { d: url, by: SY.by || '' }); } catch (e) { console.warn('todo photo up', e); } }
+    async function tdPhoto(pid) {                                      // 先找本機，沒有再去雲端拿（拿到存本機）
+      let u = null; try { u = await tdGet('photos', pid); } catch (e) {}
+      if (u || !SY.team) return u;
+      try { const fb = await syLoad(); const d = fb.get ? await fb.get(`teams/${SY.team}/todophotos`, pid) : null; if (d && d.d) { u = d.d; tdPut('photos', pid, u).catch(() => {}); } } catch (e) {}
+      return u;
+    }
+    async function tdWatch() {
+      if (TD.watching || !SY.team) return; TD.watching = true;
+      try {
+        const fb = await syLoad();
+        fb.watch(`teams/${SY.team}/todos`, (ch, err) => {
+          if (err || !ch) return; let n = 0;
+          ch.forEach(c => { if (c.local) return; if (c.type === 'removed') { TD.list.delete(c.id); tdDel('todos', c.id).catch(() => {}); n++; return; } let t; try { t = JSON.parse(c.data.d); } catch (e) { return; } const old = TD.list.get(c.id); if (old && (old.ut || 0) > (t.ut || 0)) return; TD.list.set(c.id, t); tdPut('todos', c.id, t).catch(() => {}); n++; });
+          if (n) { tdBadge(); tdDraw(); todoCheckSoon(); }
+        });
+      } catch (e) { TD.watching = false; }
+    }
+    async function tdSave(t, photos) {
+      t.ut = Date.now(); TD.list.set(t.id, t); await tdPut('todos', t.id, t);
+      for (const p of photos || []) { await tdPut('photos', p.id, p.url); tdCloudPhotoPut(p.id, p.url); }
+      tdCloudPut(t); tdBadge(); tdDraw(); todoCheckSoon();
+    }
+    // ---- 地圖圖層 ----
+    function tdNearTasks(t, R) { const out = []; tasks.forEach((k, i) => { const ll = getTaskLatLng(k); if (ll && map.distance(ll, [t.lat, t.lng]) <= (R || 40)) out.push(i); }); return out; }
+    function tdDraw() {
+      if (!TD.layer) return; TD.layer.clearLayers();
+      tdOpen().forEach(t => {
+        const near = tdNearTasks(t).length > 0;
+        const icon = L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 32], popupAnchor: [0, -28], html: `<div style="width:34px;height:34px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:#f97316;border:2px solid #fff;box-shadow:0 0 0 ${near ? '5px rgba(34,197,94,.8)' : '2px rgba(0,0,0,.35)'},0 3px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:16px">🔧</span></div>` });
+        const m = L.marker([t.lat, t.lng], { icon, zIndexOffset: 500 }); m.bindPopup(() => tdPopup(t), { maxWidth: 300, minWidth: 240 });
+        m.on('popupopen', () => tdThumbs(t)); TD.layer.addLayer(m);
+      });
+    }
+    function tdPopup(t) {
+      const d = new Date(t.ts), near = tdNearTasks(t);
+      const btn = (c, bg, tx) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:9px;border:none;border-radius:8px;background:${bg};color:#fff;font:800 14px/1 sans-serif">${tx}</button>`;
+      return `<div style="min-width:230px"><button onclick="todoDelete('${t.id}')" style="float:right;margin:-2px 18px 0 0;padding:1px 7px;border:1px solid #cbd5e1;border-radius:9px;background:transparent;color:#94a3b8;font:600 11px/1.5 sans-serif">🗑 刪除</button>` +
+        `<b style="color:#c2410c">🔧 待辦</b>　<span style="font-family:monospace;font-weight:800">${tdEsc(t.code || '')}</span>` +
+        `<div style="font-size:12px;color:#64748b">${d.getMonth() + 1}/${d.getDate()} ${tdEsc(t.by || '')} 記錄</div>` +
+        (t.note ? `<div style="margin-top:4px;white-space:pre-wrap">${tdEsc(t.note)}</div>` : '') +
+        `<div id="td-th-${t.id}" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">${(t.photos || []).map(() => '<div style="width:64px;height:64px;border-radius:6px;background:#e2e8f0"></div>').join('')}</div>` +
+        (near.length ? `<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:#dcfce7;color:#166534;font-weight:700">今天第 ${near.map(i => i + 1).join('、')} 件工單就在附近，做完記得註銷</div>` : '') +
+        btn(`todoDone('${t.id}')`, '#16a34a', '✅ 已處理，註銷') +
+        `<div style="display:flex;gap:6px">${btn(`todoEdit('${t.id}')`, '#475569', '✏️ 編輯')}${btn(`todoToTask('${t.id}')`, '#2563eb', '➕ 加入工單')}</div>` +
+        `<button onclick="openSvAt(${t.lat},${t.lng})" style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;background:#0e7490;color:#fff;font:800 15px/1 sans-serif">📷 看街景</button></div>`;
+    }
+    async function tdThumbs(t) {
+      const box = document.getElementById('td-th-' + t.id); if (!box || !(t.photos || []).length) return;
+      const urls = await Promise.all(t.photos.map(tdPhoto));
+      box.innerHTML = urls.map((u, i) => u ? `<img src="${u}" onclick="todoPhotoBig('${t.id}',${i})" style="width:64px;height:64px;object-fit:cover;border-radius:6px;cursor:pointer">` : '<div style="width:64px;height:64px;border-radius:6px;background:#e2e8f0;font-size:10px;color:#64748b;display:flex;align-items:center;justify-content:center">讀取失敗</div>').join('');
+    }
+    window.todoPhotoBig = async (id, i) => {
+      const t = TD.list.get(id); if (!t) return; const u = await tdPhoto(t.photos[i]); if (!u) return;
+      const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center';
+      ov.innerHTML = `<img src="${u}" style="max-width:100%;max-height:100%;object-fit:contain">`; ov.onclick = () => { ov.remove(); gqBackDone('tdimg'); };
+      document.body.appendChild(ov); gqBackPush('tdimg', () => ov.remove());
+    };
+    window.toggleTodoMap = async () => {
+      const btn = document.getElementById('todoBtn');
+      if (TD.layer) { map.removeLayer(TD.layer); TD.layer = null; btn.classList.remove('tracking-active'); return; }
+      TD.layer = L.layerGroup().addTo(map); btn.classList.add('tracking-active'); tdDraw(); tdWatch();
+      const n = tdOpen().length;
+      tdTip(n ? `🔧 待辦地圖：${n} 個還沒處理\n綠圈＝今天工單就在附近` : '🔧 待辦地圖：目前沒有待辦\n長按地圖放圖釘 →「📌 加入待辦」');
+    };
+    const tdTip = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:99999;padding:8px 14px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 13px/1.5 sans-serif;pointer-events:none;text-align:center;white-space:pre-line'; document.body.appendChild(d); setTimeout(() => d.remove(), 2600); };
+    // ---- 新增／編輯視窗 ----
+    function tdModal() {
+      let m = document.getElementById('td-modal'); if (m) return m;
+      m = document.createElement('div'); m.id = 'td-modal'; m.className = 'gq-overlay'; m.style.display = 'none'; m.style.zIndex = '3000';
+      m.innerHTML = `<div class="gq-sheet"><div class="gq-title"><span id="td-title">📌 新增待辦</span><button class="gq-x" onclick="todoClose()">✕</button></div>
+        <div class="gq-field"><label class="gq-label">圖號（位置）</label><input id="td-code" style="width:100%;box-sizing:border-box;height:42px;padding:0 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#fde047;font:800 17px/1 monospace;outline:none" placeholder="如 G4261BE25" autocomplete="off" spellcheck="false"></div>
+        <div class="gq-field"><label class="gq-label">說明</label><textarea id="td-note" rows="3" style="width:100%;box-sizing:border-box;padding:8px;border-radius:6px;font-size:15px;background:#0f172a;color:#e2e8f0;border:1px solid #334155" placeholder="例：接戶線鬆脫、桿身傾斜、需換桿號牌…"></textarea></div>
+        <div class="gq-field"><label class="gq-label">照片</label><div id="td-ph" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
+          <div style="display:flex;gap:6px;margin-top:6px"><label class="gq-btn" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:44px;margin:0;line-height:1;cursor:pointer">📷 拍照<input id="td-cam" type="file" accept="image/*" capture="environment" style="display:none"></label><label class="gq-btn" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:44px;margin:0;line-height:1;cursor:pointer">🖼 相簿<input id="td-pick" type="file" accept="image/*" multiple style="display:none"></label></div></div>
+        <div class="gq-actions"><button class="gq-btn" onclick="todoClose()">取消</button><button class="gq-btn ok" onclick="todoSave()">儲存</button></div></div>`;
+      document.body.appendChild(m);
+      const onFiles = async (e) => { const fs = Array.from(e.target.files || []); e.target.value = ''; for (const f of fs.slice(0, 6)) { try { const url = await tdShrink(f); TD.newPhotos.push({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), url }); } catch (er) {} } tdPhUi(); };
+      m.querySelector('#td-cam').onchange = onFiles; m.querySelector('#td-pick').onchange = onFiles;
+      return m;
+    }
+    async function tdPhUi() {
+      const box = document.getElementById('td-ph'), t = TD.editing; if (!box) return;
+      const olds = await Promise.all((t.photos || []).map(async pid => ({ pid, u: await tdPhoto(pid) })));
+      box.innerHTML = olds.map(o => `<div style="position:relative"><img src="${o.u || ''}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;background:#334155"><b onclick="todoPhDel('o','${o.pid}')" style="position:absolute;right:-5px;top:-5px;width:18px;height:18px;border-radius:9px;background:#dc2626;color:#fff;font:800 12px/18px sans-serif;text-align:center;cursor:pointer">×</b></div>`).join('') +
+        TD.newPhotos.map(p => `<div style="position:relative"><img src="${p.url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px"><b onclick="todoPhDel('n','${p.id}')" style="position:absolute;right:-5px;top:-5px;width:18px;height:18px;border-radius:9px;background:#dc2626;color:#fff;font:800 12px/18px sans-serif;text-align:center;cursor:pointer">×</b></div>`).join('') +
+        (!(t.photos || []).length && !TD.newPhotos.length ? '<span style="color:#64748b;font-size:13px">還沒有照片（可拍電桿號牌、損壞處）</span>' : '');
+    }
+    window.todoPhDel = (k, id) => { if (k === 'n') TD.newPhotos = TD.newPhotos.filter(p => p.id !== id); else TD.editing.photos = (TD.editing.photos || []).filter(p => p !== id); tdPhUi(); };
+    window.todoNew = (lat, lng, code) => {
+      map.closePopup();
+      TD.editing = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lat, lng, code: code || '', note: '', photos: [], ts: Date.now(), by: SY.by || '', done: 0 };
+      TD.newPhotos = []; const m = tdModal(); document.getElementById('td-title').textContent = '📌 新增待辦';
+      document.getElementById('td-code').value = TD.editing.code; document.getElementById('td-note').value = '';
+      tdPhUi(); m.style.display = 'flex'; gqBackPush('todo', () => { m.style.display = 'none'; TD.editing = null; });
+      setTimeout(() => document.getElementById('td-note').focus(), 80);
+    };
+    window.todoEdit = (id) => {
+      const t = TD.list.get(id); if (!t) return; map.closePopup();
+      TD.editing = JSON.parse(JSON.stringify(t)); TD.newPhotos = []; const m = tdModal(); document.getElementById('td-title').textContent = '✏️ 編輯待辦';
+      document.getElementById('td-code').value = t.code || ''; document.getElementById('td-note').value = t.note || '';
+      tdPhUi(); m.style.display = 'flex'; gqBackPush('todo', () => { m.style.display = 'none'; TD.editing = null; });
+    };
+    window.todoClose = () => { const m = document.getElementById('td-modal'); if (m) m.style.display = 'none'; TD.editing = null; TD.newPhotos = []; gqBackDone('todo'); };
+    window.todoSave = async () => {
+      const t = TD.editing; if (!t) return;
+      const code = sanitizeTaipowerCode((document.getElementById('td-code').value || '').trim().toUpperCase().replace(/\s+/g, ''));
+      if (code && code !== t.code) { const ll = getTaskLatLng({ code }); if (ll) { t.lat = ll.lat; t.lng = ll.lng; } else { alert('圖號格式不對，請確認（如 G4261BE25）'); return; } }
+      if (!code && (t.lat == null)) { alert('請填圖號'); return; }
+      t.code = code; t.note = document.getElementById('td-note').value.trim();
+      const ph = TD.newPhotos.slice(); t.photos = (t.photos || []).concat(ph.map(p => p.id));
+      const m = document.getElementById('td-modal'); if (m) m.style.display = 'none'; TD.editing = null; TD.newPhotos = []; gqBackDone('todo');
+      await tdSave(t, ph);
+      if (!TD.layer) toggleTodoMap(); tdTip('📌 已存成待辦' + (SY.team ? '（班上同步）' : ''));
+    };
+    window.todoDone = async (id) => {
+      const t = TD.list.get(id); if (!t) return; map.closePopup();
+      if (!(await gqConfirm(`註銷這個待辦？\n${t.code || ''} ${t.note ? '\n' + t.note.slice(0, 40) : ''}`, { okText: '✅ 已處理' }))) return;
+      t.done = 1; t.doneTs = Date.now(); t.doneBy = SY.by || ''; await tdSave(t, []);
+    };
+    window.todoDelete = async (id) => {
+      const t = TD.list.get(id); if (!t) return; map.closePopup();
+      if (!(await gqConfirm('刪除這個待辦？（記錄錯了才用；處理完請按「已處理，註銷」）', { danger: true, okText: '刪除' }))) return;
+      t.del = 1; await tdSave(t, []);
+    };
+    window.todoToTask = async (id) => { const t = TD.list.get(id); if (!t || !t.code) return; await pinToTask(t.lat, t.lng, t.code, t.note ? t.note.split('\n')[0].slice(0, 30) : ''); };
+    // ---- 提醒：今天的工單附近有待辦 → 跳一次通知（每個待辦每天只提醒一次）----
+    let tdChkT = 0;
+    window.todoCheckSoon = () => { clearTimeout(tdChkT); tdChkT = setTimeout(tdCheck, 1200); };
+    function tdCheck() {
+      if (!tasks.length) return; const day = getLocalDateKey(), hits = [];
+      tdOpen().forEach(t => { const k = day + '|' + t.id; if (TD.told.has(k)) return; if (tdNearTasks(t).length) { hits.push(t); TD.told.add(k); } });
+      tdBadge(); if (TD.layer) tdDraw();
+      if (!hits.length) return;
+      const bar = document.createElement('div'); bar.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:99999;display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:#7c2d12;border:1px solid #fdba74;color:#fff;font:700 14px/1.4 sans-serif;box-shadow:0 6px 16px rgba(0,0,0,.5);max-width:92vw';
+      bar.innerHTML = `<span>🔧 今天工單附近有 ${hits.length} 個待辦：${tdEsc(hits.slice(0, 2).map(t => t.note ? t.note.split('\n')[0].slice(0, 12) : t.code).join('、'))}${hits.length > 2 ? '…' : ''}</span><button style="flex:none;padding:6px 10px;border:none;border-radius:8px;background:#f97316;color:#fff;font-weight:800">看</button><b style="cursor:pointer;padding:0 4px">✕</b>`;
+      bar.querySelector('button').onclick = () => { bar.remove(); if (!TD.layer) toggleTodoMap(); const t = hits[0]; map.setView([t.lat, t.lng], Math.max(map.getZoom(), 18)); };
+      bar.querySelector('b').onclick = () => bar.remove();
+      document.body.appendChild(bar); setTimeout(() => bar.remove(), 15000);
+    }
+    tdLoad().then(() => { tdBadge(); setTimeout(() => { todoCheckSoon(); try { if (SY.team) tdWatch(); } catch (e) {} }, 3000); });
     document.getElementById('more-tools').addEventListener('click', (e) => {   // 非畫圖時：點了列裡的功能就自動收起（🧍 拖完自己會收）
       if (document.body.classList.contains('bd-on') || !e.target.closest('[onclick]')) return;
       setTimeout(() => { document.getElementById('more-tools').style.display = 'none'; document.getElementById('moreBtn').classList.remove('tracking-active'); }, 0);
@@ -5791,6 +5961,7 @@
         圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
         <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
         <button onclick="pinToTask(${lat}, ${lng}, '${code}', '${(road || '').replace(/['"\\<>]/g, '')}')" style="background:#16a34a;padding:9px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;font-size:15px;">➕ 加入${activeDate === todayKey ? '今天' : '這天'}的工單</button>
+        <button onclick="todoNew(${lat}, ${lng}, '${code}')" style="background:#ea580c;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📌 加入待辦（欠修、之後要處理）</button>
         <button onclick="openSvAt(${lat}, ${lng})" style="background:#0e7490;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📷 看這裡的街景</button>
         <button onclick="clearInspectPin()" style="background:#475569;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">✕ 清除這個圖釘</button>
         <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
