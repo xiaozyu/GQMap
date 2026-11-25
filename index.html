@@ -66,7 +66,9 @@
     .btn-top:active { transform: scale(.97); }
     .btn-import { background: linear-gradient(180deg, #3b82f6, #2563eb); border-color: #60a5fa; flex: 1.5; }
     .btn-month  { background: var(--surface-3); border-color: var(--line-2); color: #bae6fd; flex: 1.2; }
-    .btn-clear  { background: transparent; border-color: rgba(239,68,68,.55); color: #fca5a5; flex: .7; box-shadow: none; }
+    .btn-clear  { background: transparent; border-color: rgba(148,163,184,.35); color: #94a3b8; flex: .55; box-shadow: none; font-weight: 600; }   /* v189：刪除類按鈕一律低調（灰字、細框、不搶眼） */
+    .gq-qdel { padding: 2px 9px; border: 1px solid rgba(148,163,184,.55); border-radius: 10px; background: transparent; color: #94a3b8; font: 600 11px/1.5 sans-serif; cursor: pointer; }
+    .gq-qdel:active { color: #fca5a5; border-color: #f87171; }
     .btn-install { background: linear-gradient(180deg, #a855f7, #7e22ce); border-color: #c084fc; flex: 1.2; display: none; }
 
     /* 日期狀態列：永遠看得出現在是「今日」還是「檢視過去紀錄」 */
@@ -342,7 +344,7 @@
     .sheet-btn { min-height: 42px; padding: 6px 8px; border: none; border-radius: 10px; font-size: 13px; font-weight: 800; cursor: pointer; text-align: center; }
     .sheet-btn:active { filter: brightness(.9); }
     .btn-sheet-load { background: var(--green-d); color: #fff; } .btn-sheet-copy { background: #0284c7; color: #fff; }
-    .btn-sheet-save { background: #eab308; color: #1a1200; } .btn-sheet-del { background: var(--red-d); color: #fff; }
+    .btn-sheet-save { background: #eab308; color: #1a1200; } .btn-sheet-del { background: transparent !important; color: #94a3b8 !important; border: 1px solid rgba(148,163,184,.4) !important; font-weight: 600 !important; font-size: 13px !important; }
 
     /* ---------- 共用對話框（取代瀏覽器內建的 alert／confirm／prompt）---------- */
     .gq-overlay { position: fixed; inset: 0; background: rgba(4,8,18,.78); z-index: 6000; display: flex; align-items: center; justify-content: center; padding: 16px; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); animation: gqFade .12s ease-out; }
@@ -476,10 +478,10 @@
         <div class="nudge-row"><button class="nudge-btn" onclick="nudgeCadOverlay(0, -1)">▼</button></div>
         <div style="display:flex;gap:6px;align-items:center;">
           <button onclick="importCadFolder()" class="cad-mini-btn" style="background:#0284c7;">📂選擇資料夾</button>
-          <button onclick="clearCadStore()" class="cad-mini-btn" style="background:#7f1d1d;">🗑清除</button>
+          <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v186</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v189</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -2394,7 +2396,7 @@
         let deleteBtnHtml = '';
         if (!loc.permanent) {
           const customIdx = idx - defaultBases.length;
-          deleteBtnHtml = `<button class="pop-btn danger" onclick="deleteCustomLocation(${customIdx})">🗑️ 刪除此自訂地標</button>`;
+          deleteBtnHtml = `<button class="gq-qdel" onclick="deleteCustomLocation(${customIdx})" style="display:block;margin:8px 0 0 auto">🗑 刪除此地標</button>`;
         }
 
         marker.bindPopup(`
@@ -4427,7 +4429,7 @@
         #bd-dimopt button.on { background: var(--blue-d); border-color: #93c5fd; }
         #bd-mg { position: absolute; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); z-index: 6; display: none; gap: 8px; pointer-events: auto; }
         #bd-mg button { color: #fff; background: var(--glass); border: 2px solid var(--amber); border-radius: 14px; height: 46px; padding: 0 18px; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-2); }
-        #bd-mg button.dg { border-color: var(--red); }
+        #bd-mg button.dg { border-color: rgba(148,163,184,.45); background: transparent; color: #94a3b8; font-weight: 600; }
         #bd-done { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: none; gap: 8px; align-items: center; pointer-events: auto; }
         #bd-done b { color: #fff; background: var(--glass); border: 1px solid var(--blue); border-radius: 999px; height: 46px; padding: 0 18px; font-size: 15px; display: flex; align-items: center; font-family: var(--mono); box-shadow: var(--sh-1); }
         #bd-done button { color: #fff; background: linear-gradient(180deg, #22c55e, #16a34a); border: 1px solid #86efac; border-radius: 999px; height: 46px; padding: 0 20px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: var(--sh-1); }
@@ -4522,7 +4524,7 @@
         <div id="bd-ur"><button class="bt" onclick="bdUndo()" title="上一步（復原，Ctrl+Z）">↩</button><button class="bt" onclick="bdRedo()" title="下一步（重作，Ctrl+Y）">↪</button><button class="bt" id="bd-pbtn" onclick="bdPanelToggle()" title="顏色／粗細／透明度（開始畫就自動收起）"><i></i></button></div>
         <div id="bd-selbar"><span id="bd-seltxt" style="color:#fde047;font:bold 12px sans-serif"></span><span style="flex:1"></span><button id="bd-sedit" onclick="bdSelEdit()">編輯文字</button><button onclick="bdSelNone()">取消</button></div>
         <textarea id="bd-inl" spellcheck="false" placeholder="輸入文字"></textarea>
-        <div id="bd-txt"><button id="bd-txdel" style="background:#b91c1c">🗑 刪除</button><button id="bd-txcan">✕ 取消</button><button id="bd-txok" style="background:#16a34a">✔ 完成</button></div>
+        <div id="bd-txt"><button id="bd-txdel" style="background:transparent;border:1px solid rgba(148,163,184,.45);color:#94a3b8;font-weight:600">🗑 刪除</button><button id="bd-txcan">✕ 取消</button><button id="bd-txok" style="background:#16a34a">✔ 完成</button></div>
         <div id="bd-panel">
           <div class="bd-sl"><div id="bd-pdot"><i></i></div><div class="trk" id="bd-wtrk"><div class="fil"></div></div><div class="val" id="bd-wv"></div><span>粗細</span></div>
           <div class="bd-sl"><div style="height:26px"></div><div class="trk" id="bd-atrk"><div class="fil"></div></div><div class="val" id="bd-av"></div><span>透明</span></div>
@@ -5257,7 +5259,7 @@
       const joined = !!SY.team;
       ov.innerHTML = '<div class="gq-sheet" role="dialog" aria-modal="true"><div class="gq-title"><span>👥 班即時同步</span><button class="gq-x" data-k="c">✕</button></div><div class="gq-msg">' +
         (joined ? `班代碼：<b style="color:#fde047;font-family:var(--mono)">${SY.team.replace(/[<>&]/g, '')}</b>\n你：${SY.by.replace(/[<>&]/g, '')}\n狀態：${String(SY.st).replace(/[<>&]/g, '')}\n\n同班的人輸入同一個班代碼，今天的畫就會即時同步。` : '還沒加入任何班。加入後，你畫的圖會即時出現在同班的手機與電腦。') +
-        '</div><div class="gq-actions" style="flex-direction:column">' + (joined && SY.adm ? '<button class="gq-btn" data-k="lgu" style="background:#0e7490">☁ 備份這支手機的月紀錄（開通人員）</button>' : '') + (joined ? '<button class="gq-btn" data-k="lgd" style="background:#0e7490">⬇ 合併班上的月紀錄備份</button>' : '') + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
+        '</div><div class="gq-actions" style="flex-direction:column">' + (joined && SY.adm ? '<button class="gq-btn" data-k="lgu" style="background:#0e7490">☁ 備份這支手機的月紀錄（開通人員）</button>' : '') + (joined ? '<button class="gq-btn" data-k="lgd" style="background:#0e7490">⬇ 合併班上的月紀錄備份</button>' : '') + (joined ? '<button class="gq-btn ok" data-k="up">⬆ 立即上傳' + (SY.pend ? '（' + SY.pend + ' 筆）' : '') + '</button><button class="gq-btn primary" data-k="cp">📋 複製班代碼</button><button class="gq-btn" data-k="cl" style="background:transparent;color:#94a3b8;font-weight:600;font-size:13px;border-color:rgba(148,163,184,.4)">🧹 刪除舊的雲端資料</button><button class="gq-btn danger" data-k="lv">退出這個班</button>' : '<button class="gq-btn ok" data-k="jn">加入／建立班</button>') + '</div></div>';
       ov.addEventListener('click', async (e) => { const k = e.target.dataset && e.target.dataset.k; if (e.target !== ov && !k) return; ov.remove();
         if (k === 'up') { try { bdSave(); } catch (er) {} await syFlush(); ghSayX(/失敗/.test(SY.st) ? SY.st : '已上傳'); }
         else if (k === 'lgu') await syLogsUp(); else if (k === 'lgd') await syLogsDown();
@@ -5664,7 +5666,7 @@
       const near = histNearShapes(e.ll.lat, e.ll.lng, 40).length;
       const btn = (c, bg, t) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:7px;border:none;border-radius:6px;background:${bg};color:#fff;font-weight:700">${t}</button>`;
       // v182：刪除改成最上面的小字按鈕（不顯眼、不容易誤按）；最主要的「看街景」放大放在最下面、手指最好按的位置
-      const del = it.some(i => i.date !== activeDate) ? `<button onclick="histDelPt(${histPts.indexOf(e)})" style="float:right;margin:-2px 18px 0 0;padding:1px 7px;border:1px solid #cbd5e1;border-radius:9px;background:transparent;color:#94a3b8;font:600 11px/1.5 sans-serif">🗑 刪除</button>` : '';
+      const del = it.some(i => i.date !== activeDate) ? `<button onclick="histDelPt(${histPts.indexOf(e)})" class="gq-qdel" style="float:right;margin:-2px 16px 0 6px">🗑 刪除</button>` : '';
       return `<div style="min-width:220px">${del}<div><b>${it.length > 1 ? `去過 ${it.length} 次` : '去過 1 次'}</b>　最近 ${ago <= 0 ? '今天' : ago + ' 天前'}</div>` + rows +
         (near ? btn(`histBoardGo(${e.ll.lat},${e.ll.lng})`, '#15803d', `✏️ 看這裡的畫圖（${near} 筆）`) : '') +
         `<button onclick="openSvAt(${e.ll.lat},${e.ll.lng})" style="margin-top:8px;width:100%;padding:12px;border:none;border-radius:8px;background:#0e7490;color:#fff;font:800 16px/1 sans-serif">📷 看街景</button>` + `</div>`;
@@ -5788,7 +5790,7 @@
     function tdPopup(t) {
       const d = new Date(t.ts), near = tdNearTasks(t);
       const btn = (c, bg, tx) => `<button onclick="${c}" style="margin-top:6px;width:100%;padding:9px;border:none;border-radius:8px;background:${bg};color:#fff;font:800 14px/1 sans-serif">${tx}</button>`;
-      return `<div style="min-width:230px"><button onclick="todoDelete('${t.id}')" style="float:right;margin:-2px 18px 0 0;padding:1px 7px;border:1px solid #cbd5e1;border-radius:9px;background:transparent;color:#94a3b8;font:600 11px/1.5 sans-serif">🗑 刪除</button>` +
+      return `<div style="min-width:230px"><button onclick="todoDelete('${t.id}')" class="gq-qdel" style="float:right;margin:-2px 16px 0 6px">🗑 刪除</button>` +
         `<b style="color:#c2410c">🔧 待辦</b>　<span style="font-family:monospace;font-weight:800">${tdEsc(t.code || '')}</span>` +
         `<div style="font-size:12px;color:#64748b">${d.getMonth() + 1}/${d.getDate()} ${tdEsc(t.by || '')} 記錄</div>` +
         (t.note ? `<div style="margin-top:4px;white-space:pre-wrap">${tdEsc(t.note)}</div>` : '') +
@@ -5803,11 +5805,84 @@
       const urls = await Promise.all(t.photos.map(tdPhoto));
       box.innerHTML = urls.map((u, i) => u ? `<img src="${u}" onclick="todoPhotoBig('${t.id}',${i})" style="width:64px;height:64px;object-fit:cover;border-radius:6px;cursor:pointer">` : '<div style="width:64px;height:64px;border-radius:6px;background:#e2e8f0;font-size:10px;color:#64748b;display:flex;align-items:center;justify-content:center">讀取失敗</div>').join('');
     }
-    window.todoPhotoBig = async (id, i) => {
-      const t = TD.list.get(id); if (!t) return; const u = await tdPhoto(t.photos[i]); if (!u) return;
-      const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center';
-      ov.innerHTML = `<img src="${u}" style="max-width:100%;max-height:100%;object-fit:contain">`; ov.onclick = () => { ov.remove(); gqBackDone('tdimg'); };
-      document.body.appendChild(ov); gqBackPush('tdimg', () => ov.remove());
+    // v187 照片檢視器：兩指縮放看細節、雙擊放大／還原、放大後單指拖動；沒放大時左右滑換下一張；返回鍵或 ✕ 關閉
+    window.todoPhotoBig = async (id, start) => {
+      const t = TD.list.get(id); if (!t || !(t.photos || []).length) return;
+      const ids = t.photos.slice(), urls = new Array(ids.length).fill(null);
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:#000;touch-action:none;user-select:none;overflow:hidden';
+      ov.innerHTML = `<img draggable="false" style="position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;max-width:none">
+        <div class="pv-n" style="position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:4px 12px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font:700 14px sans-serif"></div>
+        <button class="pv-x" style="position:absolute;right:12px;top:10px;width:44px;height:44px;border-radius:22px;border:none;background:rgba(255,255,255,.18);color:#fff;font:700 22px/1 sans-serif">✕</button>
+        <div class="pv-tip" style="position:absolute;left:50%;bottom:22px;transform:translateX(-50%);padding:5px 12px;border-radius:12px;background:rgba(0,0,0,.55);color:#cbd5e1;font:600 12px sans-serif;white-space:nowrap;transition:opacity .6s">兩指放大・雙擊放大／還原・左右滑換張</div>`;
+      document.body.appendChild(ov);
+      const img = ov.querySelector('img'), num = ov.querySelector('.pv-n');
+      let i = Math.max(0, Math.min(ids.length - 1, start || 0)), W = 0, H = 0, base = 1, s = 1, tx = 0, ty = 0, sw = 0;
+      const vw = () => ov.clientWidth, vh = () => ov.clientHeight;
+      const apply = (anim) => { img.style.transition = anim ? 'transform .22s ease-out' : 'none'; img.style.transform = `translate(${tx + sw}px,${ty}px) scale(${base * s})`; };
+      const fit = () => { base = Math.min(vw() / W, vh() / H); s = 1; tx = (vw() - W * base) / 2; ty = (vh() - H * base) / 2; };
+      const clamp = () => {                                           // 放大時不讓圖片拖出畫面；縮小到 1 倍以下就彈回置中
+        if (s <= 1) { fit(); return; }
+        const iw = W * base * s, ih = H * base * s;
+        tx = iw <= vw() ? (vw() - iw) / 2 : Math.min(0, Math.max(vw() - iw, tx));
+        ty = ih <= vh() ? (vh() - ih) / 2 : Math.min(0, Math.max(vh() - ih, ty));
+      };
+      const zoomAt = (ns, cx, cy) => { ns = Math.max(1, Math.min(8, ns)); const k = ns / s; tx = cx - (cx - tx) * k; ty = cy - (cy - ty) * k; s = ns; };
+      async function show(n, anim) {
+        i = n; num.textContent = ids.length > 1 ? `${i + 1} / ${ids.length}` : '';
+        if (!urls[i]) urls[i] = await tdPhoto(ids[i]);
+        if (!urls[i]) { num.textContent = '讀取失敗'; return; }
+        img.src = urls[i]; await img.decode().catch(() => {});
+        W = img.naturalWidth || 1; H = img.naturalHeight || 1; sw = 0; fit(); apply(anim);
+        [i - 1, i + 1].forEach(k => { if (k >= 0 && k < ids.length && !urls[k]) tdPhoto(ids[k]).then(u => { urls[k] = u; }); });   // 先抓前後張，滑過去不用等
+      }
+      const go = (d) => {
+        const n = i + d;
+        if (n < 0 || n >= ids.length) { sw = 0; apply(true); return; }          // 第一張／最後一張：彈回
+        sw = -d * vw(); apply(true); setTimeout(() => show(n, false), 200);
+      };
+      const P = new Map(); let pinch = null, pan = null, lastTap = 0, moved = false;
+      ov.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.pv-x')) return;
+        ov.setPointerCapture(e.pointerId); P.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved = false;
+        ov.querySelector('.pv-tip').style.opacity = '0';
+        if (P.size === 2) { const [a, b] = [...P.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, tx, ty }; pan = null; }
+        else if (P.size === 1) pan = { x: e.clientX, y: e.clientY, tx, ty };
+      });
+      ov.addEventListener('pointermove', (e) => {
+        if (!P.has(e.pointerId)) return; P.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && P.size >= 2) {
+          const [a, b] = [...P.values()], d = Math.hypot(a.x - b.x, a.y - b.y), cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+          s = pinch.s; tx = pinch.tx + (cx - pinch.cx); ty = pinch.ty + (cy - pinch.cy); zoomAt(pinch.s * d / pinch.d, cx, cy); moved = true; apply(false);
+        } else if (pan) {
+          const dx = e.clientX - pan.x, dy = e.clientY - pan.y; if (Math.hypot(dx, dy) > 6) moved = true;
+          if (s > 1.01) { tx = pan.tx + dx; ty = pan.ty + dy; clamp(); } else sw = dx;   // 沒放大 → 整張跟著手指左右移（換張預備）
+          apply(false);
+        }
+      });
+      const up = (e) => {
+        if (!P.has(e.pointerId)) return; P.delete(e.pointerId);
+        if (pinch) { if (P.size < 2) { pinch = null; clamp(); apply(true); if (P.size === 1) { const r = [...P.values()][0]; pan = { x: r.x, y: r.y, tx, ty }; } } return; }
+        if (P.size) return;
+        if (pan && s <= 1.01 && Math.abs(sw) > Math.min(90, vw() * 0.18)) { go(sw < 0 ? 1 : -1); pan = null; return; }
+        if (!moved) {                                                  // 雙擊：放大 2.5 倍到點的位置／還原
+          const now = Date.now();
+          if (now - lastTap < 300) { if (s > 1.01) fit(); else zoomAt(2.5, e.clientX, e.clientY); clamp(); apply(true); lastTap = 0; } else lastTap = now;
+        }
+        sw = 0; pan = null; apply(true);
+      };
+      ov.addEventListener('pointerup', up); ov.addEventListener('pointercancel', up);
+      ov.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY); clamp(); apply(false); }, { passive: false });   // 電腦：滾輪縮放
+      const key = (e) => { if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'Escape') close(); };
+      document.addEventListener('keydown', key);
+      const onRs = () => { if (W) { fit(); apply(false); } }; window.addEventListener('resize', onRs);
+      let closed = false;
+      const kill = () => { if (closed) return; closed = true; ov.remove(); document.removeEventListener('keydown', key); window.removeEventListener('resize', onRs); };
+      const close = () => { kill(); gqBackDone('tdimg'); };
+      ov.querySelector('.pv-x').onclick = close;
+      gqBackPush('tdimg', kill);
+      setTimeout(() => { const tp = ov.querySelector('.pv-tip'); if (tp) tp.style.opacity = '0'; }, 2500);
+      show(i, false);
     };
     window.toggleTodoMap = async () => {
       const btn = document.getElementById('todoBtn');
@@ -5933,7 +6008,7 @@
       const el = map.getContainer(); let t = 0, sx = 0, sy = 0, lastTouch = 0;
       const busy = () => { try { return BD.on || measureOn || isTapSortMode || pickTaskIdx !== null || isAddPinMode || streetviewframe.style.display === 'block'; } catch (e) { return false; } };
       const cancel = () => { clearTimeout(t); t = 0; };
-      const fire = () => { cancel(); const r = el.getBoundingClientRect(), ll = map.containerPointToLatLng([sx - r.left, sy - r.top]); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {} dropPinAt(ll.lat, ll.lng); };
+      const fire = () => { cancel(); pinHintDone(); const r = el.getBoundingClientRect(), ll = map.containerPointToLatLng([sx - r.left, sy - r.top]); try { navigator.vibrate && navigator.vibrate(30); } catch (e) {} dropPinAt(ll.lat, ll.lng); };
       el.addEventListener('touchstart', (e) => {
         cancel(); lastTouch = Date.now();
         if (e.touches.length !== 1 || busy() || (e.target.closest && e.target.closest('.leaflet-marker-icon,.leaflet-popup,.leaflet-control,.leaflet-tooltip,button'))) return;
@@ -5944,9 +6019,22 @@
       el.addEventListener('contextmenu', (e) => e.preventDefault());       // 擋掉瀏覽器長按選單
       map.on('contextmenu', (e) => {
         if (Date.now() - lastTouch < 1500) { if (t) fire(); return; }       // 手機長按：瀏覽器自己也會發一次，合併成一次
-        if (busy()) return; dropPinAt(e.latlng.lat, e.latlng.lng);         // 電腦右鍵
+        if (busy()) return; pinHintDone(); dropPinAt(e.latlng.lat, e.latlng.lng);         // 電腦右鍵
       });
     })();
+    // v188 提示「怎麼放圖釘」：電腦（有滑鼠）顯示「右鍵」，手機顯示「長按」；開 App 時提示，用過一次就不再出現（最多提示 5 次）
+    function pinHintDone() { try { localStorage.setItem('tpc_hint_pin', '99'); } catch (e) {} const h = document.getElementById('pin-hint'); if (h) h.remove(); }
+    setTimeout(() => {
+      let n = 0; try { n = +localStorage.getItem('tpc_hint_pin') || 0; } catch (e) {}
+      if (n >= 5) return; try { localStorage.setItem('tpc_hint_pin', String(n + 1)); } catch (e) {}
+      const mouse = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+      const h = document.createElement('div'); h.id = 'pin-hint';
+      h.innerHTML = (mouse ? '🖱 在地圖上按<b>滑鼠右鍵</b>，就能放圖釘查圖號、加入工單或待辦' : '👆 在地圖上<b>長按</b>約半秒，就能放圖釘查圖號、加入工單或待辦') + '<span style="margin-left:10px;opacity:.7;cursor:pointer">✕</span>';
+      h.style.cssText = 'position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1200;max-width:90%;padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.9);border:1px solid #fde047;color:#fff;font:600 13px/1.45 sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.4)';
+      h.querySelector('span').onclick = pinHintDone;
+      const mc = map.getContainer().parentElement || document.body; mc.appendChild(h);
+      setTimeout(() => { if (h.isConnected) { h.style.transition = 'opacity .5s'; h.style.opacity = '0'; setTimeout(() => h.remove(), 600); } }, 9000);
+    }, 2500);
     async function dropPinAt(lat, lng) {
       const code = coordToPowerCode(lat, lng);
       silentCopy(code);
@@ -5970,14 +6058,13 @@
       });
 
       inspectMarker.bindPopup(`
-        <b>🔍 點位圖號解析</b><br>
+        <button class="gq-qdel" onclick="clearInspectPin()" style="float:right;margin:-2px 16px 0 6px">✕ 清除</button><b>🔍 點位圖號解析</b><br>
         ${road ? `路名: <b>${road}</b><br>` : ''}
         圖號: <b style="color:#7e22ce;">${code}</b> (已複製)<br><br>
         <button onclick="openGoogleMaps(${lat}, ${lng})" style="background:#2563eb;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">🧭 Google 導航</button>
         <button onclick="pinToTask(${lat}, ${lng}, '${code}', '${(road || '').replace(/['"\\<>]/g, '')}')" style="background:#16a34a;padding:9px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;font-size:15px;">➕ 加入${activeDate === todayKey ? '今天' : '這天'}的工單</button>
         <button onclick="todoNew(${lat}, ${lng}, '${code}')" style="background:#ea580c;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📌 加入待辦（欠修、之後要處理）</button>
         <button onclick="openSvAt(${lat}, ${lng})" style="background:#0e7490;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">📷 看這裡的街景</button>
-        <button onclick="clearInspectPin()" style="background:#475569;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;margin-bottom:6px;">✕ 清除這個圖釘</button>
         <button onclick="promptAddCustomBase(${lat}, ${lng}, '${road || code}')" style="background:#7e22ce;padding:7px;border:none;border-radius:4px;color:white;font-weight:bold;cursor:pointer;width:100%;">⭐ 儲存為常用據點</button>
       `).openPopup();
     }
