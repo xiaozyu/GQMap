@@ -485,7 +485,7 @@
           <button onclick="clearCadStore()" class="cad-mini-btn" style="background:transparent;color:#94a3b8;font-weight:600;border-color:rgba(148,163,184,.45)">🗑清除</button>
           <button onclick="cycleCadQuality()" class="cad-mini-btn" id="cad-q-btn" style="background:#334155;display:none;">畫質</button>
         </div>
-        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v196</div>
+        <div style="font-size:9px;color:#64748b;" id="ver-label"><span id="cad-offset-label">X:0m, Y:0m</span> · v197</div>
       </div>
       <div id="cad-status-pill">
         <span id="cad-status-text" style="display:none;">⚡ 圖資準備中...</span>
@@ -611,6 +611,25 @@
       if (btnInstall) btnInstall.style.display = 'block';
     });
 
+    // v197 iPhone／iPad（Safari 沒有安裝提示）、LINE 等 App 內建瀏覽器：也顯示「📲 安裝」，按下去教怎麼加到主畫面
+    const gqUA = navigator.userAgent || '';
+    const gqIOS = /iPad|iPhone|iPod/.test(gqUA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const gqInApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(gqUA);
+    const gqStandalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    function gqInstallGuide() {
+      const step = (n, t) => `<div style="display:flex;gap:10px;align-items:flex-start;margin:10px 0"><b style="flex:none;width:26px;height:26px;border-radius:13px;background:#2563eb;color:#fff;font:800 14px/26px sans-serif;text-align:center">${n}</b><div style="font:600 15px/1.6 sans-serif">${t}</div></div>`;
+      const shareIco = '<svg width="18" height="22" viewBox="0 0 18 22" style="vertical-align:-4px;margin:0 2px"><path d="M9 1v13M4.5 5.5 9 1l4.5 4.5" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 9H3a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 3 20h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 15 9h-2" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/></svg>';
+      let body;
+      if (gqInApp) body = step(1, '這是 LINE／FB 裡面開的網頁，<b>不能安裝</b>') + step(2, gqIOS ? '按右下角「⋯」或分享 → 選<b>「用 Safari 開啟」</b>' : '按右上角「⋮」→ 選<b>「用 Chrome 開啟」</b>') + step(3, '在 Safari／Chrome 打開後，再按一次 📲 安裝');
+      else if (gqIOS) body = step(1, `按 Safari 下方（iPad 在右上）的<b>分享鍵</b>${shareIco}`) + step(2, '往下滑，選<b>「加入主畫面」</b>（找不到就按最下面「編輯動作」加進來）') + step(3, '右上角按<b>「新增」</b>，桌面就會出現巨擎導航的圖示') + '<div style="margin-top:6px;color:#94a3b8;font-size:13px">之後從桌面圖示打開，就是全螢幕 App，不會有網址列。</div>';
+      else body = step(1, '按瀏覽器右上角「⋮」') + step(2, '選<b>「安裝應用程式」</b>或<b>「加到主畫面」</b>');
+      const ov = document.createElement('div'); ov.className = 'gq-overlay'; ov.style.display = 'flex'; ov.style.zIndex = '100002';
+      ov.innerHTML = `<div class="gq-sheet"><div class="gq-title"><span>📲 加到主畫面</span><button class="gq-x">✕</button></div>${body}<div class="gq-actions"><button class="gq-btn ok">知道了</button></div></div>`;
+      const close = () => { ov.remove(); gqBackDone('install'); };
+      ov.querySelector('.gq-x').onclick = close; ov.querySelector('.gq-btn').onclick = close; ov.onclick = (e) => { if (e.target === ov) close(); };
+      document.body.appendChild(ov); gqBackPush('install', () => ov.remove());
+    }
+    if (btnInstall && !gqStandalone && (gqIOS || gqInApp)) btnInstall.style.display = 'block';
     if (btnInstall) {
       btnInstall.onclick = () => {
         if (deferredPrompt) {
@@ -619,7 +638,7 @@
             deferredPrompt = null;
             btnInstall.style.display = 'none';
           });
-        }
+        } else gqInstallGuide();
       };
     }
 
